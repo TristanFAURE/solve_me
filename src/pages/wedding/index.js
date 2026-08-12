@@ -28,6 +28,8 @@ import {
   setTableShape,
 } from './tableTopology.js';
 import { validateWeddingProject } from './validateWeddingProject.js';
+import { exportWeddingSolutionWorkbook } from './exportWeddingSolution.js';
+import { importWeddingWorkbook } from './importWeddingWorkbook.js';
 
 function createWeddingEditorState() {
   return {
@@ -268,12 +270,14 @@ function renderSummary(project) {
   `;
 }
 
-function renderCommandBar() {
+function renderCommandBar(result) {
+  const canExport = result?.status === 'solved' && (result?.solutions?.length ?? 0) > 0;
+
   return `
     <section class="command-bar-card wedding-command-bar">
       <div class="command-bar-copy">
         <p class="eyebrow">💒 Wedding workflow</p>
-        <h2>Validate and solve the seating plan</h2>
+        <h2>Validate, solve, import, and export</h2>
         <p class="muted-text">Use groups for families, friend circles, wedding party clusters, or any other planner-friendly layer of seating logic.</p>
       </div>
       <div class="command-bar-actions">
@@ -281,9 +285,18 @@ function renderCommandBar() {
           <span class="command-bar-icon" aria-hidden="true">✓</span>
           <span>Validate</span>
         </button>
+        <label class="command-bar-button command-bar-file-button">
+          <span class="command-bar-icon" aria-hidden="true">⤴</span>
+          <span>Import Excel</span>
+          <input type="file" data-action="import-wedding-workbook" accept=".xlsx,.xls" hidden />
+        </label>
         <button type="button" class="command-bar-button command-bar-button-primary" data-action="solve-wedding">
           <span class="command-bar-icon" aria-hidden="true">▶</span>
           <span>Validate + normalize + solve</span>
+        </button>
+        <button type="button" class="command-bar-button" data-action="export-wedding-solution"${canExport ? '' : ' disabled'}>
+          <span class="command-bar-icon" aria-hidden="true">⬇</span>
+          <span>Export Excel</span>
         </button>
         <button type="button" class="command-bar-button" data-action="toggle-wedding-mode">
           <span class="command-bar-icon" aria-hidden="true">🪑</span>
@@ -1658,6 +1671,46 @@ function bindActions(root, state) {
       return;
     }
 
+    if (action === 'import-wedding-workbook') {
+      element.addEventListener('change', async (event) => {
+        const [file] = Array.from(event.target.files ?? []);
+        if (!file) {
+          return;
+        }
+
+        try {
+          state.currentProject = await importWeddingWorkbook(file);
+          state.currentProject.viewHint = VIEW_HINTS.WEDDING;
+          clearWeddingMessage(state);
+          resetWeddingDerivedState(state);
+          state.weddingPage.message = `Excel workbook imported from ${file.name}. Please validate the imported wedding plan. 💌`;
+        } catch (error) {
+          state.weddingPage.message = error instanceof Error
+            ? `Excel import failed: ${error.message}`
+            : 'Excel import failed.';
+        }
+
+        event.target.value = '';
+        renderWeddingPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'export-wedding-solution') {
+      element.addEventListener('click', () => {
+        try {
+          exportWeddingSolutionWorkbook(state.currentProject, state.weddingPage.lastSolverResult, state.weddingPage.editor.activeSolutionIndex);
+          state.weddingPage.message = `Excel export downloaded for solution ${state.weddingPage.editor.activeSolutionIndex + 1}. 📘`;
+        } catch (error) {
+          state.weddingPage.message = error instanceof Error
+            ? `Excel export failed: ${error.message}`
+            : 'Excel export failed.';
+        }
+        renderWeddingPage(root, state);
+      });
+      return;
+    }
+
     if (action === 'toggle-wedding-mode') {
       element.addEventListener('click', () => {
         state.currentProject.assignmentMode = getSeatModeEnabled(state.currentProject)
@@ -1744,7 +1797,7 @@ export function renderWeddingPage(root, state) {
     title: 'Wedding Table Plan',
     description: '💍 Build a wedding seating plan with guests, overlapping groups, tables, optional seats, and planner-friendly rules.',
     body: `
-      ${renderCommandBar()}
+      ${renderCommandBar(state.weddingPage.lastSolverResult)}
       ${state.weddingPage.message ? `<section class="command-bar-feedback">${escapeHtml(state.weddingPage.message)}</section>` : ''}
       ${renderSummary(state.currentProject)}
       ${renderMetadataPanel(state.currentProject)}
