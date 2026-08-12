@@ -890,6 +890,35 @@ body {
   margin-top: 16px;
 }
 
+.school-rule-form-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.school-rule-top-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 360px);
+  gap: 10px;
+}
+
+.school-preference-top-row {
+  grid-template-columns: minmax(220px, 1fr) minmax(120px, 160px);
+  align-items: end;
+}
+
+.school-rule-participants-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.school-rule-top-row label,
+.school-rule-participants-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .wedding-rule-grid {
   margin-top: 16px;
 }
@@ -1081,7 +1110,9 @@ body {
   .audit-section-grid,
   .validation-panel-grid,
   .wedding-neighbor-grid,
-  .wedding-group-selection-row {
+  .wedding-group-selection-row,
+  .school-preference-top-row,
+  .school-rule-participants-row {
     grid-template-columns: 1fr;
   }
 

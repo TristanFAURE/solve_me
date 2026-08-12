@@ -554,22 +554,26 @@ function renderRulePanels(project, editor) {
             <h2>Together or separate</h2>
           </div>
         </div>
-        <div class="form-grid three-columns compact-form-grid">
-          <label>
-            <span>Rule</span>
-            <select name="draftRuleKind">
-              <option value="${CONSTRAINT_KINDS.MUST_SHARE_CONTAINER}"${editor.draftRuleKind === CONSTRAINT_KINDS.MUST_SHARE_CONTAINER ? ' selected' : ''}>Must be together</option>
-              <option value="${CONSTRAINT_KINDS.MUST_NOT_SHARE_CONTAINER}"${editor.draftRuleKind === CONSTRAINT_KINDS.MUST_NOT_SHARE_CONTAINER ? ' selected' : ''}>Must not be together</option>
-            </select>
-          </label>
-          <label>
-            <span>Left participant</span>
-            <select name="draftRuleLeftId">${renderSelectOptions(participants, editor.draftRuleLeftId)}</select>
-          </label>
-          <label>
-            <span>Right participant</span>
-            <select name="draftRuleRightId">${renderSelectOptions(participants, editor.draftRuleRightId)}</select>
-          </label>
+        <div class="school-rule-form-stack compact-form-grid">
+          <div class="form-grid compact-form-grid school-rule-top-row">
+            <label>
+              <span>Rule</span>
+              <select name="draftRuleKind">
+                <option value="${CONSTRAINT_KINDS.MUST_SHARE_CONTAINER}"${editor.draftRuleKind === CONSTRAINT_KINDS.MUST_SHARE_CONTAINER ? ' selected' : ''}>Must be together</option>
+                <option value="${CONSTRAINT_KINDS.MUST_NOT_SHARE_CONTAINER}"${editor.draftRuleKind === CONSTRAINT_KINDS.MUST_NOT_SHARE_CONTAINER ? ' selected' : ''}>Must not be together</option>
+              </select>
+            </label>
+          </div>
+          <div class="form-grid compact-form-grid school-rule-participants-row">
+            <label>
+              <span>Left participant</span>
+              <select name="draftRuleLeftId">${renderSelectOptions(participants, editor.draftRuleLeftId)}</select>
+            </label>
+            <label>
+              <span>Right participant</span>
+              <select name="draftRuleRightId">${renderSelectOptions(participants, editor.draftRuleRightId)}</select>
+            </label>
+          </div>
         </div>
         <div class="button-row top-gap">
           <button type="button" data-action="add-school-constraint">Add hard rule</button>
@@ -577,7 +581,7 @@ function renderRulePanels(project, editor) {
         <div class="table-wrap audit-table-wrap top-gap">
           <table class="data-table">
             <thead>
-              <tr><th>Rule</th><th>Left</th><th>Right</th><th>Actions</th></tr>
+              <tr><th>Rule</th><th>Left participant</th><th>Right participant</th><th>Actions</th></tr>
             </thead>
             <tbody>${hardRuleRows}</tbody>
           </table>
@@ -591,26 +595,30 @@ function renderRulePanels(project, editor) {
             <h2>Preferred class composition</h2>
           </div>
         </div>
-        <div class="form-grid four-columns compact-form-grid">
-          <label>
-            <span>Preference</span>
-            <select name="draftPreferenceKind">
-              <option value="${PREFERENCE_KINDS.PREFER_SHARE_CONTAINER}"${editor.draftPreferenceKind === PREFERENCE_KINDS.PREFER_SHARE_CONTAINER ? ' selected' : ''}>Prefers to be together</option>
-              <option value="${PREFERENCE_KINDS.PREFER_SEPARATE_CONTAINERS}"${editor.draftPreferenceKind === PREFERENCE_KINDS.PREFER_SEPARATE_CONTAINERS ? ' selected' : ''}>Prefers not to be together</option>
-            </select>
-          </label>
-          <label>
-            <span>Left participant</span>
-            <select name="draftPreferenceLeftId">${renderSelectOptions(participants, editor.draftPreferenceLeftId)}</select>
-          </label>
-          <label>
-            <span>Right participant</span>
-            <select name="draftPreferenceRightId">${renderSelectOptions(participants, editor.draftPreferenceRightId)}</select>
-          </label>
-          <label>
-            <span>Weight</span>
-            <input type="number" min="0" step="1" name="draftPreferenceWeight" value="${escapeHtml(editor.draftPreferenceWeight)}" />
-          </label>
+        <div class="school-rule-form-stack compact-form-grid">
+          <div class="form-grid compact-form-grid school-rule-top-row school-preference-top-row">
+            <label>
+              <span>Preference</span>
+              <select name="draftPreferenceKind">
+                <option value="${PREFERENCE_KINDS.PREFER_SHARE_CONTAINER}"${editor.draftPreferenceKind === PREFERENCE_KINDS.PREFER_SHARE_CONTAINER ? ' selected' : ''}>Prefers to be together</option>
+                <option value="${PREFERENCE_KINDS.PREFER_SEPARATE_CONTAINERS}"${editor.draftPreferenceKind === PREFERENCE_KINDS.PREFER_SEPARATE_CONTAINERS ? ' selected' : ''}>Prefers not to be together</option>
+              </select>
+            </label>
+            <label>
+              <span>Weight</span>
+              <input type="number" min="0" step="1" name="draftPreferenceWeight" value="${escapeHtml(editor.draftPreferenceWeight)}" />
+            </label>
+          </div>
+          <div class="form-grid compact-form-grid school-rule-participants-row">
+            <label>
+              <span>Left participant</span>
+              <select name="draftPreferenceLeftId">${renderSelectOptions(participants, editor.draftPreferenceLeftId)}</select>
+            </label>
+            <label>
+              <span>Right participant</span>
+              <select name="draftPreferenceRightId">${renderSelectOptions(participants, editor.draftPreferenceRightId)}</select>
+            </label>
+          </div>
         </div>
         <div class="button-row top-gap">
           <button type="button" data-action="add-school-preference">Add preference</button>
@@ -618,7 +626,7 @@ function renderRulePanels(project, editor) {
         <div class="table-wrap audit-table-wrap top-gap">
           <table class="data-table">
             <thead>
-              <tr><th>Preference</th><th>Left</th><th>Right</th><th>Weight</th><th>Actions</th></tr>
+              <tr><th>Preference</th><th>Left participant</th><th>Right participant</th><th>Weight</th><th>Actions</th></tr>
             </thead>
             <tbody>${preferenceRows}</tbody>
           </table>
