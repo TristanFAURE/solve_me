@@ -206,6 +206,7 @@ Allows:
 - add hard constraints
 - add soft preferences with weight
 - choose operand kinds and referenced entities from the current project state
+- support a group-internal together shortcut for hard and soft same-container authoring, meaning all members of one selected group must or should be together
 - trigger add actions with Enter when focus is on a relevant final field in a relation or rule authoring flow
 
 This panel should support authoring new relations while preserving visibility of the existing entity boards.
@@ -225,6 +226,7 @@ Below the workspace, the page may present tabular or list-based sections for:
 
 These sections are useful for auditability and debugging even if the primary editing experience is board-oriented.
 The displayed relation and rule operands should show the user-visible entity label first, not only the internal identifier.
+If a rule was authored as a group-internal together shortcut, the audit table should render that shortcut in readable language rather than as a confusing duplicated group-to-group self-reference.
 
 ## Data model usage
 
@@ -297,6 +299,7 @@ The page must validate at least the following.
 - adjacency constraints require position mode or equivalent support
 - unsupported operand combinations must be rejected or disabled
 - self-relations that are semantically invalid must be rejected
+- the group-internal together shortcut must be limited to same-container together semantics unless future semantics explicitly broaden it
 
 ### Capacity and assignment validation
 
@@ -376,6 +379,8 @@ Examples:
 - A user can work in container mode without defining positions.
 - A user can switch to position mode and define positions and adjacency.
 - A user can create hard same-container and separation constraints.
+- A user can author a shortcut meaning all members of one group must be together.
+- A user can author a shortcut meaning all members of one group should preferably be together.
 - A user can read relation and rule tables using visible entity labels rather than ids alone.
 - A user can create adjacency constraints only when the model supports them.
 - A user can create soft preferences when supported by the active solver.

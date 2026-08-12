@@ -524,6 +524,34 @@ Completed:
 - updated wedding validation to warn when generated topology has been manually adjusted and would be replaced by regeneration
 - updated wedding styling and spec text to reflect shape-aware generation, per-table regeneration, manual gap creation, and the no-auto-reconnect rule for seat deletion
 - verified the new wedding topology generation changes with a successful `npm run build`
+- finished the first custom wedding adjacency authoring pass by adding table-scoped manual seat-to-seat adjacency controls to the seats panel
+- extended `src/pages/wedding/tableTopology.js` with a reusable adjacency-add helper so the wedding page can create manual same-table seat links without duplicating topology logic
+- updated wedding validation to reject accidental cross-table seat adjacencies, preserving planner-facing table-local adjacency semantics in the wedding page
+- updated the wedding spec and wedding styling to document and support manual same-table adjacency authoring after generation or manual seat creation
+- verified the wedding custom-adjacency authoring changes with a successful `npm run build`
+- investigated a reported wedding regression where seat generation appeared not to work anymore by reading `status.md`, inspecting `src/pages/wedding/index.js`, `src/pages/wedding/tableTopology.js`, and `src/pages/wedding/validateWeddingProject.js`, and tracing the generate-seat action wiring
+- fixed the per-table wedding `Generate seats + topology` action in `src/pages/wedding/index.js` so tables without a positive maximum capacity now show an explicit planner-facing warning instead of silently returning zero generated seats and looking broken
+- investigated the follow-up wedding runtime error reported from the browser console and identified the real crash as a render bug in `src/pages/wedding/index.js`, where `renderWeddingPage(...)` called `renderSeatsPanel(...)` without passing `state.weddingPage.editor`, causing `draftAdjacencyLeftSeatId` to be read from `undefined`
+- fixed the wedding seats-panel render call in `src/pages/wedding/index.js` to pass `state.weddingPage.editor`, resolving the post-generation crash that made seat generation appear broken
+- reverted a mistakenly started school-only group-together shortcut change so the school page stays unchanged for now
+- added wedding group-card together shortcuts in `src/pages/wedding/index.js`: each group card can now toggle `must sit together at the same table` and set a `prefer together` weight directly in the group edition panel, with those shortcuts stored as explicit group-internal shortcut metadata and rendered readably in the wedding hard-rule and preference tables
+- updated `docs/02-feature-wedding-table-plan.md` to document that wedding group cards now host direct together/prefer-together shortcuts
+- changed the wedding rule and preference authoring layout in `src/pages/wedding/index.js` so both `Must work this way` and `Prefer if possible` now use a two-line structure: first line for the rule/preference selector, second line for grouped options kept visually together
+- removed left-side/right-side wording from the wedding rule/preference authoring rows and replaced it with grouped seat-planner-friendly selection wording
+- reduced wedding seat-card density in `src/pages/wedding/index.js` and `src/styles.css` by shortening seat metadata labels and tightening wedding-panel spacing for more compact display on large weddings
+- updated `docs/02-feature-wedding-table-plan.md` to document the new two-line rule/preference layout and the compact seat-display expectation for large events
+- fixed the wedding guest/group selector behavior in `src/pages/wedding/index.js` so changing Guest versus Group now resets the matching selected id and immediately re-renders the options list, making the selector visibly update
+- changed the hard-rule dropdown wording in `src/pages/wedding/index.js` so the option appears explicitly as `must sit together at the same table`
+- moved the wedding seats panel to the end of the page in `src/pages/wedding/index.js` so detailed seat management no longer interrupts the main authoring flow near the top
+- tightened wedding seat/adjacency styling further in `src/styles.css` with smaller gaps, smaller buttons, smaller metadata blocks, and narrower seat-grid columns for denser large-event display
+- updated `docs/02-feature-wedding-table-plan.md` to document immediate selector refresh behavior and that the seats panel is intentionally placed after the main editing and result sections
+- replaced the old group-card `Keep this group together` controls in `src/pages/wedding/index.js` with a new dedicated single-group option inside both `Must work this way` and `Prefer if possible`
+- updated the wedding hard-rule and preference selectors so they now offer a `Keep this group together` mode that switches the options row to a single group selector instead of a two-operand selector
+- removed the old group-panel shortcut controls and their direct input bindings, while reusing the existing internal shortcut storage helpers for authored group-together rules and preferences
+- updated `docs/02-feature-wedding-table-plan.md` so group-together authoring is now documented as part of the rule/preference sections rather than the group panel
+- verified the follow-up wedding selector/layout fixes with a successful `npm run build`
+- fixed a wedding rule/preference selector refresh bug in `src/pages/wedding/index.js` so switching to `Keep this group together` now immediately re-renders the options row and shows the single group selector instead of leaving stale pairwise guest/group controls visible
+- verified the wedding selector-refresh fix with a successful `npm run build`
 
 Review findings:
 
@@ -603,6 +631,18 @@ Fixes applied:
 - decided generated seat order should remain stable metadata so the UI can keep consistent left/right semantics even after manual topology edits
 - decided removing a generated left or right side should remove only that adjacency edge and keep the seat in place, while deleting a seat should remove the seat and its adjacency links without silently reconnecting neighbors
 - decided per-table regeneration should be supported alongside bulk regeneration so planners can rework one table without replacing every other table
+- decided the first custom wedding adjacency authoring UI should be explicitly table-scoped: planners select one seat first, the second selector narrows to seats from the same table, and validation rejects any accidental cross-table seat links
+- decided wedding per-table seat generation must fail loudly with a clear planner-facing capacity message when `maxCapacity` is missing or non-positive, because silent zero-seat regeneration is indistinguishable from a broken button
+- decided wedding render helpers that depend on page-local editor drafts must always receive the wedding editor object explicitly from `state.weddingPage.editor`, because a missing editor argument can break unrelated actions during the next re-render and mimic a generation failure
+- decided the requested whole-group together shortcut belongs in the wedding group edition panel rather than in the school page or only in the generic/wedding free-form rule builder
+- decided wedding group-level together UX should use direct per-group card controls for `must sit together` and `prefer sit together`, while keeping the authored shortcut visible in the existing wedding rule/preference tables through readable labels instead of raw self-group references
+- decided the wedding rule/preference authoring UX should favor a planner-facing two-line layout with the rule kind on the first line and grouped operand options on the second line rather than left/right-side wording
+- decided the wedding guest/group kind selector must visibly refresh the corresponding options list immediately when changed, otherwise planners read it as broken even if the underlying state changed
+- decided the wedding rule/preference kind selector must also visibly refresh immediately when switching to or from `Keep this group together`, so the correct control set appears without requiring any extra click
+- decided the wedding seats panel should prefer compact dense cards because weddings with 100 to 200 guests can otherwise become visually too large to scan efficiently
+- decided the wedding seats panel belongs at the end of the page rather than beside tables in the middle of the main flow, so advanced seat editing does not distract from primary wedding authoring tasks
+- decided `Keep this group together` should no longer live in the group cards and should instead be authored from both `Must work this way` and `Prefer if possible` as a dedicated one-group option
+- decided that when `Keep this group together` is selected, the wedding page should present only one group selector because this concept is not a left/right pair
 
 Files modified:
 
@@ -618,9 +658,13 @@ Files modified:
 - `docs/01-feature-generic-constraint-page.md`
 - `docs/02-feature-wedding-table-plan.md`
 - `src/pages/wedding/index.js`
+- `src/pages/wedding/index.js`
+- `src/pages/wedding/index.js`
+- `src/pages/wedding/index.js`
 - `src/pages/wedding/tableTopology.js`
 - `src/pages/school/index.js`
 - `src/pages/wedding/validateWeddingProject.js`
+- `src/pages/wedding/tableTopology.js`
 - `src/pages/school/index.js`
 - `src/pages/school/exportSchoolSolution.js`
 - `src/pages/school/importSchoolWorkbook.js`
@@ -711,12 +755,18 @@ Open questions or risks:
 - school-specific validation now covers several important authoring mistakes in school wording, but it is still page-local and not yet extracted into a broader reusable domain-validation boundary
 - the school spreadsheet-export requirement now has an initial implementation with real `.xlsx` generation, but the wedding page still needs its own export implementation and the long-term shared export abstraction is still open
 - the new school workbook import currently covers teacher-facing roster/class entry only; it does not attempt to reconstruct hard rules, soft preferences, or every page-level setting from spreadsheets
-- the wedding page now has a first real planner-facing panel, and generated topology can now be edited by removing generated left/right/both adjacencies per seat; however, arbitrary manual seat-to-seat adjacency creation helpers and richer topology authoring shortcuts still need implementation
+- the wedding page now has a first real planner-facing panel, and generated topology can now be edited by removing generated left/right/both adjacencies per seat; it also now supports manual same-table seat-to-seat adjacency creation, though richer topology shortcuts such as an explicit `close gap` action still need implementation
 - the current wedding generator stores square and rectangle as shape metadata but still produces the same perimeter-ring adjacency pattern as round tables, so later work may still need more geometric display semantics such as side grouping or facing relationships
 - bulk seat generation currently derives seat counts strictly from each table maximum capacity, so tables with no maximum or with only minimum capacity cannot use the generator until that capacity data is completed
+- the user-reported `generate seats does not work anymore` issue now appears to have had at least two contributing causes: a silent per-table invalid-capacity path and a real post-generation render crash caused by omitting `state.weddingPage.editor` when rendering the seats panel; browser confirmation is still needed after both fixes
 - wedding and school pages still need a broader audit of labels and column headings beyond rule/preference tables to ensure no remaining generic or internal naming leaks into domain-facing tables
 - the wedding page currently reuses the generic shared solution rendering without a richer wedding-specific display context yet, so later work may still improve wording or seat-aware presentation details
+- the new compact wedding seat display improves density, but for very large weddings the page may still eventually need table-level collapsing, virtualization, or an even denser list mode
+- the current wedding rule/preference grouped selector still uses two side-by-side grouped selectors internally for normal pairwise rules; if planners continue to find this unclear, the next refinement may need a more explicit `Pair guests/groups` wording or a custom dual-picker component
+- the selector refresh bug is fixed for switching into and out of `Keep this group together`, but the full wedding page still needs a broader browser pass to confirm all dynamic controls re-render correctly during chained edits
+- the new single-group `Keep this group together` authoring path reuses the internal shortcut metadata model; if future export/import or audit behavior needs stronger explicitness, this shortcut may later need a more formal dedicated authored-rule representation
 - the wedding panel currently allows group-level adjacency operands in the UI even though validation blocks unsupported cases; the rule builder may later need operand filtering that dynamically narrows choices for adjacency rules
+- the new wedding group-card `prefer together` input currently writes directly on input and treats blank or `0` as off; this is simple and fast, but later UX may still want an explicit toggle or debounced save if planners find it too implicit
 - the added `xlsx` dependency increases bundle size noticeably, and the new workbook import/export path pushed the built JS chunk above Vite's 500 kB warning threshold, so future work may need lazy-loading or chunking improvements
 - any future repository push still depends on local GitHub authentication being available in the execution environment; remote push may fail without user credentials or token configuration
 - if the repository name changes from `solve_me`, the GitHub Pages deployment will break until `vite.config.js` is updated to match the new repository path
@@ -729,9 +779,11 @@ Open questions or risks:
 
 Recommended next step:
 
-- manually test the new wedding shape-aware generation flow in the browser, including bulk and per-table regeneration, generated left/right neighbor controls, `remove both sides`, and deletion without auto-reconnect
-- then implement arbitrary seat-to-seat adjacency authoring helpers in the wedding page so planners can add custom links after generation, ideally with table-scoped selectors and a future `close gap` convenience action
-- after that, continue auditing remaining domain wording leaks and later add wedding solved-result export using the same real `.xlsx` approach as the school page unless a domain-specific workbook layout suggests a better structure
+- manually re-test the wedding page in the browser and confirm that `Keep this group together` now works from both `Must work this way` and `Prefer if possible` using a single group selector and no longer appears in the group cards
+- then verify that switching between the single-group mode and the normal pairwise guest/group mode now refreshes immediately and still creates readable entries in the wedding rule/preference tables
+- then manually test the relocated end-of-page seats panel with a larger scenario size to judge whether the denser display is now sufficient or whether a table-collapsed or list-density mode is still needed
+- after that, continue the broader wedding topology manual test pass for bulk/per-table generation, generated left/right removals, `remove both sides`, deletion without auto-reconnect, and the manual same-table adjacency controls
+- then implement a `close gap` convenience action for generated wedding topology so planners can restore a removed generated neighbor link without using the generic custom-adjacency controls manually
 
 ## Restart prompt for a new context
 
@@ -774,9 +826,10 @@ Current expected task:
 - deployment is already confirmed working at `https://tristanfaure.github.io/solve_me/`
 - first, manually test the new school `.xlsx` import/export round-trip with representative teacher-facing workbooks and confirm both minimal and richer workbook variants behave as expected
 - then decide whether workbook parsing/generation should share a common spreadsheet utility layer or be lazy-loaded before extending the same pattern to other pages
-- use `src/pages/wedding/tableTopology.js`, `src/pages/wedding/index.js`, and `src/pages/wedding/validateWeddingProject.js` as the current wedding baseline: tables now have planner-facing shapes (`round`, `square`, `rectangle`), bulk and per-table seat generation build generic perimeter-ring adjacency, generated seats keep stable `seatIndex` metadata for left/right controls, planners can remove generated left/right/both adjacencies without deleting the seat, deleting a seat does not auto-reconnect neighbors, and manually adjusted generated topology is surfaced back to the user as a warning and table status
-- first, manually test the new wedding shape-aware generation flow in the browser and confirm bulk/per-table regeneration, left/right removal, `remove both sides`, and delete-seat gap behavior all match expectations
-- then implement arbitrary seat-to-seat adjacency authoring helpers and possibly a `close gap` convenience action for generated topologies
+- use `src/pages/wedding/tableTopology.js`, `src/pages/wedding/index.js`, and `src/pages/wedding/validateWeddingProject.js` as the current wedding baseline: tables now have planner-facing shapes (`round`, `square`, `rectangle`), bulk and per-table seat generation build generic perimeter-ring adjacency, generated seats keep stable `seatIndex` metadata for left/right controls, planners can remove generated left/right/both adjacencies without deleting the seat, deleting a seat does not auto-reconnect neighbors, manually adjusted generated topology is surfaced back to the user as a warning and table status, and the seats panel now supports manual same-table seat-to-seat adjacency authoring through table-scoped selectors
+- first, manually test the wedding rule/preference selector flow in the browser and confirm that choosing `Keep this group together` immediately swaps the UI to the single-group selector in both hard-rule and preference sections, and that switching back restores the pairwise selectors cleanly
+- then manually test the full wedding topology flow in the browser and confirm bulk/per-table regeneration, left/right removal, `remove both sides`, delete-seat gap behavior, and manual same-table adjacency creation all match expectations
+- then implement a `close gap` convenience action for generated topologies so restoring removed generated neighbor links is faster than using the generic manual adjacency control
 - then consider whether workbook parsing/generation should share a common spreadsheet utility layer before extending a real `.xlsx` export flow to the wedding page
 
 Note:

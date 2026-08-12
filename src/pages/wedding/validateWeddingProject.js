@@ -34,6 +34,12 @@ function getConstraints(project) {
   return Array.isArray(project?.constraints) ? project.constraints : [];
 }
 
+function getSeatTableId(project, seatId) {
+  return getContainments(project)
+    .find((relation) => relation?.from?.kind === 'container' && relation?.to?.kind === 'position' && relation.to.id === seatId)
+    ?.from?.id ?? null;
+}
+
 function getTableCapacity(table) {
   const maxCapacity = table?.metadata?.maxCapacity;
   return Number.isFinite(maxCapacity) ? maxCapacity : null;
@@ -120,6 +126,20 @@ export function validateWeddingProject(project) {
 
     if (topologies.length === 0) {
       warnings.push(createIssue('warning', 'wedding-no-seat-adjacency', 'Seat-aware mode is enabled, but no seat adjacency has been declared yet. “Next to” rules will not be meaningful until seats are linked.', ['topologies']));
+    }
+
+    const crossTableAdjacency = topologies.find((relation) => {
+      if (relation?.from?.kind !== 'position' || relation?.to?.kind !== 'position') {
+        return false;
+      }
+
+      const fromTableId = getSeatTableId(project, relation.from.id);
+      const toTableId = getSeatTableId(project, relation.to.id);
+      return Boolean(fromTableId && toTableId && fromTableId !== toTableId);
+    });
+
+    if (crossTableAdjacency) {
+      errors.push(createIssue('error', 'wedding-cross-table-seat-adjacency', 'Seat adjacency must stay within a single table in the wedding planner. Remove any cross-table seat link before solving.', ['topologies']));
     }
   }
 

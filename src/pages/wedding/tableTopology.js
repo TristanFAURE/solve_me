@@ -173,3 +173,18 @@ export function removeGeneratedSeatBothSides(project, table, seatId) {
   const removedRight = removeGeneratedSeatAdjacency(project, table, seatId, 'right');
   return removedLeft || removedRight;
 }
+
+export function addAdjacencyBetween(project, leftSeatId, rightSeatId) {
+  if (!leftSeatId || !rightSeatId || leftSeatId === rightSeatId) {
+    return false;
+  }
+
+  if (hasAdjacency(project, leftSeatId, rightSeatId)) {
+    return false;
+  }
+
+  project.topologies.push(
+    createAdjacencyRelation(createEntityRef('position', leftSeatId), createEntityRef('position', rightSeatId)),
+  );
+  return true;
+}

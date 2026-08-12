@@ -942,7 +942,6 @@ function addSchoolPreference(state) {
     return;
   }
 
-  const weight = Number.parseInt(editor.draftPreferenceWeight || '1', 10);
   state.currentProject.preferences.push(createPreference({
     kind: editor.draftPreferenceKind,
     leftRef: createEntityRef('item', editor.draftPreferenceLeftId),

@@ -14,6 +14,7 @@ import { FirstSolverAdapter } from '../../solver/adapters/firstSolverAdapter.js'
 import {
   WEDDING_TABLE_SHAPES,
   findGeneratedNeighbor,
+  addAdjacencyBetween,
   generateSeatsForTable,
   getGeneratedSeatsForTable,
   getSeatTableId,
@@ -38,6 +39,8 @@ function createWeddingEditorState() {
     draftTableShape: WEDDING_TABLE_SHAPES.ROUND,
     draftSeatLabel: '',
     draftSeatTableId: '',
+    draftAdjacencyLeftSeatId: '',
+    draftAdjacencyRightSeatId: '',
     draftConstraintKind: CONSTRAINT_KINDS.MUST_SHARE_CONTAINER,
     draftConstraintLeftKind: 'item',
     draftConstraintLeftId: '',
@@ -49,6 +52,8 @@ function createWeddingEditorState() {
     draftPreferenceRightKind: 'item',
     draftPreferenceRightId: '',
     draftPreferenceWeight: '1',
+    draftConstraintGroupId: '',
+    draftPreferenceGroupId: '',
     activeSolutionIndex: 0,
   };
 }
@@ -440,7 +445,87 @@ function renderGuestsPanel(project) {
   `;
 }
 
-function renderGroupsPanel(project) {
+function getGroupInternalConstraint(project, groupId) {
+  return (project.constraints ?? []).find((constraint) =>
+    constraint?.kind === CONSTRAINT_KINDS.MUST_SHARE_CONTAINER
+    && constraint?.metadata?.groupInternalTogether === true
+    && constraint?.leftRef?.kind === 'group'
+    && constraint?.rightRef?.kind === 'group'
+    && constraint.leftRef.id === groupId
+    && constraint.rightRef.id === groupId,
+  ) ?? null;
+}
+
+function getGroupInternalPreference(project, groupId) {
+  return (project.preferences ?? []).find((preference) =>
+    preference?.kind === PREFERENCE_KINDS.PREFER_SHARE_CONTAINER
+    && preference?.metadata?.groupInternalTogether === true
+    && preference?.leftRef?.kind === 'group'
+    && preference?.rightRef?.kind === 'group'
+    && preference.leftRef.id === groupId
+    && preference.rightRef.id === groupId,
+  ) ?? null;
+}
+
+function setGroupTogetherShortcut(project, groupId, enabled) {
+  const existingIndex = (project.constraints ?? []).findIndex((constraint) =>
+    constraint?.kind === CONSTRAINT_KINDS.MUST_SHARE_CONTAINER
+    && constraint?.metadata?.groupInternalTogether === true
+    && constraint?.leftRef?.kind === 'group'
+    && constraint?.rightRef?.kind === 'group'
+    && constraint.leftRef.id === groupId
+    && constraint.rightRef.id === groupId,
+  );
+
+  if (enabled && existingIndex === -1) {
+    project.constraints.push(createConstraint({
+      kind: CONSTRAINT_KINDS.MUST_SHARE_CONTAINER,
+      leftRef: createEntityRef('group', groupId),
+      rightRef: createEntityRef('group', groupId),
+      metadata: { groupInternalTogether: true },
+    }));
+  }
+
+  if (!enabled && existingIndex >= 0) {
+    project.constraints.splice(existingIndex, 1);
+  }
+}
+
+function setGroupPreferTogetherShortcut(project, groupId, weight) {
+  const existingIndex = (project.preferences ?? []).findIndex((preference) =>
+    preference?.kind === PREFERENCE_KINDS.PREFER_SHARE_CONTAINER
+    && preference?.metadata?.groupInternalTogether === true
+    && preference?.leftRef?.kind === 'group'
+    && preference?.rightRef?.kind === 'group'
+    && preference.leftRef.id === groupId
+    && preference.rightRef.id === groupId,
+  );
+
+  if (weight === '' || Number.parseInt(weight, 10) <= 0) {
+    if (existingIndex >= 0) {
+      project.preferences.splice(existingIndex, 1);
+    }
+    return;
+  }
+
+  const parsedWeight = Number.parseInt(weight, 10);
+  const entry = createPreference({
+    kind: PREFERENCE_KINDS.PREFER_SHARE_CONTAINER,
+    leftRef: createEntityRef('group', groupId),
+    rightRef: createEntityRef('group', groupId),
+    weight: Number.isNaN(parsedWeight) ? 1 : parsedWeight,
+    metadata: { groupInternalTogether: true },
+  });
+
+  if (existingIndex >= 0) {
+    project.preferences.splice(existingIndex, 1, entry);
+    return;
+  }
+
+  project.preferences.push(entry);
+}
+
+function renderGroupsPanel(project, editor) {
   const groups = getGroups(project);
   const guests = getGuests(project);
 
@@ -557,10 +642,134 @@ function renderTablesPanel(project) {
   `;
 }
 
-function renderSeatsPanel(project) {
+function renderSeatsPanel(project, editor) {
   const seats = getSeats(project);
   const tables = getTables(project);
   const adjacencies = project.topologies ?? [];
+  const selectedLeftSeat = seats.find((seat) => seat.id === editor.draftAdjacencyLeftSeatId) ?? null;
+  const leftSeatTableId = selectedLeftSeat ? getSeatTableId(project, selectedLeftSeat.id) : '';
+  const availableRightSeats = leftSeatTableId
+    ? getSeatsForTable(project, leftSeatTableId).filter((seat) => seat.id !== selectedLeftSeat?.id)
+    : [];
+
+  let seatContent = '';
+  if (!getSeatModeEnabled(project)) {
+    seatContent = '<div class="empty-board">Turn on seat-aware mode to manage seats and “next to” rules. 🪑</div>';
+  } else if (seats.length === 0) {
+    seatContent = '<div class="empty-board">Add seats to tables to unlock adjacency-based rules.</div>';
+  } else {
+    const customAdjacencyCard = `
+      <article class="entity-card wedding-entity-card">
+        <div class="entity-card-header">
+          <div>
+            <p class="entity-kind">Custom adjacency</p>
+            <h4 class="wedding-inline-heading">Link any two seats at the same table</h4>
+          </div>
+        </div>
+        <div class="entity-meta-grid">
+          <div class="entity-meta-item wedding-custom-adjacency-grid">
+            <label>
+              <span>Seat A</span>
+              <select name="draftAdjacencyLeftSeatId">
+                ${renderSimpleOptions(seats, editor.draftAdjacencyLeftSeatId, 'Select first seat…')}
+              </select>
+            </label>
+            <label>
+              <span>Seat B</span>
+              <select name="draftAdjacencyRightSeatId" ${leftSeatTableId ? '' : 'disabled'}>
+                ${renderSimpleOptions(availableRightSeats, editor.draftAdjacencyRightSeatId, leftSeatTableId ? 'Select second seat…' : 'Choose Seat A first…')}
+              </select>
+            </label>
+          </div>
+          <div class="entity-meta-item">
+            <dt>Scope</dt>
+            <dd>${leftSeatTableId
+        ? `Custom links are limited to ${escapeHtml(findLabelById(tables, leftSeatTableId))} so planners only create same-table seat adjacency.`
+        : '<span class="muted-text">Select a first seat to narrow the second selector to the same table.</span>'}
+            </dd>
+          </div>
+          <div class="entity-meta-item wedding-seat-tools">
+            <dt>Actions</dt>
+            <dd>
+              <div class="button-row compact-button-row">
+                <button type="button" data-action="add-wedding-seat-adjacency"${editor.draftAdjacencyLeftSeatId && editor.draftAdjacencyRightSeatId ? '' : ' disabled'}>Add custom adjacency</button>
+              </div>
+              <p class="muted-text top-gap">Use this after generation to bridge a gap or create a manual same-table neighbor link without regenerating seats.</p>
+            </dd>
+          </div>
+        </div>
+      </article>
+    `;
+
+    const seatCards = seats.map((seat, index) => {
+      const tableId = getSeatTableId(project, seat.id);
+      const table = tables.find((entry) => entry.id === tableId);
+      const tableLabel = tableId ? findLabelById(tables, tableId) : 'Unlinked table';
+      const adjacentSeatLabels = adjacencies
+        .filter((relation) => relation?.from?.kind === 'position' && relation?.from?.id === seat.id && relation?.to?.kind === 'position')
+        .map((relation) => findLabelById(seats, relation.to.id));
+      const leftNeighbor = table ? findGeneratedNeighbor(project, table.id, seat.id, 'left') : null;
+      const rightNeighbor = table ? findGeneratedNeighbor(project, table.id, seat.id, 'right') : null;
+      const leftConnected = leftNeighbor ? hasAdjacency(project, seat.id, leftNeighbor.id) : false;
+      const rightConnected = rightNeighbor ? hasAdjacency(project, seat.id, rightNeighbor.id) : false;
+
+      return `
+        <article class="entity-card wedding-entity-card">
+          <div class="entity-card-header">
+            <div>
+              <p class="entity-kind">Seat</p>
+              <input type="text" class="entity-inline-input" data-action="edit-wedding-label" data-kind="position" data-index="${index}" value="${escapeHtml(seat.label)}" />
+            </div>
+            <button type="button" class="ghost-danger-button" data-action="remove-wedding-seat" data-index="${index}">Remove</button>
+          </div>
+          <p class="entity-id">${escapeHtml(seat.id)}</p>
+          <div class="entity-meta-grid">
+            <div class="entity-meta-item wedding-seat-meta-grid compact-seat-meta-grid">
+              <div>
+                <dt>Table</dt>
+                <dd>${escapeHtml(tableLabel)}</dd>
+              </div>
+              <div>
+                <dt>#</dt>
+                <dd>${escapeHtml(seat?.metadata?.seatIndex ?? 'Manual')}</dd>
+              </div>
+              <div>
+                <dt>Type</dt>
+                <dd>${seat?.metadata?.generated ? 'Generated' : 'Manual'}</dd>
+              </div>
+            </div>
+            <div class="entity-meta-item">
+              <dt>Adjacent seats</dt>
+              <dd>${renderMembershipChips(adjacentSeatLabels, 'No adjacent seat linked yet')}</dd>
+            </div>
+            <div class="entity-meta-item wedding-neighbor-grid">
+              <div class="wedding-neighbor-card${leftConnected ? '' : ' is-open-gap'}">
+                <dt>Left neighbor</dt>
+                <dd>${leftNeighbor ? `${escapeHtml(leftNeighbor.label)} ${leftConnected ? '• connected' : '• removed'}` : '<span class="muted-text">No generated left neighbor</span>'}</dd>
+                <button type="button" data-action="remove-wedding-seat-left" data-seat-id="${escapeHtml(seat.id)}"${leftNeighbor && leftConnected ? '' : ' disabled'}>Remove left</button>
+              </div>
+              <div class="wedding-neighbor-card${rightConnected ? '' : ' is-open-gap'}">
+                <dt>Right neighbor</dt>
+                <dd>${rightNeighbor ? `${escapeHtml(rightNeighbor.label)} ${rightConnected ? '• connected' : '• removed'}` : '<span class="muted-text">No generated right neighbor</span>'}</dd>
+                <button type="button" data-action="remove-wedding-seat-right" data-seat-id="${escapeHtml(seat.id)}"${rightNeighbor && rightConnected ? '' : ' disabled'}>Remove right</button>
+              </div>
+            </div>
+            <div class="entity-meta-item wedding-seat-tools">
+              <dt>Generated topology actions</dt>
+              <dd>
+                <div class="button-row compact-button-row">
+                  <button type="button" data-action="remove-wedding-seat-both" data-seat-id="${escapeHtml(seat.id)}"${(leftNeighbor && leftConnected) || (rightNeighbor && rightConnected) ? '' : ' disabled'}>Remove both sides</button>
+                </div>
+                <p class="muted-text top-gap">Removing left or right keeps the seat but opens a gap in the generated perimeter. Removing the seat itself deletes the seat and all its adjacency links without reconnecting neighbors automatically.</p>
+              </dd>
+            </div>
+          </div>
+        </article>
+      `;
+    }).join('');
+
+    seatContent = `${customAdjacencyCard}${seatCards}`;
+  }
 
   return `
     <section class="workspace-panel wedding-panel">
@@ -568,74 +777,7 @@ function renderSeatsPanel(project) {
         <h3>🪑 Seats and adjacency</h3>
         <span class="panel-count">${seats.length}</span>
       </div>
-      <div class="entity-board">
-        ${!getSeatModeEnabled(project) ? '<div class="empty-board">Turn on seat-aware mode to manage seats and “next to” rules. 🪑</div>' : seats.length === 0 ? '<div class="empty-board">Add seats to tables to unlock adjacency-based rules.</div>' : seats.map((seat, index) => {
-    const tableId = getSeatTableId(project, seat.id);
-    const table = tables.find((entry) => entry.id === tableId);
-    const tableLabel = tableId ? findLabelById(tables, tableId) : 'Unlinked table';
-    const adjacentSeatLabels = adjacencies
-      .filter((relation) => relation?.from?.kind === 'position' && relation?.from?.id === seat.id && relation?.to?.kind === 'position')
-      .map((relation) => findLabelById(seats, relation.to.id));
-    const leftNeighbor = table ? findGeneratedNeighbor(project, table.id, seat.id, 'left') : null;
-    const rightNeighbor = table ? findGeneratedNeighbor(project, table.id, seat.id, 'right') : null;
-    const leftConnected = leftNeighbor ? hasAdjacency(project, seat.id, leftNeighbor.id) : false;
-    const rightConnected = rightNeighbor ? hasAdjacency(project, seat.id, rightNeighbor.id) : false;
-
-    return `
-            <article class="entity-card wedding-entity-card">
-              <div class="entity-card-header">
-                <div>
-                  <p class="entity-kind">Seat</p>
-                  <input type="text" class="entity-inline-input" data-action="edit-wedding-label" data-kind="position" data-index="${index}" value="${escapeHtml(seat.label)}" />
-                </div>
-                <button type="button" class="ghost-danger-button" data-action="remove-wedding-seat" data-index="${index}">Remove</button>
-              </div>
-              <p class="entity-id">${escapeHtml(seat.id)}</p>
-              <div class="entity-meta-grid">
-                <div class="entity-meta-item wedding-seat-meta-grid">
-                  <div>
-                    <dt>Table</dt>
-                    <dd>${escapeHtml(tableLabel)}</dd>
-                  </div>
-                  <div>
-                    <dt>Generated order</dt>
-                    <dd>${escapeHtml(seat?.metadata?.seatIndex ?? 'Manual')}</dd>
-                  </div>
-                  <div>
-                    <dt>Mode</dt>
-                    <dd>${seat?.metadata?.generated ? 'Generated seat' : 'Manual seat'}</dd>
-                  </div>
-                </div>
-                <div class="entity-meta-item">
-                  <dt>Adjacent seats</dt>
-                  <dd>${renderMembershipChips(adjacentSeatLabels, 'No adjacent seat linked yet')}</dd>
-                </div>
-                <div class="entity-meta-item wedding-neighbor-grid">
-                  <div class="wedding-neighbor-card${leftConnected ? '' : ' is-open-gap'}">
-                    <dt>Left neighbor</dt>
-                    <dd>${leftNeighbor ? `${escapeHtml(leftNeighbor.label)} ${leftConnected ? '• connected' : '• removed'}` : '<span class="muted-text">No generated left neighbor</span>'}</dd>
-                    <button type="button" data-action="remove-wedding-seat-left" data-seat-id="${escapeHtml(seat.id)}"${leftNeighbor && leftConnected ? '' : ' disabled'}>Remove left</button>
-                  </div>
-                  <div class="wedding-neighbor-card${rightConnected ? '' : ' is-open-gap'}">
-                    <dt>Right neighbor</dt>
-                    <dd>${rightNeighbor ? `${escapeHtml(rightNeighbor.label)} ${rightConnected ? '• connected' : '• removed'}` : '<span class="muted-text">No generated right neighbor</span>'}</dd>
-                    <button type="button" data-action="remove-wedding-seat-right" data-seat-id="${escapeHtml(seat.id)}"${rightNeighbor && rightConnected ? '' : ' disabled'}>Remove right</button>
-                  </div>
-                </div>
-                <div class="entity-meta-item wedding-seat-tools">
-                  <dt>Generated topology actions</dt>
-                  <dd>
-                    <div class="button-row compact-button-row">
-                      <button type="button" data-action="remove-wedding-seat-both" data-seat-id="${escapeHtml(seat.id)}"${(leftNeighbor && leftConnected) || (rightNeighbor && rightConnected) ? '' : ' disabled'}>Remove both sides</button>
-                    </div>
-                    <p class="muted-text top-gap">Removing left or right keeps the seat but opens a gap in the generated perimeter. Removing the seat itself deletes the seat and all its adjacency links without reconnecting neighbors automatically.</p>
-                  </dd>
-                </div>
-              </div>
-            </article>
-          `;
-  }).join('')}
-      </div>
+      <div class="entity-board">${seatContent}</div>
     </section>
   `;
 }
@@ -680,20 +822,28 @@ function getWeddingPreferenceLabel(kind) {
   return kind;
 }
 
-function renderWeddingOperand(project, ref) {
+function renderWeddingOperand(project, ref, entry = null, side = 'left') {
+  if (entry?.metadata?.groupInternalTogether) {
+    if (side === 'right') {
+      return '<span class="muted-text">same group</span>';
+    }
+    return `All members of ${escapeHtml(findLabelById(getGroups(project), ref.id))}`;
+  }
+
   const entries = ref.kind === 'item' ? getGuests(project) : getGroups(project);
   return escapeHtml(findLabelById(entries, ref.id));
 }
 
 function renderRulesPanel(project, editor) {
   const operandOptions = createOperandOptions(project);
+  const groupOptions = getGroups(project);
   const hardRuleRows = project.constraints.length === 0
     ? '<tr><td colspan="4" class="muted-text">No hard seating rules yet.</td></tr>'
     : project.constraints.map((constraint, index) => `
         <tr>
           <td>${escapeHtml(getWeddingRuleLabel(constraint.kind))}</td>
-          <td>${renderWeddingOperand(project, constraint.leftRef)}</td>
-          <td>${renderWeddingOperand(project, constraint.rightRef)}</td>
+          <td>${renderWeddingOperand(project, constraint.leftRef, constraint, 'left')}</td>
+          <td>${renderWeddingOperand(project, constraint.rightRef, constraint, 'right')}</td>
           <td><button type="button" data-action="remove-wedding-constraint" data-index="${index}">Remove</button></td>
         </tr>
       `).join('');
@@ -703,8 +853,8 @@ function renderRulesPanel(project, editor) {
     : project.preferences.map((preference, index) => `
         <tr>
           <td>${escapeHtml(getWeddingPreferenceLabel(preference.kind))}</td>
-          <td>${renderWeddingOperand(project, preference.leftRef)}</td>
-          <td>${renderWeddingOperand(project, preference.rightRef)}</td>
+          <td>${renderWeddingOperand(project, preference.leftRef, preference, 'left')}</td>
+          <td>${renderWeddingOperand(project, preference.rightRef, preference, 'right')}</td>
           <td>${escapeHtml(preference.weight)}</td>
           <td><button type="button" data-action="remove-wedding-preference" data-index="${index}">Remove</button></td>
         </tr>
@@ -719,24 +869,30 @@ function renderRulesPanel(project, editor) {
             <h2>Must work this way</h2>
           </div>
         </div>
-        <div class="form-grid three-columns compact-form-grid">
-          <label>
-            <span>Rule</span>
-            <select name="draftConstraintKind">
-              <option value="${CONSTRAINT_KINDS.MUST_SHARE_CONTAINER}"${editor.draftConstraintKind === CONSTRAINT_KINDS.MUST_SHARE_CONTAINER ? ' selected' : ''}>Must sit together at the same table</option>
-              <option value="${CONSTRAINT_KINDS.MUST_NOT_SHARE_CONTAINER}"${editor.draftConstraintKind === CONSTRAINT_KINDS.MUST_NOT_SHARE_CONTAINER ? ' selected' : ''}>Must not sit at the same table</option>
-              <option value="${CONSTRAINT_KINDS.MUST_BE_ADJACENT}"${editor.draftConstraintKind === CONSTRAINT_KINDS.MUST_BE_ADJACENT ? ' selected' : ''}>Must sit next to each other</option>
-              <option value="${CONSTRAINT_KINDS.MUST_NOT_BE_ADJACENT}"${editor.draftConstraintKind === CONSTRAINT_KINDS.MUST_NOT_BE_ADJACENT ? ' selected' : ''}>Must not sit next to each other</option>
-            </select>
-          </label>
-          <label>
-            <span>Left side</span>
-            ${renderRefSelect('draftConstraintLeftKind', 'draftConstraintLeftId', operandOptions, editor.draftConstraintLeftKind, editor.draftConstraintLeftId, 'Select guest or group…')}
-          </label>
-          <label>
-            <span>Right side</span>
-            ${renderRefSelect('draftConstraintRightKind', 'draftConstraintRightId', operandOptions, editor.draftConstraintRightKind, editor.draftConstraintRightId, 'Select guest or group…')}
-          </label>
+        <div class="wedding-rule-form-stack">
+          <div class="form-grid compact-form-grid">
+            <label>
+              <span>Rule</span>
+              <select name="draftConstraintKind">
+                <option value="groupTogether"${editor.draftConstraintKind === 'groupTogether' ? ' selected' : ''}>Keep this group together</option>
+                <option value="${CONSTRAINT_KINDS.MUST_SHARE_CONTAINER}"${editor.draftConstraintKind === CONSTRAINT_KINDS.MUST_SHARE_CONTAINER ? ' selected' : ''}>must sit together at the same table</option>
+                <option value="${CONSTRAINT_KINDS.MUST_NOT_SHARE_CONTAINER}"${editor.draftConstraintKind === CONSTRAINT_KINDS.MUST_NOT_SHARE_CONTAINER ? ' selected' : ''}>Must not sit at the same table</option>
+                <option value="${CONSTRAINT_KINDS.MUST_BE_ADJACENT}"${editor.draftConstraintKind === CONSTRAINT_KINDS.MUST_BE_ADJACENT ? ' selected' : ''}>Must sit next to each other</option>
+                <option value="${CONSTRAINT_KINDS.MUST_NOT_BE_ADJACENT}"${editor.draftConstraintKind === CONSTRAINT_KINDS.MUST_NOT_BE_ADJACENT ? ' selected' : ''}>Must not sit next to each other</option>
+              </select>
+            </label>
+          </div>
+          <div class="form-grid two-columns compact-form-grid wedding-rule-options-row">
+            <label>
+              <span>Options</span>
+              ${editor.draftConstraintKind === 'groupTogether'
+      ? `<select name="draftConstraintGroupId">${renderSimpleOptions(groupOptions, editor.draftConstraintGroupId, 'Select group…')}</select>`
+      : `<div class="wedding-group-selection-row">
+                ${renderRefSelect('draftConstraintLeftKind', 'draftConstraintLeftId', operandOptions, editor.draftConstraintLeftKind, editor.draftConstraintLeftId, 'Select guest or group…')}
+                ${renderRefSelect('draftConstraintRightKind', 'draftConstraintRightId', operandOptions, editor.draftConstraintRightKind, editor.draftConstraintRightId, 'Select guest or group…')}
+              </div>`}
+            </label>
+          </div>
         </div>
         <div class="button-row top-gap">
           <button type="button" data-action="add-wedding-constraint">Add hard rule</button>
@@ -759,28 +915,34 @@ function renderRulesPanel(project, editor) {
             <h2>Prefer if possible</h2>
           </div>
         </div>
-        <div class="form-grid four-columns compact-form-grid">
-          <label>
-            <span>Preference</span>
-            <select name="draftPreferenceKind">
-              <option value="${PREFERENCE_KINDS.PREFER_SHARE_CONTAINER}"${editor.draftPreferenceKind === PREFERENCE_KINDS.PREFER_SHARE_CONTAINER ? ' selected' : ''}>Prefer same table</option>
-              <option value="${PREFERENCE_KINDS.PREFER_SEPARATE_CONTAINERS}"${editor.draftPreferenceKind === PREFERENCE_KINDS.PREFER_SEPARATE_CONTAINERS ? ' selected' : ''}>Prefer different tables</option>
-              <option value="${PREFERENCE_KINDS.PREFER_ADJACENT}"${editor.draftPreferenceKind === PREFERENCE_KINDS.PREFER_ADJACENT ? ' selected' : ''}>Prefer next to each other</option>
-              <option value="${PREFERENCE_KINDS.PREFER_NON_ADJACENT}"${editor.draftPreferenceKind === PREFERENCE_KINDS.PREFER_NON_ADJACENT ? ' selected' : ''}>Prefer not next to each other</option>
-            </select>
-          </label>
-          <label>
-            <span>Left side</span>
-            ${renderRefSelect('draftPreferenceLeftKind', 'draftPreferenceLeftId', operandOptions, editor.draftPreferenceLeftKind, editor.draftPreferenceLeftId, 'Select guest or group…')}
-          </label>
-          <label>
-            <span>Right side</span>
-            ${renderRefSelect('draftPreferenceRightKind', 'draftPreferenceRightId', operandOptions, editor.draftPreferenceRightKind, editor.draftPreferenceRightId, 'Select guest or group…')}
-          </label>
-          <label>
-            <span>Weight</span>
-            <input type="number" min="0" step="1" name="draftPreferenceWeight" value="${escapeHtml(editor.draftPreferenceWeight)}" />
-          </label>
+        <div class="wedding-rule-form-stack">
+          <div class="form-grid compact-form-grid">
+            <label>
+              <span>Preference</span>
+              <select name="draftPreferenceKind">
+                <option value="groupTogether"${editor.draftPreferenceKind === 'groupTogether' ? ' selected' : ''}>Keep this group together</option>
+                <option value="${PREFERENCE_KINDS.PREFER_SHARE_CONTAINER}"${editor.draftPreferenceKind === PREFERENCE_KINDS.PREFER_SHARE_CONTAINER ? ' selected' : ''}>Prefer same table</option>
+                <option value="${PREFERENCE_KINDS.PREFER_SEPARATE_CONTAINERS}"${editor.draftPreferenceKind === PREFERENCE_KINDS.PREFER_SEPARATE_CONTAINERS ? ' selected' : ''}>Prefer different tables</option>
+                <option value="${PREFERENCE_KINDS.PREFER_ADJACENT}"${editor.draftPreferenceKind === PREFERENCE_KINDS.PREFER_ADJACENT ? ' selected' : ''}>Prefer next to each other</option>
+                <option value="${PREFERENCE_KINDS.PREFER_NON_ADJACENT}"${editor.draftPreferenceKind === PREFERENCE_KINDS.PREFER_NON_ADJACENT ? ' selected' : ''}>Prefer not next to each other</option>
+              </select>
+            </label>
+          </div>
+          <div class="form-grid compact-form-grid wedding-rule-options-with-weight-row">
+            <label>
+              <span>Options</span>
+              ${editor.draftPreferenceKind === 'groupTogether'
+      ? `<select name="draftPreferenceGroupId">${renderSimpleOptions(groupOptions, editor.draftPreferenceGroupId, 'Select group…')}</select>`
+      : `<div class="wedding-group-selection-row">
+                ${renderRefSelect('draftPreferenceLeftKind', 'draftPreferenceLeftId', operandOptions, editor.draftPreferenceLeftKind, editor.draftPreferenceLeftId, 'Select guest or group…')}
+                ${renderRefSelect('draftPreferenceRightKind', 'draftPreferenceRightId', operandOptions, editor.draftPreferenceRightKind, editor.draftPreferenceRightId, 'Select guest or group…')}
+              </div>`}
+            </label>
+            <label>
+              <span>Soft / hard strength</span>
+              <input type="number" min="0" step="1" name="draftPreferenceWeight" value="${escapeHtml(editor.draftPreferenceWeight)}" ${editor.draftPreferenceKind === 'groupTogether' ? '' : ''} />
+            </label>
+          </div>
         </div>
         <div class="button-row top-gap">
           <button type="button" data-action="add-wedding-preference">Add preference</button>
@@ -885,6 +1047,40 @@ function addWeddingSeat(state) {
   editor.draftSeatLabel = '';
   clearWeddingMessage(state);
   resetWeddingDerivedState(state);
+}
+
+function addWeddingSeatAdjacency(state) {
+  const editor = state.weddingPage.editor;
+  const leftSeatId = editor.draftAdjacencyLeftSeatId;
+  const rightSeatId = editor.draftAdjacencyRightSeatId;
+  if (!leftSeatId || !rightSeatId || leftSeatId === rightSeatId || !getSeatModeEnabled(state.currentProject)) {
+    return false;
+  }
+
+  const leftTableId = getSeatTableId(state.currentProject, leftSeatId);
+  const rightTableId = getSeatTableId(state.currentProject, rightSeatId);
+  if (!leftTableId || leftTableId !== rightTableId) {
+    state.weddingPage.message = 'Custom seat adjacency currently links seats within the same table only. Choose two seats from one table. ⚠️';
+    return false;
+  }
+
+  const table = getTables(state.currentProject).find((entry) => entry.id === leftTableId);
+  const added = addAdjacencyBetween(state.currentProject, leftSeatId, rightSeatId);
+  if (!added) {
+    state.weddingPage.message = 'That seat link already exists, is invalid, or uses the same seat twice.';
+    return false;
+  }
+
+  if (table) {
+    setTableGenerationMode(table, 'manual-adjusted');
+  }
+
+  editor.draftAdjacencyLeftSeatId = '';
+  editor.draftAdjacencyRightSeatId = '';
+  clearWeddingMessage(state);
+  resetWeddingDerivedState(state);
+  state.weddingPage.message = 'Custom seat adjacency added. You can now use the updated neighbor graph in seat-aware planning. 🔗';
+  return true;
 }
 
 function removeAllWeddingSeats(project) {
@@ -1073,6 +1269,65 @@ function bindInputs(root, state) {
       }
 
       state.weddingPage.editor[name] = value;
+
+      if (name === 'draftConstraintKind') {
+        if (value === 'groupTogether') {
+          state.weddingPage.editor.draftConstraintGroupId = '';
+        }
+        clearWeddingMessage(state);
+        renderWeddingPage(root, state);
+        return;
+      }
+
+      if (name === 'draftPreferenceKind') {
+        if (value === 'groupTogether') {
+          state.weddingPage.editor.draftPreferenceGroupId = '';
+        }
+        clearWeddingMessage(state);
+        renderWeddingPage(root, state);
+        return;
+      }
+
+      if (name === 'draftConstraintLeftKind') {
+        state.weddingPage.editor.draftConstraintLeftId = '';
+        clearWeddingMessage(state);
+        renderWeddingPage(root, state);
+        return;
+      }
+
+      if (name === 'draftConstraintRightKind') {
+        state.weddingPage.editor.draftConstraintRightId = '';
+        clearWeddingMessage(state);
+        renderWeddingPage(root, state);
+        return;
+      }
+
+      if (name === 'draftPreferenceLeftKind') {
+        state.weddingPage.editor.draftPreferenceLeftId = '';
+        clearWeddingMessage(state);
+        renderWeddingPage(root, state);
+        return;
+      }
+
+      if (name === 'draftPreferenceRightKind') {
+        state.weddingPage.editor.draftPreferenceRightId = '';
+        clearWeddingMessage(state);
+        renderWeddingPage(root, state);
+        return;
+      }
+
+      if (name === 'draftAdjacencyLeftSeatId') {
+        const selectedTableId = value ? getSeatTableId(state.currentProject, value) : '';
+        const currentRightSeatId = state.weddingPage.editor.draftAdjacencyRightSeatId;
+        const currentRightTableId = currentRightSeatId ? getSeatTableId(state.currentProject, currentRightSeatId) : '';
+        if (!selectedTableId || currentRightTableId !== selectedTableId || currentRightSeatId === value) {
+          state.weddingPage.editor.draftAdjacencyRightSeatId = '';
+        }
+        clearWeddingMessage(state);
+        renderWeddingPage(root, state);
+        return;
+      }
+
       clearWeddingMessage(state);
     });
   });
@@ -1101,6 +1356,7 @@ function bindInputs(root, state) {
       renderWeddingPage(root, state);
     });
   });
+
 }
 
 function bindActions(root, state) {
@@ -1147,6 +1403,14 @@ function bindActions(root, state) {
       return;
     }
 
+    if (action === 'add-wedding-seat-adjacency') {
+      element.addEventListener('click', () => {
+        addWeddingSeatAdjacency(state);
+        renderWeddingPage(root, state);
+      });
+      return;
+    }
+
     if (action === 'generate-wedding-table-seats') {
       element.addEventListener('click', () => {
         const table = state.currentProject.containers[Number.parseInt(element.dataset.index, 10)];
@@ -1157,6 +1421,13 @@ function bindActions(root, state) {
         }
 
         if (!table) {
+          return;
+        }
+
+        const { maxCapacity } = getTableCapacity(table);
+        if (!Number.isInteger(maxCapacity) || maxCapacity <= 0) {
+          state.weddingPage.message = `${table.label} needs a positive maximum capacity before seats can be generated automatically. ⚠️`;
+          renderWeddingPage(root, state);
           return;
         }
 
@@ -1182,6 +1453,21 @@ function bindActions(root, state) {
 
     if (action === 'add-wedding-constraint') {
       element.addEventListener('click', () => {
+        if (state.weddingPage.editor.draftConstraintKind === 'groupTogether') {
+          const groupId = state.weddingPage.editor.draftConstraintGroupId;
+          if (!groupId) {
+            state.weddingPage.message = 'Select a group to keep together.';
+            renderWeddingPage(root, state);
+            return;
+          }
+          setGroupTogetherShortcut(state.currentProject, groupId, true);
+          clearWeddingMessage(state);
+          resetWeddingDerivedState(state);
+          state.weddingPage.message = 'Group together rule added.';
+          renderWeddingPage(root, state);
+          return;
+        }
+
         addWeddingConstraint(state);
         renderWeddingPage(root, state);
       });
@@ -1190,6 +1476,21 @@ function bindActions(root, state) {
 
     if (action === 'add-wedding-preference') {
       element.addEventListener('click', () => {
+        if (state.weddingPage.editor.draftPreferenceKind === 'groupTogether') {
+          const groupId = state.weddingPage.editor.draftPreferenceGroupId;
+          if (!groupId) {
+            state.weddingPage.message = 'Select a group to prefer together.';
+            renderWeddingPage(root, state);
+            return;
+          }
+          setGroupPreferTogetherShortcut(state.currentProject, groupId, state.weddingPage.editor.draftPreferenceWeight);
+          clearWeddingMessage(state);
+          resetWeddingDerivedState(state);
+          state.weddingPage.message = 'Group together preference added.';
+          renderWeddingPage(root, state);
+          return;
+        }
+
         addWeddingPreference(state);
         renderWeddingPage(root, state);
       });
@@ -1450,11 +1751,10 @@ export function renderWeddingPage(root, state) {
       ${renderCreateCards(state.currentProject, state.weddingPage.editor)}
       <section class="workspace-columns two-up">
         ${renderGuestsPanel(state.currentProject)}
-        ${renderGroupsPanel(state.currentProject)}
+        ${renderGroupsPanel(state.currentProject, state.weddingPage.editor)}
       </section>
       <section class="workspace-columns two-up">
         ${renderTablesPanel(state.currentProject)}
-        ${renderSeatsPanel(state.currentProject)}
       </section>
       ${renderRulesPanel(state.currentProject, state.weddingPage.editor)}
       ${renderValidationPanel(state.weddingPage.lastValidation, {
@@ -1484,6 +1784,7 @@ export function renderWeddingPage(root, state) {
           ` : '<p class="muted-text">Validate or solve the wedding plan to inspect the normalized project.</p>'}
       </section>
       ${renderSolutionPanel(state.weddingPage.lastNormalizedProject ?? state.currentProject, state.weddingPage.lastSolverResult, state.weddingPage.editor.activeSolutionIndex)}
+      ${renderSeatsPanel(state.currentProject, state.weddingPage.editor)}
     </section>
     `,
   });

@@ -47,15 +47,19 @@ function createGenericPageState() {
     draftTopologyFromId: '',
     draftTopologyToId: '',
     draftConstraintKind: CONSTRAINT_KINDS.MUST_SHARE_CONTAINER,
+    draftConstraintMode: 'pair',
     draftConstraintLeftKind: NODE_KINDS.ITEM,
     draftConstraintLeftId: '',
     draftConstraintRightKind: NODE_KINDS.ITEM,
     draftConstraintRightId: '',
+    draftConstraintGroupId: '',
     draftPreferenceKind: PREFERENCE_KINDS.PREFER_SHARE_CONTAINER,
+    draftPreferenceMode: 'pair',
     draftPreferenceLeftKind: NODE_KINDS.ITEM,
     draftPreferenceLeftId: '',
     draftPreferenceRightKind: NODE_KINDS.ITEM,
     draftPreferenceRightId: '',
+    draftPreferenceGroupId: '',
     draftPreferenceWeight: '1',
     activeSolutionIndex: 0,
     storageMessage: '',
@@ -481,21 +485,35 @@ function renderWorkspace(project, editor) {
                   <select name="draftConstraintKind">${renderOptions(Object.values(CONSTRAINT_KINDS).map((kind) => ({ value: kind, label: kind })), editor.draftConstraintKind)}</select>
                 </label>
                 <label>
-                  <span>Left kind</span>
-                  <select name="draftConstraintLeftKind">${renderOptions(ENTITY_KIND_OPTIONS, editor.draftConstraintLeftKind)}</select>
+                  <span>Authoring mode</span>
+                  <select name="draftConstraintMode">
+                    <option value="pair"${editor.draftConstraintMode === 'pair' ? ' selected' : ''}>Left + right operands</option>
+                    <option value="group"${editor.draftConstraintMode === 'group' ? ' selected' : ''}${editor.draftConstraintKind === CONSTRAINT_KINDS.MUST_SHARE_CONTAINER ? '' : ' disabled'}>All members of one group together</option>
+                  </select>
                 </label>
-                <label>
-                  <span>Left entity</span>
-                  <select name="draftConstraintLeftId">${renderEntityOptions(project, [editor.draftConstraintLeftKind], editor.draftConstraintLeftId)}</select>
-                </label>
-                <label>
-                  <span>Right kind</span>
-                  <select name="draftConstraintRightKind">${renderOptions(ENTITY_KIND_OPTIONS, editor.draftConstraintRightKind)}</select>
-                </label>
-                <label class="full-width">
-                  <span>Right entity</span>
-                  <select name="draftConstraintRightId">${renderEntityOptions(project, [editor.draftConstraintRightKind], editor.draftConstraintRightId)}</select>
-                </label>
+                ${editor.draftConstraintMode === 'group' ? `
+                  <label class="full-width">
+                    <span>Group</span>
+                    <select name="draftConstraintGroupId">${renderEntityOptions(project, [NODE_KINDS.GROUP], editor.draftConstraintGroupId)}</select>
+                  </label>
+                ` : `
+                  <label>
+                    <span>Left kind</span>
+                    <select name="draftConstraintLeftKind">${renderOptions(ENTITY_KIND_OPTIONS, editor.draftConstraintLeftKind)}</select>
+                  </label>
+                  <label>
+                    <span>Left entity</span>
+                    <select name="draftConstraintLeftId">${renderEntityOptions(project, [editor.draftConstraintLeftKind], editor.draftConstraintLeftId)}</select>
+                  </label>
+                  <label>
+                    <span>Right kind</span>
+                    <select name="draftConstraintRightKind">${renderOptions(ENTITY_KIND_OPTIONS, editor.draftConstraintRightKind)}</select>
+                  </label>
+                  <label class="full-width">
+                    <span>Right entity</span>
+                    <select name="draftConstraintRightId">${renderEntityOptions(project, [editor.draftConstraintRightKind], editor.draftConstraintRightId)}</select>
+                  </label>
+                `}
               </div>
               <div class="button-row top-gap">
                 <button type="button" data-action="add-constraint">Add hard constraint</button>
@@ -510,25 +528,39 @@ function renderWorkspace(project, editor) {
                   <select name="draftPreferenceKind">${renderOptions(Object.values(PREFERENCE_KINDS).map((kind) => ({ value: kind, label: kind })), editor.draftPreferenceKind)}</select>
                 </label>
                 <label>
+                  <span>Authoring mode</span>
+                  <select name="draftPreferenceMode">
+                    <option value="pair"${editor.draftPreferenceMode === 'pair' ? ' selected' : ''}>Left + right operands</option>
+                    <option value="group"${editor.draftPreferenceMode === 'group' ? ' selected' : ''}${editor.draftPreferenceKind === PREFERENCE_KINDS.PREFER_SHARE_CONTAINER ? '' : ' disabled'}>All members of one group together</option>
+                  </select>
+                </label>
+                <label>
                   <span>Weight</span>
                   <input type="number" name="draftPreferenceWeight" value="${escapeHtml(editor.draftPreferenceWeight)}" min="0" step="1" />
                 </label>
-                <label>
-                  <span>Left kind</span>
-                  <select name="draftPreferenceLeftKind">${renderOptions(ENTITY_KIND_OPTIONS, editor.draftPreferenceLeftKind)}</select>
-                </label>
-                <label>
-                  <span>Left entity</span>
-                  <select name="draftPreferenceLeftId">${renderEntityOptions(project, [editor.draftPreferenceLeftKind], editor.draftPreferenceLeftId)}</select>
-                </label>
-                <label>
-                  <span>Right kind</span>
-                  <select name="draftPreferenceRightKind">${renderOptions(ENTITY_KIND_OPTIONS, editor.draftPreferenceRightKind)}</select>
-                </label>
-                <label>
-                  <span>Right entity</span>
-                  <select name="draftPreferenceRightId">${renderEntityOptions(project, [editor.draftPreferenceRightKind], editor.draftPreferenceRightId)}</select>
-                </label>
+                ${editor.draftPreferenceMode === 'group' ? `
+                  <label>
+                    <span>Group</span>
+                    <select name="draftPreferenceGroupId">${renderEntityOptions(project, [NODE_KINDS.GROUP], editor.draftPreferenceGroupId)}</select>
+                  </label>
+                ` : `
+                  <label>
+                    <span>Left kind</span>
+                    <select name="draftPreferenceLeftKind">${renderOptions(ENTITY_KIND_OPTIONS, editor.draftPreferenceLeftKind)}</select>
+                  </label>
+                  <label>
+                    <span>Left entity</span>
+                    <select name="draftPreferenceLeftId">${renderEntityOptions(project, [editor.draftPreferenceLeftKind], editor.draftPreferenceLeftId)}</select>
+                  </label>
+                  <label>
+                    <span>Right kind</span>
+                    <select name="draftPreferenceRightKind">${renderOptions(ENTITY_KIND_OPTIONS, editor.draftPreferenceRightKind)}</select>
+                  </label>
+                  <label>
+                    <span>Right entity</span>
+                    <select name="draftPreferenceRightId">${renderEntityOptions(project, [editor.draftPreferenceRightKind], editor.draftPreferenceRightId)}</select>
+                  </label>
+                `}
               </div>
               <div class="button-row top-gap">
                 <button type="button" data-action="add-preference">Add soft preference</button>
@@ -603,14 +635,25 @@ function renderRelationList(project, title, relations, removeAction) {
   return renderAuditSection(title, 'Authored relations', content);
 }
 
+function renderConstraintTargetLabel(project, entry, side) {
+  if (entry?.metadata?.groupInternalTogether) {
+    if (side === 'right') {
+      return 'same group members';
+    }
+    return `All members of ${getEntityLabel(project, entry.leftRef.kind, entry.leftRef.id)} (${entry.leftRef.kind}:${entry.leftRef.id})`;
+  }
+
+  return renderEntityRefLabel(project, side === 'left' ? entry.leftRef : entry.rightRef);
+}
+
 function renderConstraintList(project, title, entries, removeAction, showWeight = false) {
   const rows = entries.length === 0
     ? `<tr><td colspan="${showWeight ? 5 : 4}" class="muted-text">None yet.</td></tr>`
     : entries.map((entry, index) => `
     <tr>
       <td><span class="table-kind-badge">${escapeHtml(entry.kind)}</span></td>
-      <td>${escapeHtml(renderEntityRefLabel(project, entry.leftRef))}</td>
-      <td>${escapeHtml(renderEntityRefLabel(project, entry.rightRef))}</td>
+      <td>${escapeHtml(renderConstraintTargetLabel(project, entry, 'left'))}</td>
+      <td>${escapeHtml(renderConstraintTargetLabel(project, entry, 'right'))}</td>
       ${showWeight ? `<td>${escapeHtml(entry.weight)}</td>` : ''}
       <td><button type="button" data-action="${removeAction}" data-index="${index}">Remove</button></td>
     </tr>
@@ -947,6 +990,24 @@ function addTopology(state) {
 
 function addConstraintEntry(state) {
   const editor = state.genericPage.editor;
+
+  if (editor.draftConstraintMode === 'group') {
+    if (!editor.draftConstraintGroupId || editor.draftConstraintKind !== CONSTRAINT_KINDS.MUST_SHARE_CONTAINER) {
+      return;
+    }
+
+    state.currentProject.constraints.push(createConstraint({
+      kind: editor.draftConstraintKind,
+      leftRef: createEntityRef(NODE_KINDS.GROUP, editor.draftConstraintGroupId),
+      rightRef: createEntityRef(NODE_KINDS.GROUP, editor.draftConstraintGroupId),
+      metadata: { groupInternalTogether: true },
+    }));
+
+    editor.draftConstraintGroupId = '';
+    resetDerivedState(state);
+    return;
+  }
+
   if (!editor.draftConstraintLeftId || !editor.draftConstraintRightId) {
     return;
   }
@@ -964,11 +1025,31 @@ function addConstraintEntry(state) {
 
 function addPreferenceEntry(state) {
   const editor = state.genericPage.editor;
+  const weight = Number.parseInt(editor.draftPreferenceWeight || '1', 10);
+
+  if (editor.draftPreferenceMode === 'group') {
+    if (!editor.draftPreferenceGroupId || editor.draftPreferenceKind !== PREFERENCE_KINDS.PREFER_SHARE_CONTAINER) {
+      return;
+    }
+
+    state.currentProject.preferences.push(createPreference({
+      kind: editor.draftPreferenceKind,
+      leftRef: createEntityRef(NODE_KINDS.GROUP, editor.draftPreferenceGroupId),
+      rightRef: createEntityRef(NODE_KINDS.GROUP, editor.draftPreferenceGroupId),
+      weight: Number.isNaN(weight) ? 1 : weight,
+      metadata: { groupInternalTogether: true },
+    }));
+
+    editor.draftPreferenceGroupId = '';
+    editor.draftPreferenceWeight = '1';
+    resetDerivedState(state);
+    return;
+  }
+
   if (!editor.draftPreferenceLeftId || !editor.draftPreferenceRightId) {
     return;
   }
 
-  const weight = Number.parseInt(editor.draftPreferenceWeight || '1', 10);
   state.currentProject.preferences.push(createPreference({
     kind: editor.draftPreferenceKind,
     leftRef: createEntityRef(editor.draftPreferenceLeftKind, editor.draftPreferenceLeftId),
@@ -1031,14 +1112,14 @@ function bindEnterToAction(root, state) {
         return;
       }
 
-      if (name === 'draftConstraintLeftId' || name === 'draftConstraintRightId') {
+      if (name === 'draftConstraintLeftId' || name === 'draftConstraintRightId' || name === 'draftConstraintGroupId') {
         event.preventDefault();
         addConstraintEntry(state);
         renderGenericPage(root, state);
         return;
       }
 
-      if (name === 'draftPreferenceLeftId' || name === 'draftPreferenceRightId') {
+      if (name === 'draftPreferenceLeftId' || name === 'draftPreferenceRightId' || name === 'draftPreferenceGroupId') {
         event.preventDefault();
         addPreferenceEntry(state);
         renderGenericPage(root, state);

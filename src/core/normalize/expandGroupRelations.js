@@ -2,6 +2,10 @@ import { createConstraint } from '../model/constraints.js';
 import { createPreference } from '../model/preferences.js';
 import { NODE_KINDS } from '../model/nodes.js';
 
+function isGroupInternalTogetherShortcut(entry) {
+  return Boolean(entry?.metadata?.groupInternalTogether === true);
+}
+
 function buildNodeIndex(project) {
   return new Map(
     [...project.items, ...project.groups, ...project.containers, ...project.positions].map((node) => [node.id, node]),
@@ -49,6 +53,25 @@ export function expandGroupRelations(project) {
 
   const expandedConstraints = [];
   project.constraints.forEach((constraint) => {
+    if (isGroupInternalTogetherShortcut(constraint)) {
+      const members = expandOperand(constraint.leftRef, nodeIndex, groupMembersMap);
+      members.forEach((leftRef, leftIndex) => {
+        members.slice(leftIndex + 1).forEach((rightRef) => {
+          expandedConstraints.push(createConstraint({
+            kind: constraint.kind,
+            leftRef,
+            rightRef,
+            metadata: {
+              ...constraint.metadata,
+              derivedFromGroupRelation: true,
+              derivedFromGroupInternalTogether: true,
+            },
+          }));
+        });
+      });
+      return;
+    }
+
     const leftRefs = expandOperand(constraint.leftRef, nodeIndex, groupMembersMap);
     const rightRefs = expandOperand(constraint.rightRef, nodeIndex, groupMembersMap);
 
@@ -69,6 +92,26 @@ export function expandGroupRelations(project) {
 
   const expandedPreferences = [];
   project.preferences.forEach((preference) => {
+    if (isGroupInternalTogetherShortcut(preference)) {
+      const members = expandOperand(preference.leftRef, nodeIndex, groupMembersMap);
+      members.forEach((leftRef, leftIndex) => {
+        members.slice(leftIndex + 1).forEach((rightRef) => {
+          expandedPreferences.push(createPreference({
+            kind: preference.kind,
+            leftRef,
+            rightRef,
+            weight: preference.weight,
+            metadata: {
+              ...preference.metadata,
+              derivedFromGroupRelation: true,
+              derivedFromGroupInternalTogether: true,
+            },
+          }));
+        });
+      });
+      return;
+    }
+
     const leftRefs = expandOperand(preference.leftRef, nodeIndex, groupMembersMap);
     const rightRefs = expandOperand(preference.rightRef, nodeIndex, groupMembersMap);
 

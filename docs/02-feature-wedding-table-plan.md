@@ -80,6 +80,7 @@ This page is a domain-specific view over the normalized model.
 - The page should clearly show group membership.
 - The page must not imply that groups are family-only; planners must be able to use groups for families, friend circles, bride-side or groom-side subsets, colleagues, wedding party subsets, or any other overlapping planner-defined category.
 - The page should explicitly support layered membership examples such as one guest belonging both to a family group and to a custom social group.
+- The wedding rule and preference sections should support a dedicated single-group option such as “Keep this group together”, where the planner selects only one group.
 
 ### Table management
 
@@ -104,10 +105,12 @@ Seat management is optional but required for adjacency-based constraints.
 - Before per-table generation runs, the page must warn clearly that the current seats and seat topology for that table will be replaced.
 - The page should support quick creation of a standard round-table adjacency topology when useful.
 - The page should still store the resulting structure using the generic Position and adjacent relations.
+- Manual seat adjacency authoring in the wedding UI should currently remain table-scoped so planners do not accidentally create cross-table “next to” links.
 - Generated seats should record enough page-facing metadata to preserve stable generated order for later left/right editing in the wedding UI.
 - After generation, the planner must be able to remove the generated left adjacency, the generated right adjacency, or both around a seat without deleting the seat itself.
 - Removing one or both generated adjacencies must not automatically reconnect surrounding seats.
 - If a planner deletes a seat entirely after generation, the seat and its adjacency links should be removed without silently closing the resulting gap.
+- The seat list should use a compact display suitable for large weddings such as 100 to 200 guests, with denser cards and shorter metadata labels so many seats remain scannable.
 
 ### Relationship and preference management
 
@@ -132,7 +135,8 @@ The page must present user-friendly wedding terminology while writing generic re
 
 - The page must support group-group rules at least for same-table separation when supported by the domain semantics.
 - Group-level same-table separation must propagate to all group members.
-- Group-level same-table togetherness should not be exposed by default in the MVP UI because its semantics can easily create confusing or impossible configurations.
+- The wedding page may expose a group-internal same-table together shortcut directly inside the group editing card, meaning all members of that one group must or should sit together.
+- That shortcut should be represented readably in the wedding rule tables rather than as a confusing group-to-itself raw relation.
 - Group-level adjacency constraints should be blocked or deferred unless explicitly supported by the core semantics.
 
 ### Solver execution
@@ -175,6 +179,8 @@ Allows:
 - add or remove guest membership
 - inspect members of each group
 - understand that the same guest may appear in several groups at once
+- manage group membership inside the group card
+- use the seating rule and preference sections to add a dedicated one-group `Keep this group together` rule or preference
 - use wording and helper text that make custom overlapping groups feel natural, not exceptional
 
 ### Section 4: Tables
@@ -192,6 +198,7 @@ Allows:
 ### Section 5: Seats and adjacency
 
 Visible when adjacency-aware seating is enabled.
+Placed after the main authoring and result sections so seats do not dominate the top of the page.
 
 Allows:
 
@@ -202,10 +209,12 @@ Allows:
 - warn that bulk seat generation replaces all currently defined seats
 - warn that per-table generation replaces the current seats and topology for that table
 - define adjacency between seats
+- add arbitrary manual seat-to-seat adjacency links within a table after generation or manual seat creation
 - optionally generate a standard round-table adjacency structure
 - review seat topology grouped by table
 - remove generated left adjacency, generated right adjacency, or both around a seat while keeping the seat itself in place
 - see clearly when a generated topology has been adjusted manually and now contains open gaps
+- add a custom same-table seat adjacency without regenerating the whole table
 
 ### Section 6: Seating rules
 
@@ -217,6 +226,13 @@ Allows:
 - review current rule list
 - delete existing rules
 - express layered planning logic such as one custom group needing a dedicated table while a family group is only preferred to stay together
+- use a two-line authoring layout for both hard rules and soft preferences:
+  - first line = rule or preference kind
+  - second line = options
+- in this wedding page layout, the options row should use grouped selection rather than labeled left-side and right-side wording
+- the grouped selection row should keep the paired selectors visually together because planners think in terms of one pairing rather than two distant sides
+- changing Guest versus Group must immediately refresh the matching selector options so the effect is visible without extra interaction
+- when the planner selects `Keep this group together`, the options row should switch to a single group selector instead of a two-operand selector
 
 ### Section 7: Solve and results
 
@@ -352,15 +368,21 @@ It should not expose generic terms such as Item, Group, Container, Position, con
 - A user can assign guests to families or custom groups.
 - A user can assign one guest to multiple overlapping groups such as a family and a groom-side friend group.
 - A user can define hard same-table and separate-table rules using wedding wording.
+- A user sees both “Must work this way” and “Prefer if possible” authoring areas with a first-line rule selector and a second-line grouped options row.
 - A user can define soft table preferences when supported by the solver.
 - A user can enable seat-aware mode and define seat adjacency.
 - A user can choose a planner-facing table shape such as round, square, or rectangle.
 - A user can generate seats for all tables from table capacities after acknowledging that existing seats will be deleted and recreated.
 - A user can generate seats and default topology for one table only after acknowledging that the table's current seats will be replaced.
+- A user can review seats in a compact display that remains usable for large weddings with many tables and guests.
+- A user finds the seats panel after the main wedding editing and result areas, so detailed seat management does not clutter the top of the page.
 - A user can remove the generated left adjacency, right adjacency, or both for a seat without deleting the seat itself.
+- A user can add a custom same-table seat adjacency after generation or after manual seat creation.
 - A user can delete a generated seat without the app silently reconnecting its former neighbors.
 - A user can define next-to and not-next-to rules only when seat-aware mode is active.
 - Group-level separation rules propagate consistently through the normalized model.
+- A planner can add a hard `Keep this group together` rule from `Must work this way` by selecting a single group, and that shortcut propagates through the normalized model.
+- A planner can add a soft `Keep this group together` preference from `Prefer if possible` by selecting a single group, and that shortcut propagates through the normalized model.
 - The wedding page writes data using the generic core model rather than custom wedding-only structures.
 - The page can invoke the solver and display one or more seating plans.
 - The page can export a solved seating plan to a readable spreadsheet format suitable for wedding planners.

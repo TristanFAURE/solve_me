@@ -466,6 +466,32 @@ MVP note:
 
 - this relation is part of the abstract semantics but should not be exposed by default in MVP feature UIs unless a feature document explicitly enables it
 
+### Group-internal together shortcut
+
+A feature UI may expose a shortcut meaning:
+
+- all members of one group must share the same container
+- or all members of one group should preferably share the same container
+
+Recommended authored representation:
+
+- store it as a group-targeted rule with explicit metadata marking it as a group-internal shortcut
+- do not eagerly duplicate it into visible authored pairwise rules in the UI
+
+Normalization semantics:
+
+- if Group G contains items `A`, `B`, and `C`
+- hard shortcut expands to:
+  - `mustShareContainer(A, B)`
+  - `mustShareContainer(A, C)`
+  - `mustShareContainer(B, C)`
+- soft shortcut expands similarly using `preferShareContainer`
+
+Validity note:
+
+- this shortcut is currently well-defined only for together-in-container semantics
+- adjacency-style group-internal shortcuts should remain unsupported unless a future feature defines them explicitly
+
 ### Group-to-group adjacency
 
 `mustBeAdjacent(Group1, Group2)`

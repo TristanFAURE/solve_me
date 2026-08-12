@@ -16,6 +16,32 @@ function buildNodeIndex(project) {
   );
 }
 
+function validateGroupInternalTogetherShortcut(entry, nodeIndex, path, kind, allowsAdjacency) {
+  const errors = [];
+  const shortcutGroup = entry?.metadata?.groupInternalTogether === true;
+
+  if (!shortcutGroup) {
+    return errors;
+  }
+
+  const leftNode = nodeIndex.get(entry.leftRef.id);
+  const rightNode = nodeIndex.get(entry.rightRef.id);
+
+  if (entry.leftRef.id !== entry.rightRef.id || entry.leftRef.kind !== NODE_KINDS.GROUP || entry.rightRef.kind !== NODE_KINDS.GROUP) {
+    errors.push(createError('group-internal-shortcut-invalid-operands', `${kind} group-internal together shortcut must target the same Group on both sides.`, path));
+  }
+
+  if (leftNode?.kind !== NODE_KINDS.GROUP || rightNode?.kind !== NODE_KINDS.GROUP) {
+    errors.push(createError('group-internal-shortcut-group-only', `${kind} group-internal together shortcut must target a Group.`, path));
+  }
+
+  if (!allowsAdjacency && ![CONSTRAINT_KINDS.MUST_SHARE_CONTAINER, PREFERENCE_KINDS.PREFER_SHARE_CONTAINER].includes(entry.kind)) {
+    errors.push(createError('group-internal-shortcut-kind-unsupported', `${kind} group-internal shortcut currently supports together-in-container semantics only.`, `${path}.kind`));
+  }
+
+  return errors;
+}
+
 function validateConstraintRefs(project, nodeIndex) {
   const errors = [];
   const seenConstraints = new Set();
@@ -39,6 +65,8 @@ function validateConstraintRefs(project, nodeIndex) {
     const leftNode = nodeIndex.get(constraint.leftRef.id);
     const rightNode = nodeIndex.get(constraint.rightRef.id);
     const symmetricKey = [constraint.kind, constraint.leftRef.id, constraint.rightRef.id].sort().join('::');
+
+    errors.push(...validateGroupInternalTogetherShortcut(constraint, nodeIndex, path, 'Constraint', false));
 
     if (seenConstraints.has(symmetricKey)) {
       errors.push(createError('duplicate-constraint', `Duplicate constraint '${symmetricKey}'.`, path));
@@ -91,6 +119,8 @@ function validatePreferenceRefs(project, nodeIndex) {
     const leftNode = nodeIndex.get(preference.leftRef.id);
     const rightNode = nodeIndex.get(preference.rightRef.id);
     const symmetricKey = [preference.kind, preference.leftRef.id, preference.rightRef.id].sort().join('::');
+
+    errors.push(...validateGroupInternalTogetherShortcut(preference, nodeIndex, path, 'Preference', false));
     const weightedKey = `${symmetricKey}::${preference.weight}`;
 
     if (seenPreferences.has(weightedKey)) {

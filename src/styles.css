@@ -894,6 +894,26 @@ body {
   margin-top: 16px;
 }
 
+.wedding-rule-form-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.wedding-rule-options-row,
+.wedding-rule-options-with-weight-row {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.wedding-group-selection-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.wedding-group-selection-row .split-select-row {
+  grid-template-columns: 92px minmax(0, 1fr);
+}
+
 .wedding-hero-card {
   background: linear-gradient(135deg, #ffffff 0%, #fff7ed 45%, #fdf2f8 100%);
   border-color: #fdba74;
@@ -912,6 +932,32 @@ body {
 
 .wedding-entity-card {
   background: linear-gradient(180deg, #ffffff 0%, #fffaf5 100%);
+}
+
+.wedding-panel .entity-board {
+  gap: 8px;
+}
+
+.wedding-panel .entity-card {
+  padding: 10px;
+}
+
+.wedding-panel .entity-meta-grid {
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.wedding-panel .entity-meta-item {
+  padding: 6px;
+}
+
+.wedding-panel .entity-inline-input {
+  font-size: 13px;
+}
+
+.wedding-panel .entity-id {
+  margin-top: 4px;
+  font-size: 10px;
 }
 
 .wedding-checkbox-list dd {
@@ -938,14 +984,23 @@ body {
 
 .wedding-table-meta-grid,
 .wedding-seat-meta-grid,
-.wedding-neighbor-grid {
+.wedding-neighbor-grid,
+.wedding-custom-adjacency-grid {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .wedding-table-meta-grid,
 .wedding-seat-meta-grid {
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+}
+
+.compact-seat-meta-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.wedding-custom-adjacency-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .wedding-neighbor-grid {
@@ -954,8 +1009,8 @@ body {
 
 .wedding-neighbor-card {
   display: grid;
-  gap: 8px;
-  padding: 10px;
+  gap: 4px;
+  padding: 6px;
   border: 1px solid #fed7aa;
   border-radius: 8px;
   background: #fff7ed;
@@ -969,6 +1024,13 @@ body {
 .wedding-seat-tools .button-row button,
 .wedding-neighbor-card button {
   margin-top: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.wedding-inline-heading {
+  margin: 2px 0 0;
+  font-size: 14px;
 }
 
 .is-disabled-card {
@@ -1018,7 +1080,8 @@ body {
   .inline-field-grid,
   .audit-section-grid,
   .validation-panel-grid,
-  .wedding-neighbor-grid {
+  .wedding-neighbor-grid,
+  .wedding-group-selection-row {
     grid-template-columns: 1fr;
   }
 
