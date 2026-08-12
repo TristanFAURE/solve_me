@@ -24,6 +24,18 @@ function getNodeLabelById(project, collectionName, id) {
   return collection.find((entry) => entry.id === id)?.label ?? id;
 }
 
+function getAssignmentItemDisplay(project, assignment) {
+  const itemLabel = assignment.metadata?.itemLabel ?? getEntityLabel(project, assignment.itemRef.kind, assignment.itemRef.id);
+  const positionLabel = assignment.metadata?.positionLabel
+    ?? (assignment.positionRef ? getEntityLabel(project, assignment.positionRef.kind, assignment.positionRef.id) : '');
+
+  if (!assignment.positionRef?.id || !positionLabel) {
+    return escapeHtml(itemLabel);
+  }
+
+  return `${escapeHtml(itemLabel)} <span class="muted-text">→ ${escapeHtml(positionLabel)}</span>`;
+}
+
 function groupAssignmentsByContainer(project, solution) {
   const grouped = new Map(
     project.containers.map((container) => [container.id, {
@@ -52,7 +64,7 @@ export function renderContainerAssignmentView(project, solution, index, totalSol
     const itemList = assignments.length === 0
       ? '<li class="muted-text">No assigned items</li>'
       : assignments
-        .map((assignment) => `<li>${escapeHtml(assignment.metadata?.itemLabel ?? getEntityLabel(project, assignment.itemRef.kind, assignment.itemRef.id))}</li>`)
+        .map((assignment) => `<li>${getAssignmentItemDisplay(project, assignment)}</li>`)
         .join('');
 
     const teacherIds = getMetadataIds(container, 'teacherIds');

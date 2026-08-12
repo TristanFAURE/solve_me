@@ -785,6 +785,43 @@ Recommended next step:
 - after that, continue the broader wedding topology manual test pass for bulk/per-table generation, generated left/right removals, `remove both sides`, deletion without auto-reconnect, and the manual same-table adjacency controls
 - then implement a `close gap` convenience action for generated wedding topology so planners can restore a removed generated neighbor link without using the generic custom-adjacency controls manually
 
+## Latest update
+
+- reviewed the current wedding topology implementation and confirmed `status.md` had become slightly stale: the wedding page already implements bulk/per-table seat generation, generated left/right neighbor removal, `remove both sides`, manual same-table seat adjacency creation, and the single-group `Keep this group together` authoring path; the still-open wedding topology convenience item is the dedicated `close gap` action
+- reviewed the normalized topology path and the first solver adapter to confirm the main solver gap was still position-mode adjacency solving rather than missing wedding topology controls
+- extended `src/solver/adapters/firstSolverAdapter.js` so the first solver adapter now supports both assignment modes:
+  - container mode remains unchanged for `mustShareContainer` and `mustNotShareContainer`
+  - position mode now supports one-item-per-position assignment plus `mustShareContainer`, `mustNotShareContainer`, `mustBeAdjacent`, and `mustNotBeAdjacent`
+- updated the first solver adapter capabilities so it now reports `adjacency: true` and `positionMode: true`
+- kept soft preferences unsupported in the first solver adapter; they still produce warnings and are not optimized
+- verified the implementation with `npm run build`
+- updated shared solution rendering so position-mode assignments now display the assigned seat/position label next to each item when a solution includes `positionRef`; this makes wedding seat-mode results show each guest's seat automatically
+
+Files modified:
+
+- `src/solver/adapters/firstSolverAdapter.js`
+- `src/components/solutions/containerAssignmentView.js`
+- `status.md`
+
+Decisions made:
+
+- in position mode, `mustShareContainer` is enforced as same-container placement across distinct positions rather than by collapsing multiple items into one assignable component
+- container-mode must-share components remain a container-mode optimization only; position mode instead assigns individual items to positions and checks same-container / adjacency consistency incrementally during backtracking
+- wedding topology `close gap` remains a later UX convenience task, not the blocker for solver work
+
+Open questions / risks:
+
+- the new position-mode solver path has been build-verified but still needs browser-level manual testing from the generic and wedding pages with realistic seat-aware scenarios
+- the shared solution display likely already understands position assignments structurally, but wedding-specific wording/presentation may still need refinement once adjacency-based solves are exercised in the UI
+- the current position-mode search is a straightforward backtracking implementation; larger seating plans may eventually need stronger pruning or heuristics
+- soft preferences remain ignored by the first solver adapter, including wedding and school preferences
+
+Recommended next step:
+
+- manually test position-mode solving from the generic page with a minimal authored scenario covering `mustBeAdjacent`, `mustNotBeAdjacent`, `mustShareContainer`, and `mustNotShareContainer`
+- then manually test the wedding page in seat-aware mode end to end using generated seats and at least one adjacency rule to confirm the new solver path is actually reachable and that the solution display is understandable
+- after that, fix any UI/transform/solution-display issues uncovered by those tests before deciding whether to implement wedding `close gap`, solver heuristics, or soft-preference support next
+
 ## Restart prompt for a new context
 
 Use the following prompt in a fresh context:
