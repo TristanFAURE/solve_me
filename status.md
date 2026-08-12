@@ -498,6 +498,14 @@ Completed:
 - added `.github/workflows/deploy.yml` to build and deploy the Vite site to GitHub Pages on pushes to `main`
 - added a root `.gitignore` for dependency and build artifacts
 - updated `README.md` with GitHub Pages setup, deployment flow, expected site URL, and repository-name/base-path notes
+- verified that GitHub Pages deployment works for the current repository setup
+- decided school spreadsheet export should use a real `.xlsx` workbook for teacher-facing usability instead of CSV or a renamed fake spreadsheet file
+- added the `xlsx` dependency to generate real Excel workbooks in the browser
+- created `src/pages/school/exportSchoolSolution.js` to export the selected solved school solution as a multi-sheet `.xlsx` workbook with Summary, Classes, and Students sheets
+- added an `Export Excel` action to the school command bar, enabled only when a solved school result exists
+- wired school export feedback into the existing school-page status messaging so successful and failed exports are surfaced clearly
+- updated `docs/03-feature-school-class-creation.md` to make the `.xlsx` baseline explicit and document the student-oriented sheet in the recommended export structure
+- verified the school export changes with a successful `npm run build`
 
 Review findings:
 
@@ -516,6 +524,7 @@ Review findings:
 - the shared solution panel previously showed only directly assigned solver items, so school-linked teachers were invisible in solved class cards until the display layer was enriched with authored-project metadata context
 - the repository did not yet have a root open-source license file or a project README, which made distribution and onboarding less clear
 - GitHub Pages hosting for this Vite app requires an explicit repository base path and a deployment workflow; without those, static assets would break when served from `/solve_me/`
+- school solved-result export needed a format decision; teacher-facing usability favored a real `.xlsx` workbook over CSV or extension spoofing
 
 Fixes applied:
 
@@ -562,6 +571,8 @@ Fixes applied:
 - decided the shared container-assignment display can stay generic while accepting optional display-context data, allowing the school page to show linked teachers and accepted levels without changing the solver result shape
 - decided the repository should now include a standard MIT license and a concise root README aligned with the current implemented MVP rather than the longer design-history documents alone
 - decided GitHub Pages deployment should use the standard GitHub Actions Pages workflow and a fixed Vite `base` of `/solve_me/` because the site is served from a project repository rather than a user-site root
+- decided the first domain-facing solved export implementation should be a real browser-generated `.xlsx` workbook using `xlsx`, because teachers are better served by a native spreadsheet file than by CSV and because fake `.xls` files would create confusing compatibility warnings
+- decided the school workbook should currently include three sheets: `Summary`, `Classes`, and `Students`
 
 Files modified:
 
@@ -577,6 +588,7 @@ Files modified:
 - `docs/01-feature-generic-constraint-page.md`
 - `src/pages/wedding/index.js`
 - `src/pages/school/index.js`
+- `src/pages/school/exportSchoolSolution.js`
 - `src/pages/school/validateSchoolProject.js`
 - `docs/03-feature-school-class-creation.md`
 - `src/components/common/pageShell.js`
@@ -622,6 +634,7 @@ Files modified:
 - `vite.config.js`
 - `.gitignore`
 - `.github/workflows/deploy.yml`
+- `package-lock.json`
 
 Decisions made:
 
@@ -661,7 +674,8 @@ Open questions or risks:
 - the current school transform step filters teachers out of direct solver assignment, which matches the MVP decision, but future teacher-assignment solving would require a broader transform and likely solver changes
 - teacher-linked soft preferences are still not converted into solver-consumed optimization signals; they remain visible and stored, but the first solver still warns that preferences are ignored
 - school-specific validation now covers several important authoring mistakes in school wording, but it is still page-local and not yet extracted into a broader reusable domain-validation boundary
-- the spreadsheet-export requirement is now documented, but the exact implementation format still needs a technical choice such as CSV-only export, Excel-compatible XLSX generation, or a simpler multi-sheet-compatible approach
+- the school spreadsheet-export requirement now has an initial implementation with real `.xlsx` generation, but the wedding page still needs its own export implementation and the long-term shared export abstraction is still open
+- the added `xlsx` dependency increases bundle size noticeably, so future work may need to watch client-side payload size or consider lazy-loading export code if this grows further
 - any future repository push still depends on local GitHub authentication being available in the execution environment; remote push may fail without user credentials or token configuration
 - if the repository name changes from `solve_me`, the GitHub Pages deployment will break until `vite.config.js` is updated to match the new repository path
 - GitHub Pages deployment also depends on the repository Pages setting being configured to use GitHub Actions as the source
@@ -673,9 +687,9 @@ Open questions or risks:
 
 Recommended next step:
 
-- commit and push the new GitHub Pages automation files, then enable GitHub Pages with **Source = GitHub Actions** in the repository settings and verify the first deployment succeeds at `https://tristanfaure.github.io/solve_me/`
-- after deployment is confirmed, return to the product roadmap by deciding the technical approach for domain-facing spreadsheet export, including whether to generate CSV, XLSX, or another Excel-compatible format for wedding and school solved outputs
-- then implement school solved-result export first, since the school panel now has a real editor, real validation flow, real solve flow, and now-correct unrestricted-class behavior
+- manually test the new school `Export Excel` action with realistic solved scenarios and confirm the workbook opens cleanly in Excel/LibreOffice with teacher-friendly column content
+- then decide whether to extract a shared spreadsheet-export utility boundary before implementing the wedding solved-result export
+- after that, implement the wedding solved-result export using the same real `.xlsx` approach unless a domain-specific reason suggests a different workbook layout
 
 ## Restart prompt for a new context
 
@@ -705,17 +719,19 @@ Important points to preserve:
 - hard constraints and soft preferences must remain distinct
 
 Current expected task:
-- use the editable generic modeling page, refreshed board-style CSS, sticky command bar, updated generic-page spec, current Enter-key submission behavior, label-first audit tables, working container-mode solver, extracted shared solution-display components, richer validated storage feedback, refined school-domain mapping, implemented school panel, wired school pipeline, and documented spreadsheet-export expectations as the baseline
+- use the editable generic modeling page, refreshed board-style CSS, sticky command bar, updated generic-page spec, current Enter-key submission behavior, label-first audit tables, working container-mode solver, extracted shared solution-display components, richer validated storage feedback, refined school-domain mapping, implemented school panel, wired school pipeline, and newly implemented school `.xlsx` export as the baseline
 - preserve the repository metadata and hosting files: `LICENSE` is MIT, `README.md` documents onboarding and deployment, `vite.config.js` sets the GitHub Pages base path, and `.github/workflows/deploy.yml` performs the Pages build/deploy
 - keep the current validate -> normalize -> solve sequence intact
 - treat the current storage version policy in `src/storage/modelVersioning.js` as the baseline: missing/unparseable versions warn, same-major minor-or-patch differences warn, unsupported major-version differences fail, and too-old versions fail
 - treat the version-policy documentation in `docs/05-feature-import-export.md` as the current baseline and extend migration branches if a new schema version is introduced
 - use `docs/03-feature-school-class-creation.md`, `src/core/transform/domainMappings.js`, and `src/pages/school/validateSchoolProject.js` as the current source of truth for school semantics and school-facing validation: students are directly assigned, teachers are class-linked actors, levels map to groups, mixed-level classes are represented through `acceptedLevelIds`, and a class with no selected accepted levels is treated as unrestricted and accepts all levels
-- use `src/pages/school/index.js` as the current implementation baseline for the school editor and school solve flow: it now supports school-language authoring plus school validation → generic validation → normalize → solve, derives per-student `allowedContainerIds` and `forbiddenContainerIds` for the existing container-mode solver, strips non-student containments from the solver-facing project so school validation does not produce spurious `unknown-containment-target` errors, and passes the authored school project into the shared solution panel so linked teachers and accepted levels appear on solved class cards
+- use `src/pages/school/index.js` as the current implementation baseline for the school editor and school solve flow: it now supports school-language authoring plus school validation → generic validation → normalize → solve, derives per-student `allowedContainerIds` and `forbiddenContainerIds` for the existing container-mode solver, strips non-student containments from the solver-facing project so school validation does not produce spurious `unknown-containment-target` errors, passes the authored school project into the shared solution panel so linked teachers and accepted levels appear on solved class cards, and exposes an `Export Excel` action for solved results
+- use `src/pages/school/exportSchoolSolution.js` as the current export baseline: it generates a real `.xlsx` workbook with `Summary`, `Classes`, and `Students` sheets from the authored school project plus the selected solver solution
 - preserve the product rule that if users simply create students, classes, and teachers without adding restrictive rules, solving should still be possible as long as capacities and level compatibility permit it; in that situation the solver may return a valid distribution or multiple possible distributions rather than reporting an error just because the model is underconstrained
-- first, commit and push the GitHub Pages automation files, then enable GitHub Pages with **Source = GitHub Actions** in repository settings and verify the published site at `https://tristanfaure.github.io/solve_me/`
-- after deployment is confirmed, decide the technical export format and pipeline for domain-facing wedding and school spreadsheet exports derived from solved results
-- then consider whether to give the wedding page a comparable real editor and pipeline integration pattern
+- deployment is already confirmed working at `https://tristanfaure.github.io/solve_me/`
+- first, manually test the new school `.xlsx` export with representative solved scenarios and confirm workbook usability in teacher-facing spreadsheet tools
+- then decide whether wedding export should share a common spreadsheet utility layer or keep page-local export formatters initially
+- then consider whether to give the wedding page a comparable real editor and pipeline integration pattern alongside its own solved-result export
 
 Note:
 - dependencies are now installed and `npm run build` succeeds in the current environment

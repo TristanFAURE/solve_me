@@ -231,7 +231,8 @@ Imported data must be validated at multiple levels.
 - Domain-specific labels may be reconstructed in the UI, but the persisted data should remain generic.
 - If `viewHint` is present, the application may use it to reopen the project in the most appropriate page.
 - If `viewHint` is missing or unsupported, the application should still load the project through the shared normalized model.
-- Wedding and school pages may additionally provide domain-facing spreadsheet exports for solved results, but those exports are not the canonical persistence format and are not part of importable project persistence in the MVP.
+- Wedding and school pages may additionally provide domain-facing spreadsheet exports for solved results, but those exports are not the canonical persistence format.
+- The school page may also support importing a teacher-facing workbook as a convenience data-entry flow, but that workbook import is page-specific and must still be converted into the shared normalized project model before validation and editing.
 
 ## Technical notes
 
@@ -243,6 +244,8 @@ Imported data must be validated at multiple levels.
 - The current implementation stores model version information in the top-level project field `modelVersion`.
 - The current implementation classifies versions before migration and validation so obviously incompatible versions are blocked early.
 - The current implementation exposes compatibility results as structured status plus warning or error messages for import and draft-restore UX.
+- Page-specific spreadsheet importers should validate required sheets and required columns before converting workbook rows into shared project data.
+- In the current school workbook importer baseline, a `Students` sheet is mandatory, a `Classes` sheet is optional, and the `Student` column is required in the `Students` sheet.
 
 ## Acceptance criteria
 
@@ -255,4 +258,5 @@ Imported data must be validated at multiple levels.
 - Imports with missing or unparseable version metadata continue with warnings in the MVP.
 - Imports with unsupported major-version differences or versions older than the minimum supported version are blocked.
 - The same persistence model works across generic and specialized pages.
-- Domain-facing spreadsheet exports for wedding and school solved outputs do not replace the shared JSON persistence model.
+- Domain-facing spreadsheet workflows for wedding and school do not replace the shared JSON persistence model.
+- The school page can import a teacher-facing workbook for convenience, but canonical cross-page persistence remains JSON-based.

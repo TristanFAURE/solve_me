@@ -20,6 +20,7 @@ This feature includes:
 - solver execution for class assignment
 - display of one or more valid class distributions through the shared solution display layer
 - spreadsheet export of solved class distributions in a format that teachers or school staff can read easily
+- spreadsheet import of school-authored `.xlsx` workbooks using the same teacher-facing sheet vocabulary as the export baseline
 - reopening imported projects in the school page when the saved project metadata indicates the school view
 
 ## Out of scope
@@ -46,6 +47,7 @@ This feature does not define:
 - As a user, I want the tool to run the solving engine without forcing me to understand generic constraint terminology.
 - As a user, I want to run the solver and inspect valid class assignments.
 - As a user, I want to export a class distribution in a spreadsheet that teachers or school staff can read and use directly.
+- As a user, I want to import a school workbook prepared with the same sheet structure so I can start from an Excel file instead of retyping students and classes.
 - As a user, I want to understand when the model is invalid or no valid class assignment exists.
 
 ## Relationship to the generic model
@@ -267,6 +269,19 @@ The UI should focus on understandable school sentences rather than solver jargon
 - The page must send the normalized problem to the solver adapter.
 - The page must display solver status, warnings, and result summaries.
 
+### Spreadsheet import
+
+- The page must allow importing a school workbook in `.xlsx` or compatible Excel format.
+- The import should use the same school-facing sheet vocabulary as the export baseline when possible.
+- A `Students` sheet is mandatory.
+- A `Classes` sheet is optional.
+- In the `Students` sheet, the first mandatory column is `Student`.
+- The `Students` sheet may also include `Level` and `Class` columns.
+- If the `Classes` sheet is present, it may include `Class`, `Teachers`, `Accepted levels`, and `Capacity` columns.
+- If the `Classes` sheet is absent, the workbook must still be importable as long as the `Students` sheet exists and contains the required first column.
+- Spreadsheet import should create or infer levels and classes from the workbook rows when enough information is present.
+- Imported workbook data should be converted into the same underlying generic project shape used by the school page.
+
 ## UI behavior
 
 ### Section 1: School assignment summary
@@ -338,6 +353,8 @@ Allows:
 Allows:
 
 - run solver
+- import a school workbook
+- export a solved workbook
 - show busy state
 - show solved, unsat, timeout, partial, or error status
 - review returned class assignment solutions through the shared solution display feature
@@ -430,6 +447,7 @@ Expected display options:
 
 The school page must provide a spreadsheet export for solved class distributions.
 The export should be readable by teachers, school directors, and administrative staff without requiring any knowledge of the generic solver model.
+In the current implementation baseline, this export should be a real `.xlsx` workbook rather than CSV or a renamed fake spreadsheet file.
 
 Expected spreadsheet characteristics:
 
@@ -442,6 +460,7 @@ Recommended export structure:
 
 - one summary sheet with scenario name, selected solution number, and useful solve metadata when appropriate
 - one main class-distribution sheet listing each class and its assigned students
+- one student-oriented sheet listing each student, their level, and their assigned class
 - optional additional sheet for teacher assignments or teacher-related class associations if that concept is part of the solved model
 - optional additional sheet for warnings or unresolved items if such states are ever supported
 
@@ -457,6 +476,30 @@ Recommended columns for the main class-distribution sheet:
 The school spreadsheet export should prioritize clarity over technical completeness.
 It should not expose generic terms such as Item, Group, Container, constraint kind, or preference kind.
 
+### Spreadsheet import expectations
+
+The school page should also support importing a workbook that follows the same teacher-facing vocabulary as the export baseline.
+This import is for convenient data entry, not for preserving every possible school-page feature.
+
+Current import baseline:
+
+- `Students` sheet required
+- `Classes` sheet optional
+- `Student` column required in the `Students` sheet
+- `Level` and `Class` columns optional in the `Students` sheet
+- `Class` column required only when a `Classes` sheet is present
+- `Teachers`, `Accepted levels`, and `Capacity` are optional enrichments on the `Classes` sheet
+
+Current interpretation rules:
+
+- each `Student` row creates a student if the name is not empty
+- `Level` values may be comma-separated and create level membership relations
+- `Class` values in the `Students` sheet may create placeholder classes when needed even if no `Classes` sheet exists
+- `Classes` sheet rows enrich classes with accepted levels, teachers, and capacity when present
+- duplicate student names in the import workbook are currently collapsed to a single imported student row by label
+
+The import flow should fail clearly when the workbook has no `Students` sheet or when that sheet lacks the required `Student` column.
+
 ## Technical notes
 
 - This feature must remain a thin specialization over the generic model.
@@ -471,6 +514,7 @@ It should not expose generic terms such as Item, Group, Container, constraint ki
 - Position and adjacency concepts should not be introduced here unless a future seating-related feature explicitly requires them.
 - Import and export behavior should rely on the shared generic persistence feature; this page only needs school-oriented `viewHint` handling so imported projects can reopen in the correct panel when appropriate.
 - Spreadsheet export may use a school-specific presentation formatter, but it should derive its data from the shared solved model rather than introducing a separate persistence format.
+- Spreadsheet import may use a school-specific workbook parser, but it must convert imported rows into the same shared generic project shape used by the school page editor.
 
 ## Worked example scenarios to support
 
@@ -505,6 +549,7 @@ The page should allow users to enter that scenario entirely with school wording 
 - The transform layer has an explicit documented mapping for student items, teacher items, level groups, class containers, accepted levels, and teacher-class associations.
 - The MVP solve flow treats teachers as class-linked actors and students as the directly assigned participants.
 - The page can invoke the solver and display one or more valid class assignments.
-- The page can export a solved class distribution to a readable spreadsheet format suitable for teachers or school staff.
-- The page uses shared generic import/export behavior and only adds school-specific reopening behavior through view metadata.
+- The page can export a solved class distribution to a readable `.xlsx` workbook suitable for teachers or school staff.
+- The page can import a school workbook when it contains at least a `Students` sheet with a required `Student` column.
+- The page uses shared generic import/export behavior for canonical JSON persistence and adds school-specific workbook import/export only for teacher-facing spreadsheet workflows.
 - The page does not expose adjacency or seat-based features in the MVP.

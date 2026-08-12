@@ -20,6 +20,8 @@ import {
   getContainerTeacherIds,
 } from '../../core/transform/domainMappings.js';
 import { FirstSolverAdapter } from '../../solver/adapters/firstSolverAdapter.js';
+import { exportSchoolSolutionWorkbook } from './exportSchoolSolution.js';
+import { importSchoolWorkbook } from './importSchoolWorkbook.js';
 import { validateSchoolProject } from './validateSchoolProject.js';
 
 function createSchoolEditorState() {
@@ -153,22 +155,33 @@ function renderSummary(project) {
   `;
 }
 
-function renderSchoolCommandBar() {
+function renderSchoolCommandBar(result) {
+  const canExport = result?.status === 'solved' && (result?.solutions?.length ?? 0) > 0;
+
   return `
     <section class="command-bar-card">
       <div class="command-bar-copy">
         <p class="eyebrow">🏫 School workflow</p>
-        <h2>Validate and solve</h2>
-        <p class="muted-text">Check the authored school scenario, derive a solver-ready model, and run the current container-mode solver.</p>
+        <h2>Validate, solve, and export</h2>
+        <p class="muted-text">Check the authored school scenario, derive a solver-ready model, run the current container-mode solver, and export the selected solution as an Excel workbook.</p>
       </div>
       <div class="command-bar-actions">
         <button type="button" class="command-bar-button" data-action="validate-school">
           <span class="command-bar-icon" aria-hidden="true">✓</span>
           <span>Validate</span>
         </button>
+        <label class="command-bar-button command-bar-file-button">
+          <span class="command-bar-icon" aria-hidden="true">⤴</span>
+          <span>Import Excel</span>
+          <input type="file" data-action="import-school-workbook" accept=".xlsx,.xls" hidden />
+        </label>
         <button type="button" class="command-bar-button command-bar-button-primary" data-action="solve-school">
           <span class="command-bar-icon" aria-hidden="true">▶</span>
           <span>Validate + normalize + solve</span>
+        </button>
+        <button type="button" class="command-bar-button" data-action="export-school-solution"${canExport ? '' : ' disabled'}>
+          <span class="command-bar-icon" aria-hidden="true">⬇</span>
+          <span>Export Excel</span>
         </button>
       </div>
     </section>
@@ -1211,6 +1224,46 @@ function bindActions(root, state) {
       return;
     }
 
+    if (action === 'import-school-workbook') {
+      element.addEventListener('change', async (event) => {
+        const [file] = Array.from(event.target.files ?? []);
+        if (!file) {
+          return;
+        }
+
+        try {
+          state.currentProject = await importSchoolWorkbook(file);
+          state.currentProject.viewHint = VIEW_HINTS.SCHOOL;
+          clearSchoolMessage(state);
+          resetSchoolDerivedState(state);
+          state.schoolPage.message = `Excel workbook imported from ${file.name}. Please validate the imported scenario. 📗`;
+        } catch (error) {
+          state.schoolPage.message = error instanceof Error
+            ? `Excel import failed: ${error.message}`
+            : 'Excel import failed.';
+        }
+
+        event.target.value = '';
+        renderSchoolPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'export-school-solution') {
+      element.addEventListener('click', () => {
+        try {
+          exportSchoolSolutionWorkbook(state.currentProject, state.schoolPage.lastSolverResult, state.schoolPage.editor.activeSolutionIndex);
+          state.schoolPage.message = `Excel export downloaded for solution ${state.schoolPage.editor.activeSolutionIndex + 1}. 📘`;
+        } catch (error) {
+          state.schoolPage.message = error instanceof Error
+            ? `Excel export failed: ${error.message}`
+            : 'Excel export failed.';
+        }
+        renderSchoolPage(root, state);
+      });
+      return;
+    }
+
     if (action === 'previous-solution') {
       element.addEventListener('click', () => {
         state.schoolPage.editor.activeSolutionIndex = Math.max(0, state.schoolPage.editor.activeSolutionIndex - 1);
@@ -1286,7 +1339,7 @@ export function renderSchoolPage(root, state) {
     title: 'School Class Creation',
     description: '🏫 Build school scenarios with students, teachers, levels, and classes while staying on the shared generic model.',
     body: `
-      ${renderSchoolCommandBar()}
+      ${renderSchoolCommandBar(state.schoolPage.lastSolverResult)}
       ${state.schoolPage.message ? `<section class="command-bar-feedback">${escapeHtml(state.schoolPage.message)}</section>` : ''}
       ${renderSummary(state.currentProject)}
       <section class="card sticky-panel">
