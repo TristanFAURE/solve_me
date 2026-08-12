@@ -78,6 +78,8 @@ This page is a domain-specific view over the normalized model.
 - The page must allow assigning guests to groups.
 - The page should support multiple groups per guest if the core model allows it.
 - The page should clearly show group membership.
+- The page must not imply that groups are family-only; planners must be able to use groups for families, friend circles, bride-side or groom-side subsets, colleagues, wedding party subsets, or any other overlapping planner-defined category.
+- The page should explicitly support layered membership examples such as one guest belonging both to a family group and to a custom social group.
 
 ### Table management
 
@@ -93,8 +95,19 @@ Seat management is optional but required for adjacency-based constraints.
 - The page must allow creating seats inside a table.
 - Each seat must belong to exactly one table.
 - The page must allow defining adjacency between seats.
+- The page must provide a bulk action to generate seats for all tables from table capacities when seat-aware mode is active.
+- The page must also support per-table generation so planners can regenerate one table without replacing every other table.
+- Generated seats should use domain-friendly generic labels derived from the table name plus a 1-based index.
+- Tables should expose a planner-facing shape setting such as round, square, or rectangle.
+- In the MVP, round, square, and rectangle may all generate a perimeter-ordered ring topology, while preserving the chosen shape metadata for later display improvements.
+- Before bulk generation runs, the page must warn clearly that all existing seats will be deleted and recreated.
+- Before per-table generation runs, the page must warn clearly that the current seats and seat topology for that table will be replaced.
 - The page should support quick creation of a standard round-table adjacency topology when useful.
 - The page should still store the resulting structure using the generic Position and adjacent relations.
+- Generated seats should record enough page-facing metadata to preserve stable generated order for later left/right editing in the wedding UI.
+- After generation, the planner must be able to remove the generated left adjacency, the generated right adjacency, or both around a seat without deleting the seat itself.
+- Removing one or both generated adjacencies must not automatically reconnect surrounding seats.
+- If a planner deletes a seat entirely after generation, the seat and its adjacency links should be removed without silently closing the resulting gap.
 
 ### Relationship and preference management
 
@@ -161,6 +174,8 @@ Allows:
 - delete group
 - add or remove guest membership
 - inspect members of each group
+- understand that the same guest may appear in several groups at once
+- use wording and helper text that make custom overlapping groups feel natural, not exceptional
 
 ### Section 4: Tables
 
@@ -170,7 +185,9 @@ Allows:
 - rename table
 - remove table
 - set seat count or capacity
+- choose a shape such as round, square, or rectangle
 - inspect associated seats if seat mode is active
+- generate seats and default topology for one table at a time when needed
 
 ### Section 5: Seats and adjacency
 
@@ -180,9 +197,15 @@ Allows:
 
 - add seats to a table
 - remove seats
+- generate seats for all tables from current table capacities
+- generate seats and topology for one selected table only
+- warn that bulk seat generation replaces all currently defined seats
+- warn that per-table generation replaces the current seats and topology for that table
 - define adjacency between seats
 - optionally generate a standard round-table adjacency structure
 - review seat topology grouped by table
+- remove generated left adjacency, generated right adjacency, or both around a seat while keeping the seat itself in place
+- see clearly when a generated topology has been adjusted manually and now contains open gaps
 
 ### Section 6: Seating rules
 
@@ -193,6 +216,7 @@ Allows:
 - assign optional weight to preferences if supported
 - review current rule list
 - delete existing rules
+- express layered planning logic such as one custom group needing a dedicated table while a family group is only preferred to stay together
 
 ### Section 7: Solve and results
 
@@ -244,6 +268,7 @@ The page must validate at least the following.
 - every seat must belong to exactly one table
 - seat adjacency must reference existing seats
 - seat mode must not be enabled without usable seat definitions
+- bulk seat generation requires every table to have a positive maximum capacity
 - in seat-aware mode, the effective table capacity is determined by usable seat count
 - if explicit table capacity and seat count are both present, they must match or trigger a validation warning or error
 
@@ -325,9 +350,15 @@ It should not expose generic terms such as Item, Group, Container, Position, con
 
 - A user can create guests, groups, and tables from the wedding page.
 - A user can assign guests to families or custom groups.
+- A user can assign one guest to multiple overlapping groups such as a family and a groom-side friend group.
 - A user can define hard same-table and separate-table rules using wedding wording.
 - A user can define soft table preferences when supported by the solver.
 - A user can enable seat-aware mode and define seat adjacency.
+- A user can choose a planner-facing table shape such as round, square, or rectangle.
+- A user can generate seats for all tables from table capacities after acknowledging that existing seats will be deleted and recreated.
+- A user can generate seats and default topology for one table only after acknowledging that the table's current seats will be replaced.
+- A user can remove the generated left adjacency, right adjacency, or both for a seat without deleting the seat itself.
+- A user can delete a generated seat without the app silently reconnecting its former neighbors.
 - A user can define next-to and not-next-to rules only when seat-aware mode is active.
 - Group-level separation rules propagate consistently through the normalized model.
 - The wedding page writes data using the generic core model rather than custom wedding-only structures.

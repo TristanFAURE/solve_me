@@ -606,6 +606,10 @@ body {
   gap: 10px;
 }
 
+.entity-meta-form-row-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .entity-small-input {
   min-width: 0;
 }
@@ -886,6 +890,97 @@ body {
   margin-top: 16px;
 }
 
+.wedding-rule-grid {
+  margin-top: 16px;
+}
+
+.wedding-hero-card {
+  background: linear-gradient(135deg, #ffffff 0%, #fff7ed 45%, #fdf2f8 100%);
+  border-color: #fdba74;
+}
+
+.wedding-command-bar {
+  border-color: #fbcfe8;
+  box-shadow: 0 10px 24px rgba(244, 114, 182, 0.08);
+}
+
+.wedding-meta-card,
+.wedding-create-toolbar,
+.wedding-panel {
+  border-color: #fed7aa;
+}
+
+.wedding-entity-card {
+  background: linear-gradient(180deg, #ffffff 0%, #fffaf5 100%);
+}
+
+.wedding-checkbox-list dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wedding-card-accent-guest {
+  border-color: #fecdd3;
+}
+
+.wedding-card-accent-group {
+  border-color: #fdba74;
+}
+
+.wedding-card-accent-table {
+  border-color: #fcd34d;
+}
+
+.wedding-card-accent-seat {
+  border-color: #c4b5fd;
+}
+
+.wedding-table-meta-grid,
+.wedding-seat-meta-grid,
+.wedding-neighbor-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.wedding-table-meta-grid,
+.wedding-seat-meta-grid {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.wedding-neighbor-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.wedding-neighbor-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  background: #fff7ed;
+}
+
+.wedding-neighbor-card.is-open-gap {
+  border-style: dashed;
+  background: #fffaf5;
+}
+
+.wedding-seat-tools .button-row button,
+.wedding-neighbor-card button {
+  margin-top: 0;
+}
+
+.is-disabled-card {
+  opacity: 0.65;
+}
+
+.split-select-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 8px;
+}
+
 @media (max-width: 960px) {
   .workspace-layout {
     grid-template-columns: 1fr;
@@ -919,9 +1014,11 @@ body {
 
   .workspace-columns.two-up,
   .entity-meta-form-row,
+  .entity-meta-form-row-three,
   .inline-field-grid,
   .audit-section-grid,
-  .validation-panel-grid {
+  .validation-panel-grid,
+  .wedding-neighbor-grid {
     grid-template-columns: 1fr;
   }
 

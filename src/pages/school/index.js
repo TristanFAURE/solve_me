@@ -492,15 +492,43 @@ function renderClassesPanel(project) {
   `;
 }
 
+function getSchoolRuleLabel(kind) {
+  if (kind === CONSTRAINT_KINDS.MUST_SHARE_CONTAINER) {
+    return 'Must be in the same class';
+  }
+
+  if (kind === CONSTRAINT_KINDS.MUST_NOT_SHARE_CONTAINER) {
+    return 'Must not be in the same class';
+  }
+
+  return kind;
+}
+
+function getSchoolPreferenceLabel(kind) {
+  if (kind === PREFERENCE_KINDS.PREFER_SHARE_CONTAINER) {
+    return 'Prefer to be in the same class';
+  }
+
+  if (kind === PREFERENCE_KINDS.PREFER_SEPARATE_CONTAINERS) {
+    return 'Prefer to be in different classes';
+  }
+
+  return kind;
+}
+
+function renderSchoolParticipant(participants, participantId) {
+  return escapeHtml(findNodeLabel(participants, participantId));
+}
+
 function renderRulePanels(project, editor) {
   const participants = [...getStudents(project), ...getTeachers(project)];
   const hardRuleRows = project.constraints.length === 0
     ? '<tr><td colspan="4" class="muted-text">No school hard rules yet.</td></tr>'
     : project.constraints.map((constraint, index) => `
         <tr>
-          <td>${escapeHtml(constraint.kind)}</td>
-          <td>${escapeHtml(findNodeLabel(participants, constraint.leftRef.id))}</td>
-          <td>${escapeHtml(findNodeLabel(participants, constraint.rightRef.id))}</td>
+          <td>${escapeHtml(getSchoolRuleLabel(constraint.kind))}</td>
+          <td>${renderSchoolParticipant(participants, constraint.leftRef.id)}</td>
+          <td>${renderSchoolParticipant(participants, constraint.rightRef.id)}</td>
           <td><button type="button" data-action="remove-school-constraint" data-index="${index}">Remove</button></td>
         </tr>
       `).join('');
@@ -509,9 +537,9 @@ function renderRulePanels(project, editor) {
     ? '<tr><td colspan="5" class="muted-text">No school preferences yet.</td></tr>'
     : project.preferences.map((preference, index) => `
         <tr>
-          <td>${escapeHtml(preference.kind)}</td>
-          <td>${escapeHtml(findNodeLabel(participants, preference.leftRef.id))}</td>
-          <td>${escapeHtml(findNodeLabel(participants, preference.rightRef.id))}</td>
+          <td>${escapeHtml(getSchoolPreferenceLabel(preference.kind))}</td>
+          <td>${renderSchoolParticipant(participants, preference.leftRef.id)}</td>
+          <td>${renderSchoolParticipant(participants, preference.rightRef.id)}</td>
           <td>${escapeHtml(preference.weight)}</td>
           <td><button type="button" data-action="remove-school-preference" data-index="${index}">Remove</button></td>
         </tr>

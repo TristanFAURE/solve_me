@@ -52,6 +52,30 @@ function createSchoolPageEditorState() {
   };
 }
 
+function createWeddingPageEditorState() {
+  return {
+    draftGuestLabel: '',
+    draftGroupLabel: '',
+    draftTableLabel: '',
+    draftTableMinCapacity: '0',
+    draftTableMaxCapacity: '',
+    draftSeatLabel: '',
+    draftSeatTableId: '',
+    draftConstraintKind: 'mustShareContainer',
+    draftConstraintLeftKind: 'item',
+    draftConstraintLeftId: '',
+    draftConstraintRightKind: 'item',
+    draftConstraintRightId: '',
+    draftPreferenceKind: 'preferShareContainer',
+    draftPreferenceLeftKind: 'item',
+    draftPreferenceLeftId: '',
+    draftPreferenceRightKind: 'item',
+    draftPreferenceRightId: '',
+    draftPreferenceWeight: '1',
+    activeSolutionIndex: 0,
+  };
+}
+
 export function createAppState() {
   return {
     currentProject: createEmptyProject({ viewHint: VIEW_HINTS.GENERIC }),
@@ -66,6 +90,14 @@ export function createAppState() {
     },
     schoolPage: {
       editor: createSchoolPageEditorState(),
+      message: '',
+      lastValidation: null,
+      lastNormalizedProject: null,
+      lastSolverResult: null,
+      validationPanelExpanded: false,
+    },
+    weddingPage: {
+      editor: createWeddingPageEditorState(),
       message: '',
       lastValidation: null,
       lastNormalizedProject: null,

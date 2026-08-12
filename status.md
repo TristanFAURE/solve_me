@@ -510,6 +510,20 @@ Completed:
 - implemented the current school workbook import baseline: `Students` sheet required, `Classes` sheet optional, `Student` column required, and optional `Level`, `Class`, `Teachers`, `Accepted levels`, and `Capacity` enrichment when present
 - updated `docs/03-feature-school-class-creation.md` and `docs/05-feature-import-export.md` to document school workbook import behavior and its relationship to canonical JSON persistence
 - verified the school import/export changes with a successful `npm run build`
+- created `src/pages/wedding/validateWeddingProject.js` with wedding-language validation for missing guests/tables, insufficient capacity, guest-without-group warnings, seat-mode-without-seats cases, seat-capacity mismatch warnings, and adjacency rules used outside seat-aware mode
+- replaced the wedding placeholder page in `src/pages/wedding/index.js` with a first real wedding planner panel using wedding-only language, overlapping groups, guest/group/table/seat editing, planner-friendly hard rules and preferences, and shared validate → normalize → solve integration 💍
+- updated the wedding panel copy and rule builder to make it explicit that groups are not family-only and that one guest can belong to several overlapping groups such as `Family A` and `Groom bachelors`
+- extended `src/app/state.js` with dedicated `weddingPage` editor/workflow state for wedding validation, normalization, solve results, and active-solution navigation
+- added wedding-specific styling in `src/styles.css` for the new planner panel, overlapping-group authoring UI, split operand selectors, and wedding color accents
+- updated `docs/02-feature-wedding-table-plan.md` to require overlapping non-family groups explicitly and to capture layered planning examples such as one group being table-driven while another remains a soft togetherness preference
+- verified the wedding panel baseline with a successful `npm run build`
+- updated school and wedding rule/preference tables so they display domain-language labels instead of raw internal kinds such as `preferShareContainer`, making entries understandable to teachers and wedding planners
+- added a wedding bulk seat-generation action that recreates all seats from table capacities using `table name + index` labels after an explicit warning/confirmation, and updated the wedding spec accordingly
+- created `src/pages/wedding/tableTopology.js` to centralize wedding table shape metadata, generated seat ordering, perimeter-ring topology generation, and generated left/right adjacency removal helpers
+- extended the wedding page so tables now carry planner-facing shapes (`round`, `square`, `rectangle`), support per-table seat+topology generation, and expose seat cards with generated left/right neighbor controls plus a `remove both sides` action that opens gaps without deleting the seat
+- updated wedding validation to warn when generated topology has been manually adjusted and would be replaced by regeneration
+- updated wedding styling and spec text to reflect shape-aware generation, per-table regeneration, manual gap creation, and the no-auto-reconnect rule for seat deletion
+- verified the new wedding topology generation changes with a successful `npm run build`
 
 Review findings:
 
@@ -580,6 +594,15 @@ Fixes applied:
 - decided the school workbook should currently include three sheets: `Summary`, `Classes`, and `Students`
 - decided school workbook import should intentionally be simpler than full JSON persistence: it is a convenience entry format, not a lossless representation of all school-page features
 - decided the current workbook import baseline should accept workbooks with only a `Students` sheet, infer placeholder classes from the optional `Class` column there, and enrich classes further only if a `Classes` sheet is present
+- decided the wedding planner UI must treat groups as a general overlapping concept, not as a family-only concept, so one guest may simultaneously belong to multiple planner-defined groups such as family, groom-side friends, colleagues, or other social clusters
+- decided the first wedding panel should prioritize table-first authoring with optional seat-aware mode, wedding-only wording, and readable overlapping-group rules before adding spreadsheet export
+- decided wedding and school relationship/rule tables must always prefer domain-facing phrases over raw internal generic kind names so operational users do not see solver jargon such as `preferShareContainer`
+- decided wedding bulk seat generation should be destructive by design for predictability: it clears all existing seats and seat adjacencies, warns the user first, and recreates seats from each table maximum capacity using deterministic `table label + index` naming
+- decided wedding table shapes should remain page-facing metadata only, while generated topology still uses the generic Position + adjacency model
+- decided the MVP wedding topology generator should treat round, square, and rectangle as perimeter-ordered rings, preserving shape metadata now for future display/layout improvements later
+- decided generated seat order should remain stable metadata so the UI can keep consistent left/right semantics even after manual topology edits
+- decided removing a generated left or right side should remove only that adjacency edge and keep the seat in place, while deleting a seat should remove the seat and its adjacency links without silently reconnecting neighbors
+- decided per-table regeneration should be supported alongside bulk regeneration so planners can rework one table without replacing every other table
 
 Files modified:
 
@@ -593,7 +616,11 @@ Files modified:
 - `src/app/state.js`
 - `src/pages/generic/index.js`
 - `docs/01-feature-generic-constraint-page.md`
+- `docs/02-feature-wedding-table-plan.md`
 - `src/pages/wedding/index.js`
+- `src/pages/wedding/tableTopology.js`
+- `src/pages/school/index.js`
+- `src/pages/wedding/validateWeddingProject.js`
 - `src/pages/school/index.js`
 - `src/pages/school/exportSchoolSolution.js`
 - `src/pages/school/importSchoolWorkbook.js`
@@ -684,6 +711,12 @@ Open questions or risks:
 - school-specific validation now covers several important authoring mistakes in school wording, but it is still page-local and not yet extracted into a broader reusable domain-validation boundary
 - the school spreadsheet-export requirement now has an initial implementation with real `.xlsx` generation, but the wedding page still needs its own export implementation and the long-term shared export abstraction is still open
 - the new school workbook import currently covers teacher-facing roster/class entry only; it does not attempt to reconstruct hard rules, soft preferences, or every page-level setting from spreadsheets
+- the wedding page now has a first real planner-facing panel, and generated topology can now be edited by removing generated left/right/both adjacencies per seat; however, arbitrary manual seat-to-seat adjacency creation helpers and richer topology authoring shortcuts still need implementation
+- the current wedding generator stores square and rectangle as shape metadata but still produces the same perimeter-ring adjacency pattern as round tables, so later work may still need more geometric display semantics such as side grouping or facing relationships
+- bulk seat generation currently derives seat counts strictly from each table maximum capacity, so tables with no maximum or with only minimum capacity cannot use the generator until that capacity data is completed
+- wedding and school pages still need a broader audit of labels and column headings beyond rule/preference tables to ensure no remaining generic or internal naming leaks into domain-facing tables
+- the wedding page currently reuses the generic shared solution rendering without a richer wedding-specific display context yet, so later work may still improve wording or seat-aware presentation details
+- the wedding panel currently allows group-level adjacency operands in the UI even though validation blocks unsupported cases; the rule builder may later need operand filtering that dynamically narrows choices for adjacency rules
 - the added `xlsx` dependency increases bundle size noticeably, and the new workbook import/export path pushed the built JS chunk above Vite's 500 kB warning threshold, so future work may need lazy-loading or chunking improvements
 - any future repository push still depends on local GitHub authentication being available in the execution environment; remote push may fail without user credentials or token configuration
 - if the repository name changes from `solve_me`, the GitHub Pages deployment will break until `vite.config.js` is updated to match the new repository path
@@ -696,9 +729,9 @@ Open questions or risks:
 
 Recommended next step:
 
-- manually test the new school `Import Excel` and `Export Excel` actions together with representative teacher-facing workbooks, including the minimal case with only a `Students` sheet and the richer case with both `Students` and `Classes`
-- then decide whether workbook parsing and workbook generation should be lazy-loaded or split into shared spreadsheet utility boundaries to reduce bundle weight before extending spreadsheet support further
-- after that, implement the wedding solved-result export using the same real `.xlsx` approach unless a domain-specific reason suggests a different workbook layout
+- manually test the new wedding shape-aware generation flow in the browser, including bulk and per-table regeneration, generated left/right neighbor controls, `remove both sides`, and deletion without auto-reconnect
+- then implement arbitrary seat-to-seat adjacency authoring helpers in the wedding page so planners can add custom links after generation, ideally with table-scoped selectors and a future `close gap` convenience action
+- after that, continue auditing remaining domain wording leaks and later add wedding solved-result export using the same real `.xlsx` approach as the school page unless a domain-specific workbook layout suggests a better structure
 
 ## Restart prompt for a new context
 
@@ -728,7 +761,7 @@ Important points to preserve:
 - hard constraints and soft preferences must remain distinct
 
 Current expected task:
-- use the editable generic modeling page, refreshed board-style CSS, sticky command bar, updated generic-page spec, current Enter-key submission behavior, label-first audit tables, working container-mode solver, extracted shared solution-display components, richer validated storage feedback, refined school-domain mapping, implemented school panel, wired school pipeline, and newly implemented school `.xlsx` import/export baseline as the baseline
+- use the editable generic modeling page, refreshed board-style CSS, sticky command bar, updated generic-page spec, current Enter-key submission behavior, label-first audit tables, working container-mode solver, extracted shared solution-display components, richer validated storage feedback, refined school-domain mapping, implemented school panel, wired school pipeline, newly implemented school `.xlsx` import/export baseline, and new wedding shape-aware topology generation baseline as the baseline
 - preserve the repository metadata and hosting files: `LICENSE` is MIT, `README.md` documents onboarding and deployment, `vite.config.js` sets the GitHub Pages base path, and `.github/workflows/deploy.yml` performs the Pages build/deploy
 - keep the current validate -> normalize -> solve sequence intact
 - treat the current storage version policy in `src/storage/modelVersioning.js` as the baseline: missing/unparseable versions warn, same-major minor-or-patch differences warn, unsupported major-version differences fail, and too-old versions fail
@@ -741,7 +774,10 @@ Current expected task:
 - deployment is already confirmed working at `https://tristanfaure.github.io/solve_me/`
 - first, manually test the new school `.xlsx` import/export round-trip with representative teacher-facing workbooks and confirm both minimal and richer workbook variants behave as expected
 - then decide whether workbook parsing/generation should share a common spreadsheet utility layer or be lazy-loaded before extending the same pattern to other pages
-- then consider whether to give the wedding page a comparable real editor and pipeline integration pattern alongside its own solved-result export
+- use `src/pages/wedding/tableTopology.js`, `src/pages/wedding/index.js`, and `src/pages/wedding/validateWeddingProject.js` as the current wedding baseline: tables now have planner-facing shapes (`round`, `square`, `rectangle`), bulk and per-table seat generation build generic perimeter-ring adjacency, generated seats keep stable `seatIndex` metadata for left/right controls, planners can remove generated left/right/both adjacencies without deleting the seat, deleting a seat does not auto-reconnect neighbors, and manually adjusted generated topology is surfaced back to the user as a warning and table status
+- first, manually test the new wedding shape-aware generation flow in the browser and confirm bulk/per-table regeneration, left/right removal, `remove both sides`, and delete-seat gap behavior all match expectations
+- then implement arbitrary seat-to-seat adjacency authoring helpers and possibly a `close gap` convenience action for generated topologies
+- then consider whether workbook parsing/generation should share a common spreadsheet utility layer before extending a real `.xlsx` export flow to the wedding page
 
 Note:
 - dependencies are now installed and `npm run build` succeeds in the current environment
