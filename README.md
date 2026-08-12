@@ -3,6 +3,7 @@
 A lightweight web application for modeling and solving constraint-assignment problems in the browser.
 
 This project provides:
+
 - a **generic constraint modeling page**
 - a **school class creation page**
 - groundwork for a **wedding table planning page**
@@ -14,6 +15,7 @@ This project provides:
 This is an early MVP built with **plain JavaScript**, **HTML**, **CSS**, and **Vite**.
 
 The app already includes:
+
 - editable generic modeling UI
 - validation -> normalization -> solve workflow
 - local draft save/load
@@ -58,6 +60,45 @@ npm run build
 npm run preview
 ```
 
+## Deploy to GitHub Pages
+
+This repository is configured to deploy automatically to **GitHub Pages** using **GitHub Actions**.
+
+### Included automation
+
+- `vite.config.js` sets the correct base path for the repository site
+- `.github/workflows/deploy.yml` builds and deploys the `dist/` folder to GitHub Pages on every push to `main`
+- `.gitignore` excludes local build and dependency folders
+
+### Deploy flow
+
+Every push to `main` will:
+
+- install dependencies with `npm ci`
+- build the app with `npm run build`
+- publish the built site to GitHub Pages
+
+The expected site URL is:
+
+```text
+https://tristanfaure.github.io/solve_me/
+```
+
+### Manual local check before pushing
+
+```bash
+npm run build
+npm run preview
+```
+
+Then push your changes:
+
+```bash
+git add .
+git commit -m "Add GitHub Pages deployment"
+git push origin main
+```
+
 ## Project structure
 
 ```text
@@ -74,6 +115,7 @@ src/
 ## Current capabilities
 
 ### Generic page
+
 - Create and edit items, groups, containers, and positions
 - Define containments, adjacencies, hard constraints, and preferences
 - Validate projects before solving
@@ -81,6 +123,7 @@ src/
 - Run the first solver adapter and inspect solutions
 
 ### School page
+
 - Author students, teachers, levels, and classes in school-facing language
 - Define accepted levels and teacher-class links
 - Validate school-specific authoring rules
@@ -90,6 +133,7 @@ src/
 ## Solver scope in the current MVP
 
 The first solver adapter currently focuses on a narrow but working subset:
+
 - container-mode assignment
 - maximum-capacity enforcement
 - must-share constraints
@@ -101,6 +145,7 @@ Some advanced semantics are modeled in the app but not yet fully solved by the f
 ## Documentation
 
 Architecture and feature notes are available in `docs/`, including:
+
 - core architecture
 - domain semantics
 - generic page behavior
@@ -109,6 +154,16 @@ Architecture and feature notes are available in `docs/`, including:
 - solution display expectations
 
 The project continuity log is maintained in `status.md`.
+
+## Notes for this repository
+
+Because this project is hosted from a repository named `solve_me`, Vite is configured with the GitHub Pages base path:
+
+```text
+/solve_me/
+```
+
+If you ever rename the repository, you must also update `vite.config.js`.
 
 ## License
 
