@@ -61,6 +61,28 @@ function createGenericPageState() {
     draftPreferenceRightId: '',
     draftPreferenceGroupId: '',
     draftPreferenceWeight: '1',
+    draftFixedAssignmentItemId: '',
+    draftFixedAssignmentDestinationKind: NODE_KINDS.CONTAINER,
+    draftFixedAssignmentDestinationId: '',
+    draftForbiddenAssignmentItemId: '',
+    draftForbiddenAssignmentDestinationKind: NODE_KINDS.CONTAINER,
+    draftForbiddenAssignmentDestinationId: '',
+    draftAssignmentExclusionItemId: '',
+    draftAssignmentExclusionDestinationKind: NODE_KINDS.POSITION,
+    draftAssignmentExclusionFirstDestinationId: '',
+    draftAssignmentExclusionSecondDestinationId: '',
+    draftAssignmentCountUpperBoundItemId: '',
+    draftAssignmentCountUpperBoundDestinationKind: NODE_KINDS.POSITION,
+    draftAssignmentCountUpperBoundDestinationIds: '',
+    draftAssignmentCountUpperBoundMaxCount: '1',
+    draftSoftAssignmentScoreItemId: '',
+    draftSoftAssignmentScoreDestinationKind: NODE_KINDS.CONTAINER,
+    draftSoftAssignmentScoreDestinationId: '',
+    draftSoftAssignmentScoreValue: '1',
+    draftSoftItemCountTargetItemId: '',
+    draftSoftItemCountTargetDestinationKind: NODE_KINDS.POSITION,
+    draftSoftItemCountTargetDestinationIds: '',
+    draftSoftItemCountTargetValue: '1',
     activeSolutionIndex: 0,
     storageMessage: '',
     storageError: '',
@@ -122,6 +144,31 @@ function renderEntityOptions(project, kinds, selectedId) {
   ].join('');
 }
 
+function getDestinationKindOptions(project) {
+  return [
+    { value: NODE_KINDS.CONTAINER, label: 'Container' },
+    { value: NODE_KINDS.POSITION, label: 'Position', disabled: project.assignmentMode !== ASSIGNMENT_MODES.POSITION },
+  ];
+}
+
+function renderDestinationOptions(project, selectedKind) {
+  return getDestinationKindOptions(project)
+    .map((option) => `<option value="${escapeHtml(option.value)}"${option.value === selectedKind ? ' selected' : ''}${option.disabled ? ' disabled' : ''}>${escapeHtml(option.label)}</option>`)
+    .join('');
+}
+
+function renderDestinationEntityOptions(project, selectedKind, selectedId) {
+  const destinationKinds = selectedKind === NODE_KINDS.POSITION ? [NODE_KINDS.POSITION] : [NODE_KINDS.CONTAINER];
+  return renderEntityOptions(project, destinationKinds, selectedId);
+}
+
+function parseIdList(value) {
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 function renderStorageFeedback(editor) {
   const storageWarnings = Array.isArray(editor.storageWarnings) ? editor.storageWarnings : [];
 
@@ -174,8 +221,8 @@ function renderCommandBar(editor, expanded = true) {
     <section class="command-bar-card${expanded ? '' : ' is-collapsed'}">
       <div class="command-bar-header">
         <div class="command-bar-copy">
-          <p class="eyebrow">Command bar</p>
-          <h2>Workflow actions</h2>
+          <p class="eyebrow">🧰 Command bar</p>
+          <h2>Workflow actions ✨</h2>
           <p class="muted-text">Keep validation and solve actions available while you move through the workspace.</p>
         </div>
         <button type="button" class="command-bar-button command-bar-toggle" data-action="toggle-command-bar" aria-expanded="${expanded ? 'true' : 'false'}">
@@ -318,15 +365,15 @@ function renderWorkspace(project, editor) {
         <section class="card workspace-toolbar">
           <div class="toolbar-head">
             <div>
-              <p class="eyebrow">Workspace</p>
-              <h2>Visual editor</h2>
+              <p class="eyebrow">🎨 Workspace</p>
+              <h2>Visual editor 🪄</h2>
               <p class="muted-text">Create and edit entities directly in boards so your existing model stays visible while you work.</p>
             </div>
           </div>
 
           <div class="creation-grid">
             <article class="creation-card accent-item">
-              <h3>Add item</h3>
+              <h3>Add item 🧩</h3>
               <label>
                 <span>Label</span>
                 <input type="text" name="draftItemLabel" value="${escapeHtml(editor.draftItemLabel)}" />
@@ -335,7 +382,7 @@ function renderWorkspace(project, editor) {
             </article>
 
             <article class="creation-card accent-group">
-              <h3>Add group</h3>
+              <h3>Add group 👥</h3>
               <label>
                 <span>Label</span>
                 <input type="text" name="draftGroupLabel" value="${escapeHtml(editor.draftGroupLabel)}" />
@@ -344,7 +391,7 @@ function renderWorkspace(project, editor) {
             </article>
 
             <article class="creation-card accent-container">
-              <h3>Add container</h3>
+              <h3>Add container 📦</h3>
               <label>
                 <span>Label</span>
                 <input type="text" name="draftContainerLabel" value="${escapeHtml(editor.draftContainerLabel)}" />
@@ -363,7 +410,7 @@ function renderWorkspace(project, editor) {
             </article>
 
             <article class="creation-card accent-position">
-              <h3>Add position</h3>
+              <h3>Add position 📍</h3>
               <label>
                 <span>Label</span>
                 <input type="text" name="draftPositionLabel" value="${escapeHtml(editor.draftPositionLabel)}" />
@@ -421,7 +468,7 @@ function renderWorkspace(project, editor) {
 
       <aside class="workspace-sidebar">
         <section class="card sticky-panel">
-          <h2>Project metadata</h2>
+          <h2>Project metadata 📝</h2>
           <div class="form-grid two-columns">
             <label>
               <span>Title</span>
@@ -444,10 +491,10 @@ function renderWorkspace(project, editor) {
         </section>
 
         <section class="card sticky-panel">
-          <h2>Relations and rules</h2>
+          <h2>Relations and rules 🔗</h2>
           <div class="stacked-form-sections">
             <div>
-              <h3>Containment</h3>
+              <h3>Containment 🫶</h3>
               <div class="form-grid two-columns compact-form-grid">
                 <label>
                   <span>From kind</span>
@@ -472,7 +519,7 @@ function renderWorkspace(project, editor) {
             </div>
 
             <div>
-              <h3>Adjacency</h3>
+              <h3>Adjacency ↔️</h3>
               <div class="form-grid two-columns compact-form-grid">
                 <label>
                   <span>From position</span>
@@ -489,7 +536,7 @@ function renderWorkspace(project, editor) {
             </div>
 
             <div>
-              <h3>Hard constraint</h3>
+              <h3>Hard constraint ⛓️</h3>
               <div class="form-grid two-columns compact-form-grid">
                 <label>
                   <span>Constraint kind</span>
@@ -532,7 +579,7 @@ function renderWorkspace(project, editor) {
             </div>
 
             <div>
-              <h3>Soft preference</h3>
+              <h3>Soft preference 💡</h3>
               <div class="form-grid two-columns compact-form-grid">
                 <label>
                   <span>Preference kind</span>
@@ -575,6 +622,152 @@ function renderWorkspace(project, editor) {
               </div>
               <div class="button-row top-gap">
                 <button type="button" data-action="add-preference">Add soft preference</button>
+              </div>
+            </div>
+
+            <div>
+              <h3>Fixed assignment 📌</h3>
+              <div class="form-grid two-columns compact-form-grid">
+                <label>
+                  <span>Item</span>
+                  <select name="draftFixedAssignmentItemId">${renderEntityOptions(project, [NODE_KINDS.ITEM], editor.draftFixedAssignmentItemId)}</select>
+                </label>
+                <label>
+                  <span>Destination kind</span>
+                  <select name="draftFixedAssignmentDestinationKind">${renderDestinationOptions(project, editor.draftFixedAssignmentDestinationKind)}</select>
+                </label>
+                <label class="full-width">
+                  <span>Destination</span>
+                  <select name="draftFixedAssignmentDestinationId">${renderDestinationEntityOptions(project, editor.draftFixedAssignmentDestinationKind, editor.draftFixedAssignmentDestinationId)}</select>
+                </label>
+              </div>
+              <div class="button-row top-gap">
+                <button type="button" data-action="add-fixed-assignment">Add fixed assignment</button>
+              </div>
+            </div>
+
+            <div>
+              <h3>Forbidden assignment 🚫</h3>
+              <div class="form-grid two-columns compact-form-grid">
+                <label>
+                  <span>Item</span>
+                  <select name="draftForbiddenAssignmentItemId">${renderEntityOptions(project, [NODE_KINDS.ITEM], editor.draftForbiddenAssignmentItemId)}</select>
+                </label>
+                <label>
+                  <span>Destination kind</span>
+                  <select name="draftForbiddenAssignmentDestinationKind">${renderDestinationOptions(project, editor.draftForbiddenAssignmentDestinationKind)}</select>
+                </label>
+                <label class="full-width">
+                  <span>Destination</span>
+                  <select name="draftForbiddenAssignmentDestinationId">${renderDestinationEntityOptions(project, editor.draftForbiddenAssignmentDestinationKind, editor.draftForbiddenAssignmentDestinationId)}</select>
+                </label>
+              </div>
+              <div class="button-row top-gap">
+                <button type="button" data-action="add-forbidden-assignment">Add forbidden assignment</button>
+              </div>
+            </div>
+
+            <div>
+              <h3>Assignment exclusion 🧱</h3>
+              <p class="muted-text">Prevent one item from taking both listed destinations. Most useful in position mode.</p>
+              <div class="form-grid two-columns compact-form-grid">
+                <label>
+                  <span>Item</span>
+                  <select name="draftAssignmentExclusionItemId">${renderEntityOptions(project, [NODE_KINDS.ITEM], editor.draftAssignmentExclusionItemId)}</select>
+                </label>
+                <label>
+                  <span>Destination kind</span>
+                  <select name="draftAssignmentExclusionDestinationKind">${renderDestinationOptions(project, editor.draftAssignmentExclusionDestinationKind)}</select>
+                </label>
+                <label>
+                  <span>First destination</span>
+                  <select name="draftAssignmentExclusionFirstDestinationId">${renderDestinationEntityOptions(project, editor.draftAssignmentExclusionDestinationKind, editor.draftAssignmentExclusionFirstDestinationId)}</select>
+                </label>
+                <label>
+                  <span>Second destination</span>
+                  <select name="draftAssignmentExclusionSecondDestinationId">${renderDestinationEntityOptions(project, editor.draftAssignmentExclusionDestinationKind, editor.draftAssignmentExclusionSecondDestinationId)}</select>
+                </label>
+              </div>
+              <div class="button-row top-gap">
+                <button type="button" data-action="add-assignment-exclusion">Add assignment exclusion</button>
+              </div>
+            </div>
+
+            <div>
+              <h3>Assignment count upper bound 🔢</h3>
+              <p class="muted-text">Limit how many assignments one item may take across a listed destination set.</p>
+              <div class="form-grid two-columns compact-form-grid">
+                <label>
+                  <span>Item</span>
+                  <select name="draftAssignmentCountUpperBoundItemId">${renderEntityOptions(project, [NODE_KINDS.ITEM], editor.draftAssignmentCountUpperBoundItemId)}</select>
+                </label>
+                <label>
+                  <span>Destination kind</span>
+                  <select name="draftAssignmentCountUpperBoundDestinationKind">${renderDestinationOptions(project, editor.draftAssignmentCountUpperBoundDestinationKind)}</select>
+                </label>
+                <label>
+                  <span>Destination ids</span>
+                  <input type="text" name="draftAssignmentCountUpperBoundDestinationIds" value="${escapeHtml(editor.draftAssignmentCountUpperBoundDestinationIds)}" placeholder="id-1, id-2" />
+                </label>
+                <label>
+                  <span>Max count</span>
+                  <input type="number" name="draftAssignmentCountUpperBoundMaxCount" value="${escapeHtml(editor.draftAssignmentCountUpperBoundMaxCount)}" min="0" step="1" />
+                </label>
+              </div>
+              <div class="button-row top-gap">
+                <button type="button" data-action="add-assignment-count-upper-bound">Add count bound</button>
+              </div>
+            </div>
+
+            <div>
+              <h3>Soft assignment score ⭐</h3>
+              <p class="muted-text">Author preferred item-to-destination scores now so future optimizing solvers can use them.</p>
+              <div class="form-grid two-columns compact-form-grid">
+                <label>
+                  <span>Item</span>
+                  <select name="draftSoftAssignmentScoreItemId">${renderEntityOptions(project, [NODE_KINDS.ITEM], editor.draftSoftAssignmentScoreItemId)}</select>
+                </label>
+                <label>
+                  <span>Destination kind</span>
+                  <select name="draftSoftAssignmentScoreDestinationKind">${renderDestinationOptions(project, editor.draftSoftAssignmentScoreDestinationKind)}</select>
+                </label>
+                <label>
+                  <span>Destination</span>
+                  <select name="draftSoftAssignmentScoreDestinationId">${renderDestinationEntityOptions(project, editor.draftSoftAssignmentScoreDestinationKind, editor.draftSoftAssignmentScoreDestinationId)}</select>
+                </label>
+                <label>
+                  <span>Score</span>
+                  <input type="number" name="draftSoftAssignmentScoreValue" value="${escapeHtml(editor.draftSoftAssignmentScoreValue)}" step="1" />
+                </label>
+              </div>
+              <div class="button-row top-gap">
+                <button type="button" data-action="add-soft-assignment-score">Add soft score</button>
+              </div>
+            </div>
+
+            <div>
+              <h3>Soft item count target 🎯</h3>
+              <p class="muted-text">Capture preferred assignment counts for one item across a destination set.</p>
+              <div class="form-grid two-columns compact-form-grid">
+                <label>
+                  <span>Item</span>
+                  <select name="draftSoftItemCountTargetItemId">${renderEntityOptions(project, [NODE_KINDS.ITEM], editor.draftSoftItemCountTargetItemId)}</select>
+                </label>
+                <label>
+                  <span>Destination kind</span>
+                  <select name="draftSoftItemCountTargetDestinationKind">${renderDestinationOptions(project, editor.draftSoftItemCountTargetDestinationKind)}</select>
+                </label>
+                <label>
+                  <span>Destination ids</span>
+                  <input type="text" name="draftSoftItemCountTargetDestinationIds" value="${escapeHtml(editor.draftSoftItemCountTargetDestinationIds)}" placeholder="id-1, id-2" />
+                </label>
+                <label>
+                  <span>Target count</span>
+                  <input type="number" name="draftSoftItemCountTargetValue" value="${escapeHtml(editor.draftSoftItemCountTargetValue)}" min="0" step="1" />
+                </label>
+              </div>
+              <div class="button-row top-gap">
+                <button type="button" data-action="add-soft-item-count-target">Add soft target</button>
               </div>
             </div>
           </div>
@@ -694,9 +887,50 @@ function renderConstraintList(project, title, entries, removeAction, showWeight 
   return renderAuditSection(title, showWeight ? 'Soft rule set' : 'Hard rule set', content);
 }
 
+function renderSimpleEntryList(title, eyebrow, entries, columns, rowRenderer, removeAction) {
+  const rows = entries.length === 0
+    ? `<tr><td colspan="${columns.length + 1}" class="muted-text">None yet.</td></tr>`
+    : entries.map((entry, index) => `
+    <tr>
+      ${rowRenderer(entry)}
+      <td><button type="button" data-action="${removeAction}" data-index="${index}">Remove</button></td>
+    </tr>
+    `).join('');
+
+  const content = `
+    <div class="section-summary-row">
+      <span class="section-count-pill">${entries.length} entries</span>
+      <span class="muted-text">Review authored solver-facing entries below.</span>
+    </div>
+    <div class="table-wrap audit-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            ${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join('')}
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    `;
+
+  return renderAuditSection(title, eyebrow, content);
+}
+
+function renderDestinationIdLabel(project, destinationId) {
+  const nodes = [project.containers, project.positions].flat();
+  const node = nodes.find((entry) => entry.id === destinationId);
+  if (!node) {
+    return destinationId;
+  }
+
+  return `${node.label} (${node.kind}:${node.id})`;
+}
+
 function renderNormalizationSummary(normalizedProject) {
   if (!normalizedProject) {
-    return renderAuditSection('Normalization', 'Derived model', '<p class="muted-text">Run validation first. If validation succeeds, normalization output will appear here.</p>');
+    return renderAuditSection('Normalization 🧪', 'Derived model', '<p class="muted-text">Run validation first. If validation succeeds, normalization output will appear here.</p>');
   }
 
   const adjacencyEntries = Object.entries(normalizedProject.derived?.adjacencyMap ?? {});
@@ -707,6 +941,12 @@ function renderNormalizationSummary(normalizedProject) {
     <dl class="summary-grid audit-summary-grid">
       <div><dt>Normalized constraints</dt><dd>${normalizedProject.constraints.length}</dd></div>
       <div><dt>Normalized preferences</dt><dd>${normalizedProject.preferences.length}</dd></div>
+      <div><dt>Assignment exclusions</dt><dd>${normalizedProject.assignmentExclusions?.length ?? 0}</dd></div>
+      <div><dt>Assignment count bounds</dt><dd>${normalizedProject.assignmentCountUpperBounds?.length ?? 0}</dd></div>
+      <div><dt>Fixed assignments</dt><dd>${normalizedProject.fixedAssignments?.length ?? 0}</dd></div>
+      <div><dt>Forbidden assignments</dt><dd>${normalizedProject.forbiddenAssignments?.length ?? 0}</dd></div>
+      <div><dt>Soft assignment scores</dt><dd>${normalizedProject.softAssignmentScores?.length ?? 0}</dd></div>
+      <div><dt>Soft item count targets</dt><dd>${normalizedProject.softItemCountTargets?.length ?? 0}</dd></div>
       <div><dt>Adjacency nodes</dt><dd>${adjacencyEntries.length}</dd></div>
       <div><dt>Must-share components</dt><dd>${componentCount}</dd></div>
     </dl>
@@ -716,7 +956,7 @@ function renderNormalizationSummary(normalizedProject) {
     </details>
     `;
 
-  return renderAuditSection('Normalization', 'Derived model', content);
+  return renderAuditSection('Normalization 🧪', 'Derived model', content);
 }
 
 function setStorageMessage(state, message, options = {}) {
@@ -1074,6 +1314,115 @@ function addPreferenceEntry(state) {
   resetDerivedState(state);
 }
 
+function addFixedAssignment(state) {
+  const editor = state.genericPage.editor;
+  if (!editor.draftFixedAssignmentItemId || !editor.draftFixedAssignmentDestinationId) {
+    return;
+  }
+
+  state.genericPage.project.fixedAssignments.push({
+    itemId: editor.draftFixedAssignmentItemId,
+    destinationId: editor.draftFixedAssignmentDestinationId,
+  });
+
+  editor.draftFixedAssignmentItemId = '';
+  editor.draftFixedAssignmentDestinationId = '';
+  resetDerivedState(state);
+}
+
+function addForbiddenAssignment(state) {
+  const editor = state.genericPage.editor;
+  if (!editor.draftForbiddenAssignmentItemId || !editor.draftForbiddenAssignmentDestinationId) {
+    return;
+  }
+
+  state.genericPage.project.forbiddenAssignments.push({
+    itemId: editor.draftForbiddenAssignmentItemId,
+    destinationId: editor.draftForbiddenAssignmentDestinationId,
+  });
+
+  editor.draftForbiddenAssignmentItemId = '';
+  editor.draftForbiddenAssignmentDestinationId = '';
+  resetDerivedState(state);
+}
+
+function addAssignmentExclusion(state) {
+  const editor = state.genericPage.editor;
+  if (!editor.draftAssignmentExclusionItemId || !editor.draftAssignmentExclusionFirstDestinationId || !editor.draftAssignmentExclusionSecondDestinationId) {
+    return;
+  }
+
+  state.genericPage.project.assignmentExclusions.push({
+    itemId: editor.draftAssignmentExclusionItemId,
+    firstDestinationId: editor.draftAssignmentExclusionFirstDestinationId,
+    secondDestinationId: editor.draftAssignmentExclusionSecondDestinationId,
+  });
+
+  editor.draftAssignmentExclusionItemId = '';
+  editor.draftAssignmentExclusionFirstDestinationId = '';
+  editor.draftAssignmentExclusionSecondDestinationId = '';
+  resetDerivedState(state);
+}
+
+function addAssignmentCountUpperBound(state) {
+  const editor = state.genericPage.editor;
+  const maxCount = Number.parseInt(editor.draftAssignmentCountUpperBoundMaxCount || '1', 10);
+  const destinationIds = parseIdList(editor.draftAssignmentCountUpperBoundDestinationIds);
+  if (!editor.draftAssignmentCountUpperBoundItemId || destinationIds.length === 0) {
+    return;
+  }
+
+  state.genericPage.project.assignmentCountUpperBounds.push({
+    itemId: editor.draftAssignmentCountUpperBoundItemId,
+    destinationIds,
+    maxCount: Number.isNaN(maxCount) ? 1 : maxCount,
+  });
+
+  editor.draftAssignmentCountUpperBoundItemId = '';
+  editor.draftAssignmentCountUpperBoundDestinationIds = '';
+  editor.draftAssignmentCountUpperBoundMaxCount = '1';
+  resetDerivedState(state);
+}
+
+function addSoftAssignmentScore(state) {
+  const editor = state.genericPage.editor;
+  const score = Number.parseInt(editor.draftSoftAssignmentScoreValue || '1', 10);
+  if (!editor.draftSoftAssignmentScoreItemId || !editor.draftSoftAssignmentScoreDestinationId) {
+    return;
+  }
+
+  state.genericPage.project.softAssignmentScores.push({
+    itemId: editor.draftSoftAssignmentScoreItemId,
+    destinationId: editor.draftSoftAssignmentScoreDestinationId,
+    score: Number.isNaN(score) ? 1 : score,
+  });
+
+  editor.draftSoftAssignmentScoreItemId = '';
+  editor.draftSoftAssignmentScoreDestinationId = '';
+  editor.draftSoftAssignmentScoreValue = '1';
+  resetDerivedState(state);
+}
+
+function addSoftItemCountTarget(state) {
+  const editor = state.genericPage.editor;
+  const targetCount = Number.parseInt(editor.draftSoftItemCountTargetValue || '1', 10);
+  const destinationIds = parseIdList(editor.draftSoftItemCountTargetDestinationIds);
+  if (!editor.draftSoftItemCountTargetItemId || destinationIds.length === 0) {
+    return;
+  }
+
+  state.genericPage.project.softItemCountTargets.push({
+    itemId: editor.draftSoftItemCountTargetItemId,
+    destinationIds,
+    targetCount: Number.isNaN(targetCount) ? 1 : targetCount,
+  });
+
+  editor.draftSoftItemCountTargetItemId = '';
+  editor.draftSoftItemCountTargetDestinationIds = '';
+  editor.draftSoftItemCountTargetValue = '1';
+  resetDerivedState(state);
+}
+
 function bindEnterToAction(root, state) {
   const enterActionMap = {
     draftItemLabel: addItem,
@@ -1083,6 +1432,11 @@ function bindEnterToAction(root, state) {
     draftContainerMaxCapacity: addContainer,
     draftPositionLabel: addPosition,
     draftPreferenceWeight: addPreferenceEntry,
+    draftAssignmentCountUpperBoundDestinationIds: addAssignmentCountUpperBound,
+    draftAssignmentCountUpperBoundMaxCount: addAssignmentCountUpperBound,
+    draftSoftAssignmentScoreValue: addSoftAssignmentScore,
+    draftSoftItemCountTargetDestinationIds: addSoftItemCountTarget,
+    draftSoftItemCountTargetValue: addSoftItemCountTarget,
   };
 
   root.querySelectorAll('input[type="text"][name], input[type="number"][name]').forEach((element) => {
@@ -1134,6 +1488,34 @@ function bindEnterToAction(root, state) {
         event.preventDefault();
         addPreferenceEntry(state);
         renderGenericPage(root, state);
+        return;
+      }
+
+      if (name === 'draftFixedAssignmentDestinationId') {
+        event.preventDefault();
+        addFixedAssignment(state);
+        renderGenericPage(root, state);
+        return;
+      }
+
+      if (name === 'draftForbiddenAssignmentDestinationId') {
+        event.preventDefault();
+        addForbiddenAssignment(state);
+        renderGenericPage(root, state);
+        return;
+      }
+
+      if (name === 'draftAssignmentExclusionFirstDestinationId' || name === 'draftAssignmentExclusionSecondDestinationId') {
+        event.preventDefault();
+        addAssignmentExclusion(state);
+        renderGenericPage(root, state);
+        return;
+      }
+
+      if (name === 'draftSoftAssignmentScoreDestinationId') {
+        event.preventDefault();
+        addSoftAssignmentScore(state);
+        renderGenericPage(root, state);
       }
     });
   });
@@ -1154,6 +1536,21 @@ function removeNodeAndReferences(state, collectionName, index) {
   state.genericPage.project.topologies = state.genericPage.project.topologies.filter((relation) => !matchesRef(relation.from) && !matchesRef(relation.to));
   state.genericPage.project.constraints = state.genericPage.project.constraints.filter((entry) => !matchesRef(entry.leftRef) && !matchesRef(entry.rightRef));
   state.genericPage.project.preferences = state.genericPage.project.preferences.filter((entry) => !matchesRef(entry.leftRef) && !matchesRef(entry.rightRef));
+  if (removed.kind === NODE_KINDS.ITEM) {
+    state.genericPage.project.fixedAssignments = state.genericPage.project.fixedAssignments.filter((entry) => entry.itemId !== removed.id);
+    state.genericPage.project.forbiddenAssignments = state.genericPage.project.forbiddenAssignments.filter((entry) => entry.itemId !== removed.id);
+    state.genericPage.project.assignmentExclusions = state.genericPage.project.assignmentExclusions.filter((entry) => entry.itemId !== removed.id);
+    state.genericPage.project.assignmentCountUpperBounds = state.genericPage.project.assignmentCountUpperBounds.filter((entry) => entry.itemId !== removed.id);
+    state.genericPage.project.softAssignmentScores = state.genericPage.project.softAssignmentScores.filter((entry) => entry.itemId !== removed.id);
+    state.genericPage.project.softItemCountTargets = state.genericPage.project.softItemCountTargets.filter((entry) => entry.itemId !== removed.id);
+  }
+
+  state.genericPage.project.fixedAssignments = state.genericPage.project.fixedAssignments.filter((entry) => entry.destinationId !== removed.id);
+  state.genericPage.project.forbiddenAssignments = state.genericPage.project.forbiddenAssignments.filter((entry) => entry.destinationId !== removed.id);
+  state.genericPage.project.assignmentExclusions = state.genericPage.project.assignmentExclusions.filter((entry) => entry.firstDestinationId !== removed.id && entry.secondDestinationId !== removed.id);
+  state.genericPage.project.assignmentCountUpperBounds = state.genericPage.project.assignmentCountUpperBounds.filter((entry) => !(entry.destinationIds ?? []).includes(removed.id));
+  state.genericPage.project.softAssignmentScores = state.genericPage.project.softAssignmentScores.filter((entry) => entry.destinationId !== removed.id);
+  state.genericPage.project.softItemCountTargets = state.genericPage.project.softItemCountTargets.filter((entry) => !(entry.destinationIds ?? []).includes(removed.id));
   resetDerivedState(state);
 }
 
@@ -1318,6 +1715,12 @@ function bindActions(root, state) {
     'add-topology': addTopology,
     'add-constraint': addConstraintEntry,
     'add-preference': addPreferenceEntry,
+    'add-fixed-assignment': addFixedAssignment,
+    'add-forbidden-assignment': addForbiddenAssignment,
+    'add-assignment-exclusion': addAssignmentExclusion,
+    'add-assignment-count-upper-bound': addAssignmentCountUpperBound,
+    'add-soft-assignment-score': addSoftAssignmentScore,
+    'add-soft-item-count-target': addSoftItemCountTarget,
   };
 
   root.querySelectorAll('[data-action]').forEach((element) => {
@@ -1468,6 +1871,54 @@ function bindActions(root, state) {
         renderGenericPage(root, state);
       });
     }
+
+    if (action === 'remove-fixed-assignment') {
+      element.addEventListener('click', () => {
+        removeAt(state.genericPage.project.fixedAssignments, Number.parseInt(element.dataset.index, 10));
+        resetDerivedState(state);
+        renderGenericPage(root, state);
+      });
+    }
+
+    if (action === 'remove-forbidden-assignment') {
+      element.addEventListener('click', () => {
+        removeAt(state.genericPage.project.forbiddenAssignments, Number.parseInt(element.dataset.index, 10));
+        resetDerivedState(state);
+        renderGenericPage(root, state);
+      });
+    }
+
+    if (action === 'remove-assignment-exclusion') {
+      element.addEventListener('click', () => {
+        removeAt(state.genericPage.project.assignmentExclusions, Number.parseInt(element.dataset.index, 10));
+        resetDerivedState(state);
+        renderGenericPage(root, state);
+      });
+    }
+
+    if (action === 'remove-assignment-count-upper-bound') {
+      element.addEventListener('click', () => {
+        removeAt(state.genericPage.project.assignmentCountUpperBounds, Number.parseInt(element.dataset.index, 10));
+        resetDerivedState(state);
+        renderGenericPage(root, state);
+      });
+    }
+
+    if (action === 'remove-soft-assignment-score') {
+      element.addEventListener('click', () => {
+        removeAt(state.genericPage.project.softAssignmentScores, Number.parseInt(element.dataset.index, 10));
+        resetDerivedState(state);
+        renderGenericPage(root, state);
+      });
+    }
+
+    if (action === 'remove-soft-item-count-target') {
+      element.addEventListener('click', () => {
+        removeAt(state.genericPage.project.softItemCountTargets, Number.parseInt(element.dataset.index, 10));
+        resetDerivedState(state);
+        renderGenericPage(root, state);
+      });
+    }
   });
 }
 
@@ -1478,19 +1929,31 @@ export function renderGenericPage(root, state) {
   const editor = state.genericPage.editor;
 
   root.innerHTML = renderPageShell({
-    title: 'Generic Constraint Page',
-    description: 'Create and edit a generic project, then run validation, normalization, and the solver adapter workflow.',
+    title: 'Generic Constraint Page 🎛️',
+    description: 'Create and edit a generic project, then run validation, normalization, and the solver adapter workflow — with a slightly friendlier vibe ✨',
     body: `
     ${renderCommandBar(editor, state.genericPage.commandBarExpanded !== false)}
     ${renderProjectSummary(state.genericPage.project)}
     ${renderWorkspace(state.genericPage.project, editor)}
     <section class="audit-section-grid">
-      ${renderRelationList(state.genericPage.project, 'Containments', state.genericPage.project.containments, 'remove-containment')}
-      ${renderRelationList(state.genericPage.project, 'Topologies', state.genericPage.project.topologies, 'remove-topology')}
+      ${renderRelationList(state.genericPage.project, 'Containments 🫶', state.genericPage.project.containments, 'remove-containment')}
+      ${renderRelationList(state.genericPage.project, 'Topologies 🗺️', state.genericPage.project.topologies, 'remove-topology')}
     </section>
     <section class="audit-section-grid">
-      ${renderConstraintList(state.genericPage.project, 'Hard constraints', state.genericPage.project.constraints, 'remove-constraint')}
-      ${renderConstraintList(state.genericPage.project, 'Soft preferences', state.genericPage.project.preferences, 'remove-preference', true)}
+      ${renderConstraintList(state.genericPage.project, 'Hard constraints ⛓️', state.genericPage.project.constraints, 'remove-constraint')}
+      ${renderConstraintList(state.genericPage.project, 'Soft preferences 💡', state.genericPage.project.preferences, 'remove-preference', true)}
+    </section>
+    <section class="audit-section-grid">
+      ${renderSimpleEntryList('Fixed assignments 📌', 'Solver-facing assignments', state.genericPage.project.fixedAssignments, ['Item', 'Destination'], (entry) => `<td>${escapeHtml(getEntityLabel(state.genericPage.project, NODE_KINDS.ITEM, entry.itemId))}</td><td>${escapeHtml(renderDestinationIdLabel(state.genericPage.project, entry.destinationId))}</td>`, 'remove-fixed-assignment')}
+      ${renderSimpleEntryList('Forbidden assignments 🚫', 'Solver-facing assignments', state.genericPage.project.forbiddenAssignments, ['Item', 'Destination'], (entry) => `<td>${escapeHtml(getEntityLabel(state.genericPage.project, NODE_KINDS.ITEM, entry.itemId))}</td><td>${escapeHtml(renderDestinationIdLabel(state.genericPage.project, entry.destinationId))}</td>`, 'remove-forbidden-assignment')}
+    </section>
+    <section class="audit-section-grid">
+      ${renderSimpleEntryList('Assignment exclusions 🧱', 'Solver-facing assignments', state.genericPage.project.assignmentExclusions, ['Item', 'First destination', 'Second destination'], (entry) => `<td>${escapeHtml(getEntityLabel(state.genericPage.project, NODE_KINDS.ITEM, entry.itemId))}</td><td>${escapeHtml(renderDestinationIdLabel(state.genericPage.project, entry.firstDestinationId))}</td><td>${escapeHtml(renderDestinationIdLabel(state.genericPage.project, entry.secondDestinationId))}</td>`, 'remove-assignment-exclusion')}
+      ${renderSimpleEntryList('Assignment count upper bounds 🔢', 'Solver-facing assignments', state.genericPage.project.assignmentCountUpperBounds, ['Item', 'Destination ids', 'Max count'], (entry) => `<td>${escapeHtml(getEntityLabel(state.genericPage.project, NODE_KINDS.ITEM, entry.itemId))}</td><td>${escapeHtml((entry.destinationIds ?? []).map((id) => renderDestinationIdLabel(state.genericPage.project, id)).join(', '))}</td><td>${escapeHtml(entry.maxCount)}</td>`, 'remove-assignment-count-upper-bound')}
+    </section>
+    <section class="audit-section-grid">
+      ${renderSimpleEntryList('Soft assignment scores ⭐', 'Future optimization inputs', state.genericPage.project.softAssignmentScores, ['Item', 'Destination', 'Score'], (entry) => `<td>${escapeHtml(getEntityLabel(state.genericPage.project, NODE_KINDS.ITEM, entry.itemId))}</td><td>${escapeHtml(renderDestinationIdLabel(state.genericPage.project, entry.destinationId))}</td><td>${escapeHtml(entry.score)}</td>`, 'remove-soft-assignment-score')}
+      ${renderSimpleEntryList('Soft item count targets 🎯', 'Future optimization inputs', state.genericPage.project.softItemCountTargets, ['Item', 'Destination ids', 'Target count'], (entry) => `<td>${escapeHtml(getEntityLabel(state.genericPage.project, NODE_KINDS.ITEM, entry.itemId))}</td><td>${escapeHtml((entry.destinationIds ?? []).map((id) => renderDestinationIdLabel(state.genericPage.project, id)).join(', '))}</td><td>${escapeHtml(entry.targetCount)}</td>`, 'remove-soft-item-count-target')}
     </section>
     ${renderValidationPanel(validation, {
       hasComputedSolution: Boolean(state.genericPage.lastSolverResult),
@@ -1499,8 +1962,8 @@ export function renderGenericPage(root, state) {
     <section class="audit-section-grid">
       ${renderNormalizationSummary(state.genericPage.lastNormalizedProject)}
       ${renderSolutionPanel(state.genericPage.project, state.genericPage.lastSolverResult, editor.activeSolutionIndex, {
-      panelTitle: 'Solve result',
-      panelEyebrow: 'Generic solver output',
+      panelTitle: 'Solve result 🎉',
+      panelEyebrow: 'Generic solver output 🤖',
       emptyResultMessage: 'Run solve after validation to see generic assignments.',
       unsatMessage: 'The solver completed but found no valid assignment satisfying the current hard constraints.',
       noAssignmentsMessage: 'No concrete assignments are available for this generic solver result.',

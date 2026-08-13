@@ -4,34 +4,41 @@
 
 Latest meaningful completed step:
 
-- separated generic, school, and wedding into independent per-page drafts so authored data no longer leaks across business domains when switching routes
-- kept the generic page as its own draft rather than a cross-domain live object shared by specialized pages
-- preserved the earlier domain-configurable solve-result panel behavior
-- verified the full Vitest suite still passes after the draft isolation refactor
+- updated the generic page to reflect the evolved solver/model shape instead of only the earlier constraint/preference surface
+- added authoring and audit coverage for:
+  - fixed assignments
+  - forbidden assignments
+  - assignment exclusions
+  - assignment count upper bounds
+  - soft assignment scores
+  - soft item count targets
+- expanded the normalization summary so the generic page now reports these newer normalized arrays as part of solver handoff visibility
+- ran a syntax check on `src/pages/generic/index.js` with `node --check`
 
 ## Files touched most recently
 
-- `src/app/state.js`
-- `src/pages/school/index.js`
-- `src/pages/wedding/index.js`
 - `src/pages/generic/index.js`
 - `docs/status/02-generic-page.md`
-- `docs/status/03-school-page.md`
-- `docs/status/04-wedding-page.md`
 - `docs/status/05-recent-work-and-next-steps.md`
 - `status.md`
 
 ## Recommended next step
 
-1. add real event-staffing domain validation and UI/workflow integration:
+1. initialize real event staffing default state in `src/app/state.js`
+2. replace the placeholder `src/pages/eventStaffing/index.js` with a planner-facing editor shell
+3. implement the event section first using:
+   - compact summary rows
+   - expand/collapse details
+   - filtering/search hooks
+   - nested event-group requirement editing
+4. then add real event-staffing domain validation and UI/workflow integration:
    - reject or report malformed staffing-domain inputs before transform use in planner-facing flows
    - surface staffing-specific validation results alongside generic validation, following the school/wedding pattern
    - add a planner-facing page/workflow that uses the transform before solve
-2. add remaining solver support still needed for the staffing planner’s documented soft goals:
+5. then add remaining solver support still needed for the staffing planner’s documented soft goals:
    - soft scoring behavior for `softAssignmentScores[]`
    - soft target behavior for `softItemCountTargets[]`
-3. wire the transform into an actual event-staffing page or planner-facing workflow
-4. then run broader manual testing and assess performance on larger staffing-style scenarios
+6. then run broader manual testing and assess performance on larger staffing-style scenarios
 
 ## Key open risks
 

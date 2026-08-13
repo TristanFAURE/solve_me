@@ -10,6 +10,13 @@ Implemented capabilities include:
 - editable project metadata
 - editable items, groups, containers, and positions
 - editable containments, adjacencies, hard constraints, and soft preferences
+- editable solver-facing assignment inputs:
+  - fixed assignments
+  - forbidden assignments
+  - assignment exclusions
+  - assignment count upper bounds
+  - soft assignment scores
+  - soft item count targets
 - inline editing and remove actions
 - sticky command bar for core workflow actions
 - validate -> normalize -> solve wiring
@@ -25,6 +32,7 @@ The page currently includes:
 - Enter-key submission for simple create flows and selected relation/rule forms
 - label-first audit tables that still preserve ids for traceability
 - lower audit/result sections for validation, normalization, and solving
+- dedicated authored-entry audit tables for the newer solver-facing arrays so generic authoring now reflects the evolved normalized model shape
 
 ## Storage and import/export baseline
 
@@ -67,7 +75,8 @@ The generic page now uses shared solution components for:
 
 - generic editor state still uses direct in-memory mutation and re-rendering
 - lower sections are still somewhat debug/audit oriented
-- soft preferences are stored and shown but not optimized by the solver
+- some newer solver-facing authoring inputs currently use id-list text entry for destination sets rather than richer multi-select widgets
+- soft preferences, soft assignment scores, and soft item count targets are stored and shown but not optimized by the current first solver adapter
 - larger scenarios may eventually need stronger UI organization or progressive disclosure
 
 ## Primary files

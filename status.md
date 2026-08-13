@@ -87,22 +87,23 @@ Preserve these project rules:
 
 ## Latest update
 
-- separated generic, school, and wedding into independent per-page drafts so business-domain data no longer leaks when switching routes
-- kept the generic editor as its own draft instead of a shared live object used by specialized pages
-- preserved the earlier domain-configurable solve-result panel behavior
-- verified `npm test` passes with 63/63 tests green after the draft-isolation refactor
+- updated the generic page so it reflects newer solver/model fields beyond basic constraints and preferences
+- added generic-page authoring and authored-entry audit coverage for:
+  - `fixedAssignments[]`
+  - `forbiddenAssignments[]`
+  - `assignmentExclusions[]`
+  - `assignmentCountUpperBounds[]`
+  - `softAssignmentScores[]`
+  - `softItemCountTargets[]`
+- expanded the generic normalization summary so these newer normalized arrays are visible before solver handoff
+- ran `node --check src/pages/generic/index.js`
 
 Files modified:
 
-- `status.md`
-- `docs/status/02-generic-page.md`
-- `docs/status/03-school-page.md`
-- `docs/status/04-wedding-page.md`
-- `docs/status/05-recent-work-and-next-steps.md`
-- `src/app/state.js`
-- `src/pages/school/index.js`
-- `src/pages/wedding/index.js`
 - `src/pages/generic/index.js`
+- `docs/status/02-generic-page.md`
+- `docs/status/05-recent-work-and-next-steps.md`
+- `status.md`
 
 ## Restart prompt for a new context
 
