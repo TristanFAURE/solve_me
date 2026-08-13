@@ -82,12 +82,29 @@ body {
   backdrop-filter: blur(10px);
 }
 
+.command-bar-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+}
+
+.command-bar-copy {
+  min-width: 0;
+}
+
 .command-bar-copy h2 {
   margin: 0;
 }
 
 .command-bar-copy .muted-text {
   margin: 6px 0 0;
+}
+
+.command-bar-toggle {
+  flex: 0 0 auto;
+  align-self: flex-start;
 }
 
 .command-bar-actions {
@@ -192,6 +209,13 @@ body {
 
 .command-bar-button-danger:hover {
   background: #ffe4e6;
+}
+
+.command-bar-card.is-collapsed .command-bar-copy .muted-text,
+.command-bar-card.is-collapsed .command-bar-actions,
+.command-bar-card.is-collapsed .command-bar-feedback,
+.command-bar-card.is-collapsed .storage-feedback {
+  display: none;
 }
 
 .command-bar-icon {
@@ -1082,6 +1106,10 @@ body {
     flex-direction: column;
   }
 
+  .command-bar-header {
+    align-items: flex-start;
+  }
+
   .compact-summary-grid {
     min-width: 0;
     width: 100%;
@@ -1101,6 +1129,35 @@ body {
 @media (max-width: 720px) {
   .app-shell {
     padding: 16px;
+  }
+
+  .command-bar-card {
+    padding: 14px;
+  }
+
+  .command-bar-header {
+    gap: 12px;
+  }
+
+  .command-bar-toggle {
+    width: auto;
+    min-width: 0;
+  }
+
+  .command-bar-card.is-collapsed {
+    padding-bottom: 12px;
+  }
+
+  .command-bar-card.is-collapsed .command-bar-header {
+    align-items: center;
+  }
+
+  .command-bar-card.is-collapsed .command-bar-copy .eyebrow {
+    margin-bottom: 4px;
+  }
+
+  .command-bar-card.is-collapsed .command-bar-copy h2 {
+    font-size: 16px;
   }
 
   .workspace-columns.two-up,

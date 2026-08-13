@@ -62,6 +62,7 @@ function ensureSchoolProject(state) {
       lastNormalizedProject: null,
       lastSolverResult: null,
       validationPanelExpanded: false,
+      commandBarExpanded: true,
     };
     return;
   }
@@ -155,15 +156,21 @@ function renderSummary(project) {
   `;
 }
 
-function renderSchoolCommandBar(result) {
+function renderSchoolCommandBar(result, expanded = true) {
   const canExport = result?.status === 'solved' && (result?.solutions?.length ?? 0) > 0;
 
   return `
-    <section class="command-bar-card">
-      <div class="command-bar-copy">
-        <p class="eyebrow">🏫 School workflow</p>
-        <h2>Validate, solve, and export</h2>
-        <p class="muted-text">Check the authored school scenario, derive a solver-ready model, run the current container-mode solver, and export the selected solution as an Excel workbook.</p>
+    <section class="command-bar-card${expanded ? '' : ' is-collapsed'}">
+      <div class="command-bar-header">
+        <div class="command-bar-copy">
+          <p class="eyebrow">🏫 School workflow</p>
+          <h2>Validate, solve, and export</h2>
+          <p class="muted-text">Check the authored school scenario, derive a solver-ready model, run the current container-mode solver, and export the selected solution as an Excel workbook.</p>
+        </div>
+        <button type="button" class="command-bar-button command-bar-toggle" data-action="toggle-school-command-bar" aria-expanded="${expanded ? 'true' : 'false'}">
+          <span class="command-bar-icon" aria-hidden="true">${expanded ? '▴' : '▾'}</span>
+          <span>${expanded ? 'Reduce' : 'Expand'}</span>
+        </button>
       </div>
       <div class="command-bar-actions">
         <button type="button" class="command-bar-button" data-action="validate-school">
@@ -1231,6 +1238,14 @@ function bindActions(root, state) {
       return;
     }
 
+    if (action === 'toggle-school-command-bar') {
+      element.addEventListener('click', () => {
+        state.schoolPage.commandBarExpanded = !state.schoolPage.commandBarExpanded;
+        renderSchoolPage(root, state);
+      });
+      return;
+    }
+
     if (action === 'validate-school') {
       element.addEventListener('click', () => {
         runSchoolValidationFlow(state);
@@ -1374,7 +1389,7 @@ export function renderSchoolPage(root, state) {
     title: 'School Class Creation',
     description: '🏫 Build school scenarios with students, teachers, levels, and classes while staying on the shared generic model.',
     body: `
-      ${renderSchoolCommandBar(state.schoolPage.lastSolverResult)}
+      ${renderSchoolCommandBar(state.schoolPage.lastSolverResult, state.schoolPage.commandBarExpanded !== false)}
       ${state.schoolPage.message ? `<section class="command-bar-feedback">${escapeHtml(state.schoolPage.message)}</section>` : ''}
       ${renderSummary(state.currentProject)}
       <section class="card sticky-panel">

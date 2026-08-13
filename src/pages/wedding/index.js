@@ -76,6 +76,7 @@ function ensureWeddingProject(state) {
       lastNormalizedProject: null,
       lastSolverResult: null,
       validationPanelExpanded: false,
+      commandBarExpanded: true,
     };
     return;
   }
@@ -270,15 +271,21 @@ function renderSummary(project) {
   `;
 }
 
-function renderCommandBar(result) {
+function renderCommandBar(result, expanded = true) {
   const canExport = result?.status === 'solved' && (result?.solutions?.length ?? 0) > 0;
 
   return `
-    <section class="command-bar-card wedding-command-bar">
-      <div class="command-bar-copy">
-        <p class="eyebrow">💒 Wedding workflow</p>
-        <h2>Validate, solve, import, and export</h2>
-        <p class="muted-text">Use groups for families, friend circles, wedding party clusters, or any other planner-friendly layer of seating logic.</p>
+    <section class="command-bar-card wedding-command-bar${expanded ? '' : ' is-collapsed'}">
+      <div class="command-bar-header">
+        <div class="command-bar-copy">
+          <p class="eyebrow">💒 Wedding workflow</p>
+          <h2>Validate, solve, import, and export</h2>
+          <p class="muted-text">Use groups for families, friend circles, wedding party clusters, or any other planner-friendly layer of seating logic.</p>
+        </div>
+        <button type="button" class="command-bar-button command-bar-toggle" data-action="toggle-wedding-command-bar" aria-expanded="${expanded ? 'true' : 'false'}">
+          <span class="command-bar-icon" aria-hidden="true">${expanded ? '▴' : '▾'}</span>
+          <span>${expanded ? 'Reduce' : 'Expand'}</span>
+        </button>
       </div>
       <div class="command-bar-actions">
         <button type="button" class="command-bar-button" data-action="validate-wedding">
@@ -1376,6 +1383,14 @@ function bindActions(root, state) {
   root.querySelectorAll('[data-action]').forEach((element) => {
     const action = element.dataset.action;
 
+    if (action === 'toggle-wedding-command-bar') {
+      element.addEventListener('click', () => {
+        state.weddingPage.commandBarExpanded = !state.weddingPage.commandBarExpanded;
+        renderWeddingPage(root, state);
+      });
+      return;
+    }
+
     if (action === 'add-wedding-guest') {
       element.addEventListener('click', () => {
         addWeddingGuest(state);
@@ -1797,7 +1812,7 @@ export function renderWeddingPage(root, state) {
     title: 'Wedding Table Plan',
     description: '💍 Build a wedding seating plan with guests, overlapping groups, tables, optional seats, and planner-friendly rules.',
     body: `
-      ${renderCommandBar(state.weddingPage.lastSolverResult)}
+      ${renderCommandBar(state.weddingPage.lastSolverResult, state.weddingPage.commandBarExpanded !== false)}
       ${state.weddingPage.message ? `<section class="command-bar-feedback">${escapeHtml(state.weddingPage.message)}</section>` : ''}
       ${renderSummary(state.currentProject)}
       ${renderMetadataPanel(state.currentProject)}

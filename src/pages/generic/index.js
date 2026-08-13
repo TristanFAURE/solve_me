@@ -81,6 +81,7 @@ function ensureProject(state) {
       lastNormalizedProject: null,
       lastSolverResult: null,
       validationPanelExpanded: false,
+      commandBarExpanded: true,
     };
     return;
   }
@@ -164,13 +165,19 @@ function renderStorageFeedback(editor) {
     `;
 }
 
-function renderCommandBar(editor) {
+function renderCommandBar(editor, expanded = true) {
   return `
-    <section class="command-bar-card">
-      <div class="command-bar-copy">
-        <p class="eyebrow">Command bar</p>
-        <h2>Workflow actions</h2>
-        <p class="muted-text">Keep validation and solve actions available while you move through the workspace.</p>
+    <section class="command-bar-card${expanded ? '' : ' is-collapsed'}">
+      <div class="command-bar-header">
+        <div class="command-bar-copy">
+          <p class="eyebrow">Command bar</p>
+          <h2>Workflow actions</h2>
+          <p class="muted-text">Keep validation and solve actions available while you move through the workspace.</p>
+        </div>
+        <button type="button" class="command-bar-button command-bar-toggle" data-action="toggle-command-bar" aria-expanded="${expanded ? 'true' : 'false'}">
+          <span class="command-bar-icon" aria-hidden="true">${expanded ? '▴' : '▾'}</span>
+          <span>${expanded ? 'Reduce' : 'Expand'}</span>
+        </button>
       </div>
       <div class="command-bar-actions">
         <button type="button" class="command-bar-button" data-action="validate" aria-label="Validate project">
@@ -1311,6 +1318,14 @@ function bindActions(root, state) {
 
   root.querySelectorAll('[data-action]').forEach((element) => {
     const action = element.dataset.action;
+    if (action === 'toggle-command-bar') {
+      element.addEventListener('click', () => {
+        state.genericPage.commandBarExpanded = !state.genericPage.commandBarExpanded;
+        renderGenericPage(root, state);
+      });
+      return;
+    }
+
     if (action === 'validate') {
       element.addEventListener('click', () => {
         runValidationFlow(state);
@@ -1462,7 +1477,7 @@ export function renderGenericPage(root, state) {
     title: 'Generic Constraint Page',
     description: 'Create and edit a generic project, then run validation, normalization, and the solver adapter workflow.',
     body: `
-    ${renderCommandBar(editor)}
+    ${renderCommandBar(editor, state.genericPage.commandBarExpanded !== false)}
     ${renderProjectSummary(state.currentProject)}
     ${renderWorkspace(state.currentProject, editor)}
     <section class="audit-section-grid">
