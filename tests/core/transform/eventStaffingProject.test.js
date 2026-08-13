@@ -35,7 +35,54 @@ function buildBaseDomainProject() {
   };
 }
 
-describe('transformEventStaffingProject', () => {
+function buildLargeOptionalStaffingProject({ eventCount = 12, peopleCount = 3 } = {}) {
+  return {
+    title: 'Large optional staffing',
+    events: Array.from({ length: eventCount }, (_, index) => ({
+      id: `E${index + 1}`,
+      label: `Event ${index + 1}`,
+      orderIndex: index + 1,
+    })),
+    groupTypes: [
+      { id: 'G1', label: 'Group 1' },
+      { id: 'G2', label: 'Group 2' },
+    ],
+    requirements: Array.from({ length: eventCount }, (_, index) => ([
+      { eventId: `E${index + 1}`, groupTypeId: 'G1', min: 0, max: 1 },
+      { eventId: `E${index + 1}`, groupTypeId: 'G2', min: 0, max: 1 },
+    ])).flat(),
+    people: Array.from({ length: peopleCount }, (_, index) => ({
+      id: `P${index + 1}`,
+      name: `Person ${index + 1}`,
+    })),
+  };
+}
+
+function buildLargeRequiredSingleGroupStaffingProject({ eventCount = 31, peopleCount = 3 } = {}) {
+  return {
+    title: 'Large required single-group staffing',
+    events: Array.from({ length: eventCount }, (_, index) => ({
+      id: `E${index + 1}`,
+      label: `Event ${index + 1}`,
+      orderIndex: index + 1,
+    })),
+    groupTypes: [
+      { id: 'G1', label: 'Group 1' },
+    ],
+    requirements: Array.from({ length: eventCount }, (_, index) => ({
+      eventId: `E${index + 1}`,
+      groupTypeId: 'G1',
+      min: 1,
+      max: 1,
+    })),
+    people: Array.from({ length: peopleCount }, (_, index) => ({
+      id: `P${index + 1}`,
+      name: `Person ${index + 1}`,
+    })),
+  };
+}
+
+describe('transformEventStaffingProject', { timeout: 10000 }, () => {
   it('compiles one-assignment-per-person-per-event exclusivity and eligibility into generic hard families', () => {
     const transformed = normalizeProject(transformEventStaffingProject({
       events: [
@@ -454,5 +501,33 @@ describe('transformEventStaffingProject', () => {
       ],
       targetCount: 1,
     });
+  });
+
+  it('keeps large required single-group staffing solvable with three people across thirty-one events', { timeout: 10000 }, () => {
+    const transformed = normalizeProject(transformEventStaffingProject(
+      buildLargeRequiredSingleGroupStaffingProject({ eventCount: 31, peopleCount: 3 }),
+    ));
+
+    const result = solve(transformed);
+
+    expect(result.status).toBe('solved');
+    expect(result.solutions.length).toBeGreaterThan(0);
+    expect(result.solutions[0]?.assignments).toHaveLength(31);
+    expect(new Set(result.solutions[0]?.assignments.map((assignment) => assignment.containerRef.id)).size).toBe(31);
+  });
+
+  it('solves a representative optional multi-assignment staffing case without blowing up', { timeout: 10000 }, () => {
+    const transformed = normalizeProject(transformEventStaffingProject(
+      buildLargeOptionalStaffingProject({ eventCount: 12, peopleCount: 3 }),
+    ));
+
+    const startedAt = performance.now();
+    const result = solve(transformed);
+    const wallClockMs = performance.now() - startedAt;
+
+    expect(result.status).toBe('solved');
+    expect(result.solutions.length).toBeGreaterThan(0);
+    expect(result.runtimeMs).toBeLessThan(1000);
+    expect(wallClockMs).toBeLessThan(1000);
   });
 });

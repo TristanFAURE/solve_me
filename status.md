@@ -85,12 +85,13 @@ Preserve these project rules:
 
 ## Latest update
 
-- strengthened staffing regression coverage for core single-group event semantics in the transform/solver path
-- added tests covering: two required events with one person, two required events with two people, optional-demand solvability with one person, and unsat behavior when a per-group hard maximum prevents one person from covering both required events
+- fixed a staffing solver false-unsat case for larger hard-minimum schedules by changing multi-assignment container search to cover required destinations directly instead of relying on the previous bounded subset enumeration
+- added a regression test covering the satisfied case of three people covering thirty-one required single-slot events, alongside the existing staffing single-group regressions
 - re-ran the targeted staffing transform regression file successfully
 
 Files modified:
 
+- `src/solver/adapters/firstSolverAdapter.js`
 - `tests/core/transform/eventStaffingProject.test.js`
 - `docs/status/05-recent-work-and-next-steps.md`
 - `status.md`

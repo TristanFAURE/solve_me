@@ -465,7 +465,7 @@ function getContainerMaxCapacity(container) {
   return container?.metadata?.maxCapacity;
 }
 
-function canStillSatisfyRemainingMinCapacities(containerLoads, containerIds, containerLookup, remainingDemand) {
+function canStillSatisfyRemainingMinCapacities(containerLoads, containerIds, containerLookup, remainingAssignmentCapacity) {
   let totalShortfall = 0;
 
   for (const containerId of containerIds) {
@@ -475,7 +475,7 @@ function canStillSatisfyRemainingMinCapacities(containerLoads, containerIds, con
     totalShortfall += Math.max(0, minCapacity - currentLoad);
   }
 
-  return totalShortfall <= remainingDemand;
+  return totalShortfall <= remainingAssignmentCapacity;
 }
 
 function allContainerMinCapacitiesSatisfied(containerLoads, containerIds, containerLookup) {
@@ -723,10 +723,286 @@ function canAddMultiAssignment({
   return true;
 }
 
+function getCandidateDestinationIdsForItem({
+  itemId,
+  destinationIds,
+  allowedContainerMap,
+  forbiddenContainerMap,
+  fixedAssignmentMap,
+  forbiddenAssignmentMap,
+  containerLoads,
+  containerLookup,
+  assignmentScoreMap,
+  targetScoreMap,
+}) {
+  return destinationIds
+    .filter((destinationId) => {
+      const forbiddenContainerIds = forbiddenContainerMap.get(itemId) ?? [];
+      const forbiddenDestinationIds = forbiddenAssignmentMap.get(itemId) ?? new Set();
+      const allowedContainerIds = allowedContainerMap.get(itemId);
+      const fixedDestinationIds = fixedAssignmentMap.get(itemId) ?? new Set();
+
+      if (forbiddenContainerIds.includes(destinationId) || forbiddenDestinationIds.has(destinationId)) {
+        return false;
+      }
+
+      if (Array.isArray(allowedContainerIds) && allowedContainerIds.length > 0 && !allowedContainerIds.includes(destinationId)) {
+        return false;
+      }
+
+      if (fixedDestinationIds.size > 0 && !fixedDestinationIds.has(destinationId)) {
+        return false;
+      }
+
+      const nextLoad = (containerLoads.get(destinationId) ?? 0) + 1;
+      const maxCapacity = getContainerMaxCapacity(containerLookup.get(destinationId));
+      if (maxCapacity !== null && maxCapacity !== undefined && nextLoad > maxCapacity) {
+        return false;
+      }
+
+      return true;
+    })
+    .slice()
+    .sort((leftDestinationId, rightDestinationId) => {
+      const leftScore = getIncrementalScoreForDestination(itemId, leftDestinationId, assignmentScoreMap, targetScoreMap);
+      const rightScore = getIncrementalScoreForDestination(itemId, rightDestinationId, assignmentScoreMap, targetScoreMap);
+      if (rightScore !== leftScore) {
+        return rightScore - leftScore;
+      }
+
+      const leftLoad = containerLoads.get(leftDestinationId) ?? 0;
+      const rightLoad = containerLoads.get(rightDestinationId) ?? 0;
+      if (leftLoad !== rightLoad) {
+        return leftLoad - rightLoad;
+      }
+
+      return String(leftDestinationId).localeCompare(String(rightDestinationId));
+    });
+}
+
+function getMaxAdditionalAssignmentsForItem(itemId, destinationIds, assignmentsByItemId, assignmentCountUpperBoundMap) {
+  const assignedDestinationIds = getAssignedDestinationIds(assignmentsByItemId, itemId);
+  const bounds = assignmentCountUpperBoundMap.get(itemId) ?? [];
+  let maxAdditionalAssignments = destinationIds.length;
+
+  bounds.forEach((bound) => {
+    const relevantDestinationIds = destinationIds.filter((destinationId) => bound.destinationIds.has(destinationId));
+    if (relevantDestinationIds.length === 0) {
+      return;
+    }
+
+    const currentCount = assignedDestinationIds.filter((assignedDestinationId) => bound.destinationIds.has(assignedDestinationId)).length;
+    maxAdditionalAssignments = Math.min(maxAdditionalAssignments, Math.max(0, bound.maxCount - currentCount));
+  });
+
+  return maxAdditionalAssignments;
+}
+
+function getRequiredDestinationIdsForItem(itemId, candidateDestinationIds, containerLoads, containerLookup) {
+  return candidateDestinationIds.filter((destinationId) => {
+    const minCapacity = getContainerMinCapacity(containerLookup.get(destinationId));
+    const currentLoad = containerLoads.get(destinationId) ?? 0;
+    return currentLoad < minCapacity;
+  });
+}
+
+function getGreedyAssignmentSubsetForItem({
+  itemId,
+  candidateDestinationIds,
+  assignmentsByItemId,
+  mustNotShareMap,
+  allowedContainerMap,
+  forbiddenContainerMap,
+  fixedAssignmentMap,
+  forbiddenAssignmentMap,
+  assignmentExclusionMap,
+  assignmentCountUpperBoundMap,
+  assignmentScoreMap,
+  targetScoreMap,
+  containerLoads,
+  containerLookup,
+}) {
+  const baseAssignedDestinationIds = getAssignedDestinationIds(assignmentsByItemId, itemId);
+  const fixedDestinationIds = fixedAssignmentMap.get(itemId) ?? new Set();
+  const candidateSet = new Set(candidateDestinationIds);
+  const unassignedFixedDestinationIds = [...fixedDestinationIds]
+    .filter((destinationId) => candidateSet.has(destinationId) && !baseAssignedDestinationIds.includes(destinationId));
+  const maxAdditionalAssignments = getMaxAdditionalAssignmentsForItem(
+    itemId,
+    candidateDestinationIds,
+    assignmentsByItemId,
+    assignmentCountUpperBoundMap,
+  );
+
+  if (unassignedFixedDestinationIds.length > maxAdditionalAssignments) {
+    return null;
+  }
+
+  const prioritizedDestinationIds = candidateDestinationIds
+    .map((destinationId) => {
+      const minCapacity = getContainerMinCapacity(containerLookup.get(destinationId));
+      const currentLoad = containerLoads.get(destinationId) ?? 0;
+      const remainingNeed = Math.max(0, minCapacity - currentLoad);
+      return {
+        destinationId,
+        remainingNeed,
+        score: getIncrementalScoreForDestination(itemId, destinationId, assignmentScoreMap, targetScoreMap),
+      };
+    })
+    .sort((left, right) => {
+      if (right.remainingNeed !== left.remainingNeed) {
+        return right.remainingNeed - left.remainingNeed;
+      }
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+      return String(left.destinationId).localeCompare(String(right.destinationId));
+    })
+    .map((entry) => entry.destinationId);
+
+  const provisionalAssignmentsByItemId = new Map(assignmentsByItemId);
+  const chosenDestinationIds = [];
+  let score = 0;
+
+  const tryAddDestination = (containerId) => {
+    if (chosenDestinationIds.includes(containerId)) {
+      return true;
+    }
+
+    if (!canAddMultiAssignment({
+      itemId,
+      containerId,
+      assignmentsByItemId: provisionalAssignmentsByItemId,
+      mustNotShareMap,
+      allowedContainerMap,
+      forbiddenContainerMap,
+      fixedAssignmentMap,
+      forbiddenAssignmentMap,
+      assignmentExclusionMap,
+      assignmentCountUpperBoundMap,
+    })) {
+      return false;
+    }
+
+    provisionalAssignmentsByItemId.set(itemId, [
+      ...(provisionalAssignmentsByItemId.get(itemId) ?? []),
+      containerId,
+    ]);
+    chosenDestinationIds.push(containerId);
+    score += getIncrementalScoreForDestination(itemId, containerId, assignmentScoreMap, targetScoreMap);
+    return true;
+  };
+
+  for (const containerId of unassignedFixedDestinationIds) {
+    if (!tryAddDestination(containerId)) {
+      return null;
+    }
+  }
+
+  const requiredDestinationIds = getRequiredDestinationIdsForItem(
+    itemId,
+    prioritizedDestinationIds,
+    containerLoads,
+    containerLookup,
+  );
+
+  for (const containerId of requiredDestinationIds) {
+    if (chosenDestinationIds.length >= maxAdditionalAssignments) {
+      break;
+    }
+    if (!tryAddDestination(containerId)) {
+      continue;
+    }
+  }
+
+  for (const containerId of prioritizedDestinationIds) {
+    if (chosenDestinationIds.length >= maxAdditionalAssignments) {
+      break;
+    }
+    tryAddDestination(containerId);
+  }
+
+  return {
+    destinationIds: chosenDestinationIds,
+    score,
+  };
+}
+
+function canStillCoverMinCapacitiesWithRemainingItems({
+  containerLoads,
+  destinationIds,
+  containerLookup,
+  remainingItemIds,
+  allowedContainerMap,
+  forbiddenContainerMap,
+  fixedAssignmentMap,
+  forbiddenAssignmentMap,
+  assignmentCountUpperBoundMap,
+}) {
+  const coverableCounts = new Map(destinationIds.map((destinationId) => [destinationId, 0]));
+
+  remainingItemIds.forEach((itemId) => {
+    const allowedContainerIds = allowedContainerMap.get(itemId);
+    const forbiddenContainerIds = forbiddenContainerMap.get(itemId) ?? [];
+    const fixedDestinationIds = fixedAssignmentMap.get(itemId) ?? new Set();
+    const forbiddenDestinationIds = forbiddenAssignmentMap.get(itemId) ?? new Set();
+    let itemCanCoverCount = 0;
+
+    destinationIds.forEach((destinationId) => {
+      if (forbiddenContainerIds.includes(destinationId) || forbiddenDestinationIds.has(destinationId)) {
+        return;
+      }
+
+      if (Array.isArray(allowedContainerIds) && allowedContainerIds.length > 0 && !allowedContainerIds.includes(destinationId)) {
+        return;
+      }
+
+      if (fixedDestinationIds.size > 0 && !fixedDestinationIds.has(destinationId)) {
+        return;
+      }
+
+      const maxCapacity = getContainerMaxCapacity(containerLookup.get(destinationId));
+      const currentLoad = containerLoads.get(destinationId) ?? 0;
+      if (maxCapacity !== null && maxCapacity !== undefined && currentLoad >= maxCapacity) {
+        return;
+      }
+
+      coverableCounts.set(destinationId, (coverableCounts.get(destinationId) ?? 0) + 1);
+      itemCanCoverCount += 1;
+    });
+
+    const bounds = assignmentCountUpperBoundMap.get(itemId) ?? [];
+    const globalMaxAssignments = bounds
+      .filter((bound) => bound.destinationIds.size === destinationIds.length)
+      .reduce((best, bound) => Math.min(best, bound.maxCount), Number.POSITIVE_INFINITY);
+
+    if (Number.isFinite(globalMaxAssignments) && itemCanCoverCount > globalMaxAssignments) {
+      let removable = itemCanCoverCount - globalMaxAssignments;
+      for (const destinationId of [...destinationIds].reverse()) {
+        if (removable <= 0) {
+          break;
+        }
+        const count = coverableCounts.get(destinationId) ?? 0;
+        if (count > 0) {
+          coverableCounts.set(destinationId, count - 1);
+          removable -= 1;
+        }
+      }
+    }
+  });
+
+  return destinationIds.every((destinationId) => {
+    const minCapacity = getContainerMinCapacity(containerLookup.get(destinationId));
+    const currentLoad = containerLoads.get(destinationId) ?? 0;
+    const remainingNeed = Math.max(0, minCapacity - currentLoad);
+    return (coverableCounts.get(destinationId) ?? 0) >= remainingNeed;
+  });
+}
+
 function searchMultipleContainerAssignments({
   itemIds,
   destinationIds,
-  assignmentIndex,
+  itemIndex,
   assignmentsByItemId,
   assignmentEntries,
   containerLoads,
@@ -746,7 +1022,7 @@ function searchMultipleContainerAssignments({
   assignmentScoreMap,
   targetScoreMap,
 }) {
-  if (assignmentIndex >= itemIds.length * destinationIds.length) {
+  if (itemIndex >= itemIds.length) {
     const allFixedAssignmentsSatisfied = [...fixedAssignmentMap.entries()].every(([itemId, requiredDestinationIds]) => {
       const assignedDestinationIds = new Set(getAssignedDestinationIds(assignmentsByItemId, itemId));
       return [...requiredDestinationIds].every((destinationId) => assignedDestinationIds.has(destinationId));
@@ -767,67 +1043,39 @@ function searchMultipleContainerAssignments({
     return;
   }
 
-  const itemId = itemIds[Math.floor(assignmentIndex / destinationIds.length)];
-  const containerId = destinationIds[assignmentIndex % destinationIds.length];
-
-  searchMultipleContainerAssignments({
-    itemIds,
-    destinationIds,
-    assignmentIndex: assignmentIndex + 1,
-    assignmentsByItemId,
-    assignmentEntries,
+  const remainingItemIds = itemIds.slice(itemIndex);
+  if (!canStillCoverMinCapacitiesWithRemainingItems({
     containerLoads,
+    destinationIds,
     containerLookup,
-    mustNotShareMap,
+    remainingItemIds,
     allowedContainerMap,
     forbiddenContainerMap,
     fixedAssignmentMap,
     forbiddenAssignmentMap,
-    assignmentExclusionMap,
-    assignmentCountUpperBoundMap,
-    itemLookup,
-    solutions,
-    maxSolutions,
-    model,
-    currentScore,
-    assignmentScoreMap,
-    targetScoreMap,
-  });
-
-  if (!canAddMultiAssignment({
-    itemId,
-    containerId,
-    assignmentsByItemId,
-    mustNotShareMap,
-    allowedContainerMap,
-    forbiddenContainerMap,
-    fixedAssignmentMap,
-    forbiddenAssignmentMap,
-    assignmentExclusionMap,
     assignmentCountUpperBoundMap,
   })) {
     return;
   }
 
-  const nextLoad = (containerLoads.get(containerId) ?? 0) + 1;
-  const maxCapacity = getContainerMaxCapacity(containerLookup.get(containerId));
-  if (maxCapacity !== null && maxCapacity !== undefined && nextLoad > maxCapacity) {
-    return;
-  }
-
-  const assignedDestinationIds = getAssignedDestinationIds(assignmentsByItemId, itemId);
-  assignmentsByItemId.set(itemId, [...assignedDestinationIds, containerId]);
-  assignmentEntries.push({ itemId, containerId });
-  containerLoads.set(containerId, nextLoad);
-
-  searchMultipleContainerAssignments({
-    itemIds,
+  const itemId = itemIds[itemIndex];
+  const candidateDestinationIds = getCandidateDestinationIdsForItem({
+    itemId,
     destinationIds,
-    assignmentIndex: assignmentIndex + 1,
-    assignmentsByItemId,
-    assignmentEntries,
+    allowedContainerMap,
+    forbiddenContainerMap,
+    fixedAssignmentMap,
+    forbiddenAssignmentMap,
     containerLoads,
     containerLookup,
+    assignmentScoreMap,
+    targetScoreMap,
+  });
+
+  const subset = getGreedyAssignmentSubsetForItem({
+    itemId,
+    candidateDestinationIds,
+    assignmentsByItemId,
     mustNotShareMap,
     allowedContainerMap,
     forbiddenContainerMap,
@@ -835,18 +1083,71 @@ function searchMultipleContainerAssignments({
     forbiddenAssignmentMap,
     assignmentExclusionMap,
     assignmentCountUpperBoundMap,
-    itemLookup,
-    solutions,
-    maxSolutions,
-    model,
-    currentScore: currentScore + getIncrementalScoreForDestination(itemId, containerId, assignmentScoreMap, targetScoreMap),
     assignmentScoreMap,
     targetScoreMap,
+    containerLoads,
+    containerLookup,
   });
 
-  assignmentEntries.pop();
-  containerLoads.set(containerId, nextLoad - 1);
-  assignmentsByItemId.set(itemId, assignedDestinationIds);
+  if (!subset) {
+    return;
+  }
+
+  subset.destinationIds.forEach((containerId) => {
+    const nextAssignedDestinationIds = getAssignedDestinationIds(assignmentsByItemId, itemId);
+    assignmentsByItemId.set(itemId, [...nextAssignedDestinationIds, containerId]);
+    assignmentEntries.push({ itemId, containerId });
+    containerLoads.set(containerId, (containerLoads.get(containerId) ?? 0) + 1);
+  });
+
+  const nextRemainingItemIds = itemIds.slice(itemIndex + 1);
+  const canCoverRemainingDemand = canStillCoverMinCapacitiesWithRemainingItems({
+    containerLoads,
+    destinationIds,
+    containerLookup,
+    remainingItemIds: nextRemainingItemIds,
+    allowedContainerMap,
+    forbiddenContainerMap,
+    fixedAssignmentMap,
+    forbiddenAssignmentMap,
+    assignmentCountUpperBoundMap,
+  });
+
+  if (canCoverRemainingDemand) {
+    searchMultipleContainerAssignments({
+      itemIds,
+      destinationIds,
+      itemIndex: itemIndex + 1,
+      assignmentsByItemId,
+      assignmentEntries,
+      containerLoads,
+      containerLookup,
+      mustNotShareMap,
+      allowedContainerMap,
+      forbiddenContainerMap,
+      fixedAssignmentMap,
+      forbiddenAssignmentMap,
+      assignmentExclusionMap,
+      assignmentCountUpperBoundMap,
+      itemLookup,
+      solutions,
+      maxSolutions,
+      model,
+      currentScore: currentScore + subset.score,
+      assignmentScoreMap,
+      targetScoreMap,
+    });
+  }
+
+  for (let index = subset.destinationIds.length - 1; index >= 0; index -= 1) {
+    const containerId = subset.destinationIds[index];
+    assignmentEntries.pop();
+    containerLoads.set(containerId, (containerLoads.get(containerId) ?? 0) - 1);
+  }
+
+  const previousAssignments = getAssignedDestinationIds(assignmentsByItemId, itemId)
+    .filter((destinationId) => !subset.destinationIds.includes(destinationId));
+  assignmentsByItemId.set(itemId, previousAssignments);
 }
 
 function canPlaceItemInPosition({
@@ -1162,9 +1463,24 @@ export class FirstSolverAdapter extends SolverAdapter {
         const containerLoads = new Map(containerIds.map((containerId) => [containerId, 0]));
 
         searchMultipleContainerAssignments({
-          itemIds: model.items.map((item) => item.id),
+          itemIds: model.items
+            .map((item) => item.id)
+            .slice()
+            .sort((leftItemId, rightItemId) => {
+              const leftFixed = fixedAssignmentMap.get(leftItemId)?.size ?? 0;
+              const rightFixed = fixedAssignmentMap.get(rightItemId)?.size ?? 0;
+              if (leftFixed !== rightFixed) {
+                return rightFixed - leftFixed;
+              }
+
+              const leftAllowed = allowedContainerMap.get(leftItemId);
+              const rightAllowed = allowedContainerMap.get(rightItemId);
+              const leftOptionCount = Array.isArray(leftAllowed) && leftAllowed.length > 0 ? leftAllowed.length : containerIds.length;
+              const rightOptionCount = Array.isArray(rightAllowed) && rightAllowed.length > 0 ? rightAllowed.length : containerIds.length;
+              return leftOptionCount - rightOptionCount;
+            }),
           destinationIds: containerIds,
-          assignmentIndex: 0,
+          itemIndex: 0,
           assignmentsByItemId,
           assignmentEntries,
           containerLoads,
