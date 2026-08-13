@@ -1,5 +1,12 @@
 # Core Architecture
 
+This document defines the target architecture, core concepts, normalized model, and intended system design.
+It describes what the system is and how it is structured.
+
+For implementation guardrails and mandatory engineering rules such as solver-related testing obligations, dependency license checks, and status-update expectations, read:
+
+- `docs/09-technical-and-architecture-constraints.md`
+
 ## Vision
 
 Build a lightweight web application that lets users define assignment and grouping problems with simple constraints, run a solver, and explore valid solutions through generic and domain-specific graphical interfaces.
@@ -412,7 +419,7 @@ The architecture should support:
 
 ## Feature document map
 
-- `00-core-architecture.md`: project-wide architecture and constraints.
+- `00-core-architecture.md`: target architecture, normalized model, and system design.
 - `01-feature-generic-constraint-page.md`: generic modeling UI.
 - `02-feature-wedding-table-plan.md`: specialized wedding workflow.
 - `03-feature-school-class-creation.md`: specialized school workflow.
@@ -420,6 +427,7 @@ The architecture should support:
 - `05-feature-import-export.md`: file and local persistence.
 - `06-feature-solution-display-and-scoring.md`: solution browsing and ranking.
 - `07-feature-domain-model-and-semantics.md`: formal meaning of model entities and relations.
+- `09-technical-and-architecture-constraints.md`: implementation guardrails, mandatory invariants, testing obligations, and dependency/license constraints.
 
 ## Evolution strategy
 

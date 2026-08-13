@@ -95,6 +95,10 @@ Position mode is required for adjacency constraints.
 
 ## Architecture and module boundaries
 
+For cross-cutting implementation guardrails, testing obligations, and dependency/license rules, also read:
+
+- `docs/09-technical-and-architecture-constraints.md`
+
 High-level `/src` structure:
 
 - `/app`: bootstrap, routing, top-level state
@@ -148,6 +152,14 @@ The main workflow remains:
 - solve
 
 This sequence should remain intact.
+
+## Cross-cutting technical constraints reminder
+
+In addition to the product and architecture decisions in this file, future work must also preserve the dedicated technical constraints document, especially for:
+
+- solver-impacting test obligations
+- validate -> normalize -> solve separation
+- dependency license compatibility with the project MIT license
 
 ## Cross-cutting risks
 

@@ -31,6 +31,11 @@ Then choose only the relevant sub-status files.
 
 ### Core sub-status files
 
+Also read this dedicated cross-cutting constraints document when the task touches architecture, solver behavior, validation/normalization semantics, or dependency additions:
+
+- `docs/09-technical-and-architecture-constraints.md`
+  - read for technical guardrails, solver-related testing obligations, and dependency/license constraints
+
 - `docs/status/01-product-and-architecture.md`
   - read for product scope, core semantics, architecture boundaries, solver baseline
 - `docs/status/02-generic-page.md`
@@ -84,29 +89,15 @@ Preserve these project rules:
 
 ## Latest update
 
-- investigated a GitHub Actions `npm ci` failure caused by `package.json` and `package-lock.json` being out of sync after adding the manual solver benchmark script
-- regenerated `package-lock.json` with `npm install --package-lock-only` so the lock file now includes the current `esbuild` dependency set required by the existing Vite/Vitest toolchain
-- this should unblock both test and build jobs in `.github/workflows/deploy.yml` without changing the workflow itself
+- added `docs/09-technical-and-architecture-constraints.md` as the dedicated cross-cutting constraints document
+- documented mandatory architectural invariants, solver-impacting testing obligations, and the requirement to check dependency license compatibility with the project MIT license before adding packages
+- linked the new document from `docs/status/01-product-and-architecture.md` and from this master status file so future agents read it for architecture- and dependency-related work
 
 Files modified:
 
 - `status.md`
-- `package.json`
-- `package-lock.json`
-- `vitest.config.js`
-- `README.md`
-- `docs/08-testing-strategy.md`
-- `docs/status/05-recent-work-and-next-steps.md`
-- `tests/helpers/projectBuilder.js`
-- `tests/helpers/solverAssertions.js`
-- `tests/helpers/solverScenario.js`
-- `tests/core/normalize/normalizeProject.test.js`
-- `tests/solver/firstSolverAdapter.containerMode.test.js`
-- `tests/solver/firstSolverAdapter.positionMode.test.js`
-- `tests/solver/firstSolverAdapter.validation.test.js`
-- `tests/solver/solverSupport.test.js`
-- `.github/workflows/deploy.yml`
-- `package-lock.json`
+- `docs/status/01-product-and-architecture.md`
+- `docs/09-technical-and-architecture-constraints.md`
 
 ## Restart prompt for a new context
 
@@ -114,6 +105,7 @@ Use this prompt in a fresh context:
 
 ```text
 Read `status.md` first.
+If the task touches architecture, solver semantics, validation/normalization semantics, or dependency additions, also read `docs/09-technical-and-architecture-constraints.md`.
 Then read only the relevant files from `docs/status/` based on the task:
 - architecture/core model/solver: `docs/status/01-product-and-architecture.md`
 - generic page/storage/shared solution UI: `docs/status/02-generic-page.md`
