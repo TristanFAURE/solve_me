@@ -198,6 +198,62 @@ describe('transformEventStaffingProject', () => {
     expect(result.status).toBe('unsat');
   });
 
+  it('keeps optional-demand staffing solvable without forcing assignments', () => {
+    const transformed = normalizeProject(transformEventStaffingProject({
+      events: [
+        { id: 'E1', label: 'Event 1', orderIndex: 1 },
+        { id: 'E2', label: 'Event 2', orderIndex: 2 },
+      ],
+      groupTypes: [{ id: 'G1', label: 'Group 1' }],
+      requirements: [
+        { eventId: 'E1', groupTypeId: 'G1', min: 0, max: 1 },
+        { eventId: 'E2', groupTypeId: 'G1', min: 0, max: 1 },
+      ],
+      people: [{ id: 'P1', name: 'Alice' }],
+    }));
+
+    expect(transformed.assignmentMultiplicity).toBe('multiple');
+    expect(transformed.containers).toHaveLength(2);
+    expect(transformed.containers.every((container) => container.metadata.minCapacity === 0)).toBe(true);
+
+    const result = solve(transformed);
+    expect(result.status).toBe('solved');
+    expect(result.solutions[0]?.assignments.length).toBeGreaterThanOrEqual(0);
+    expect(result.solutions[0]?.assignments.length).toBeLessThanOrEqual(2);
+    expect(result.solutions[0]?.assignments.every((assignment) => assignment.itemRef.id === 'P1')).toBe(true);
+  });
+
+  it('keeps two required single-group events solvable with two people', () => {
+    const transformed = normalizeProject(transformEventStaffingProject({
+      events: [
+        { id: 'E1', label: 'Event 1', orderIndex: 1 },
+        { id: 'E2', label: 'Event 2', orderIndex: 2 },
+      ],
+      groupTypes: [{ id: 'G1', label: 'Group 1' }],
+      requirements: [
+        { eventId: 'E1', groupTypeId: 'G1', min: 1, max: 1 },
+        { eventId: 'E2', groupTypeId: 'G1', min: 1, max: 1 },
+      ],
+      people: [
+        { id: 'P1', name: 'Alice' },
+        { id: 'P2', name: 'Bob' },
+      ],
+    }));
+
+    const result = solve(transformed);
+
+    expect(result.status).toBe('solved');
+    expect(result.solutions[0]?.assignments).toHaveLength(2);
+    expect(result.solutions[0]?.assignments).toContainEqual(expect.objectContaining({
+      containerRef: { kind: 'container', id: createEventStaffingDestinationId('E1', 'G1') },
+    }));
+    expect(result.solutions[0]?.assignments).toContainEqual(expect.objectContaining({
+      containerRef: { kind: 'container', id: createEventStaffingDestinationId('E2', 'G1') },
+    }));
+    expect(new Set(result.solutions[0]?.assignments.map((assignment) => assignment.itemRef.id)).size).toBeGreaterThanOrEqual(1);
+    expect(new Set(result.solutions[0]?.assignments.map((assignment) => assignment.itemRef.id)).size).toBeLessThanOrEqual(2);
+  });
+
   it('compiles ordered-event cooldown rules into assignment exclusions', () => {
     const transformed = normalizeProject(transformEventStaffingProject({
       ...buildBaseDomainProject(),
@@ -266,6 +322,34 @@ describe('transformEventStaffingProject', () => {
     });
   });
 
+  it('assigns the same person on each event when each event requires one person', () => {
+    const transformed = normalizeProject(transformEventStaffingProject({
+      events: [
+        { id: 'E1', label: 'Event 1', orderIndex: 1 },
+        { id: 'E2', label: 'Event 2', orderIndex: 2 },
+      ],
+      groupTypes: [{ id: 'G1', label: 'Group 1' }],
+      requirements: [
+        { eventId: 'E1', groupTypeId: 'G1', min: 1, max: 1 },
+        { eventId: 'E2', groupTypeId: 'G1', min: 1, max: 1 },
+      ],
+      people: [{ id: 'P1', name: 'Alice' }],
+    }));
+
+    const result = solve(transformed);
+
+    expect(result.status).toBe('solved');
+    expect(result.solutions[0]?.assignments).toHaveLength(2);
+    expect(result.solutions[0]?.assignments).toContainEqual(expect.objectContaining({
+      itemRef: { kind: 'item', id: 'P1' },
+      containerRef: { kind: 'container', id: createEventStaffingDestinationId('E1', 'G1') },
+    }));
+    expect(result.solutions[0]?.assignments).toContainEqual(expect.objectContaining({
+      itemRef: { kind: 'item', id: 'P1' },
+      containerRef: { kind: 'container', id: createEventStaffingDestinationId('E2', 'G1') },
+    }));
+  });
+
   it('makes cooldown exclusions solver-effective in container mode', () => {
     const transformed = normalizeProject(transformEventStaffingProject({
       title: 'Cooldown enforced',
@@ -292,6 +376,34 @@ describe('transformEventStaffingProject', () => {
 
     expect(result.status).toBe('solved');
     expect(result.solutions.every((solution) => solution.assignments.length <= 1)).toBe(true);
+    expect(result.solutions.every((solution) => solution.assignments.every((assignment) => assignment.containerRef.id !== createEventStaffingDestinationId('E1', 'G1') || solution.assignments.length === 1))).toBe(true);
+  });
+
+  it('becomes unsatisfiable when a per-group assignment upper bound blocks staffing both required events', () => {
+    const transformed = normalizeProject(transformEventStaffingProject({
+      events: [
+        { id: 'E1', label: 'Event 1', orderIndex: 1 },
+        { id: 'E2', label: 'Event 2', orderIndex: 2 },
+      ],
+      groupTypes: [{ id: 'G1', label: 'Group 1' }],
+      requirements: [
+        { eventId: 'E1', groupTypeId: 'G1', min: 1, max: 1 },
+        { eventId: 'E2', groupTypeId: 'G1', min: 1, max: 1 },
+      ],
+      people: [{ id: 'P1', name: 'Alice', maxAssignmentsPerGroupType: { G1: 1 } }],
+    }));
+
+    expect(transformed.assignmentCountUpperBounds).toContainEqual({
+      itemId: 'P1',
+      destinationIds: [
+        createEventStaffingDestinationId('E1', 'G1'),
+        createEventStaffingDestinationId('E2', 'G1'),
+      ],
+      maxCount: 1,
+    });
+
+    const result = solve(transformed);
+    expect(result.status).toBe('unsat');
   });
 
   it('compiles per-group soft targets and global per-group defaults into scoped soft item count targets', () => {

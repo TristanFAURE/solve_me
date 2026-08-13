@@ -31,6 +31,7 @@ export function createEmptyProject(overrides = {}) {
     forbiddenAssignments: [],
     softAssignmentScores: [],
     softItemCountTargets: [],
+    assignmentMultiplicity: 'single',
     ...overrides,
   };
 }
@@ -59,6 +60,7 @@ export function isProject(value) {
     Array.isArray(value.fixedAssignments) &&
     Array.isArray(value.forbiddenAssignments) &&
     Array.isArray(value.softAssignmentScores) &&
-    Array.isArray(value.softItemCountTargets),
+    Array.isArray(value.softItemCountTargets) &&
+    (value.assignmentMultiplicity === undefined || ['single', 'multiple'].includes(value.assignmentMultiplicity)),
   );
 }

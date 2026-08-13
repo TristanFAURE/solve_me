@@ -85,16 +85,13 @@ Preserve these project rules:
 
 ## Latest update
 
-- added GUI controls in the staffing people form for per-event prefer / prefer-not / neutral choices and wired them to save into each person's domain preference map
-- made the in-form prefer / prefer-not event list explicitly scrollable so very long event schedules do not overgrow the person editor
-- preserved staffing people add/save behavior through the real form submit flow while extending edit-state restoration to include saved per-event preferences
+- strengthened staffing regression coverage for core single-group event semantics in the transform/solver path
+- added tests covering: two required events with one person, two required events with two people, optional-demand solvability with one person, and unsat behavior when a per-group hard maximum prevents one person from covering both required events
+- re-ran the targeted staffing transform regression file successfully
 
 Files modified:
 
-- `src/pages/eventStaffing/index.js`
-- `src/pages/eventStaffing/summarySections.js`
-- `src/styles.css`
-- `tests/pages/eventStaffingWorkflow.test.js`
+- `tests/core/transform/eventStaffingProject.test.js`
 - `docs/status/05-recent-work-and-next-steps.md`
 - `status.md`
 

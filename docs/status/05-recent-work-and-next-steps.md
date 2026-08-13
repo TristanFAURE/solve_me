@@ -4,22 +4,15 @@
 
 Latest meaningful completed step:
 
-- reworked the staffing people section into a clearer two-column quick-add plus saved-list layout with advanced person settings collapsed behind a details panel
-- fixed the repeated-add workflow so successful add/save rerenders keep focus on the person name field, making multi-person entry practical
-- made the people editor a real form and bound add/save through form submit so both clicking the Add/Save button and pressing Enter now use the same robust GUI path without depending on a fragile click-only handler
-- aligned staffing-domain validation with optional numeric semantics so blank/null person limits and blank/null global defaults are ignored instead of being treated as invalid provided values
-- fixed the person editor bug where per-group hard and soft target draft rows were not both restored correctly when entering edit mode
-- added first-class GUI controls inside the person form for per-event prefer / prefer-not / neutral choices and wired those edits directly into `domainProject.preferences`
-- bounded the in-form event-preferences table with its own scroll region so long event lists stay usable without making the whole person editor grow excessively
-- kept the saved-people table inside the bounded staffing scroll region so larger rosters remain manageable instead of growing the page indefinitely
-- preserved regression coverage for person add/edit/reset behavior, rendered people-section layout structure, and per-person event preference editing
+- corrected the staffing solver philosophy to support reusable people across events: staffing now uses additive multi-assignment semantics in container mode while preserving the generic core model and existing public solver API shape
+- introduced an additive `assignmentMultiplicity` project flag, set staffing transforms to `multiple`, and kept other domains on the existing single-assignment default so school and wedding semantics do not drift
+- updated the first solver adapter so container mode can honor multiple fixed destinations, per-event exclusivity bounds, cooldown exclusions, person/group count bounds, and requirement min/max capacities for staffing-style repeated assignments
+- added stronger staffing transform regressions around single-group event semantics: one person covering two required events, two people covering two required events, optional-demand solvability without forced staffing, and unsat behavior when a per-group hard maximum blocks staffing both required events
+- re-ran the targeted staffing transform regression file successfully
 
 ## Files touched most recently
 
-- `src/pages/eventStaffing/index.js`
-- `src/pages/eventStaffing/summarySections.js`
-- `src/styles.css`
-- `tests/pages/eventStaffingWorkflow.test.js`
+- `tests/core/transform/eventStaffingProject.test.js`
 - `docs/status/05-recent-work-and-next-steps.md`
 - `status.md`
 
@@ -46,6 +39,6 @@ Latest meaningful completed step:
 - the keyboard-only add/save shortcut currently triggers from the person name field specifically; if broader keyboard-first editing is desired later, other staffing editor sections may need explicit Enter / shortcut semantics too
 - removing sample bootstrap data makes the first-run planner experience cleaner; direct creation flows now exist for group types, people, edited people, and global limits including default per-group soft targets, but the page still needs first-class authoring for cooldown rules and assignment exceptions
 - event insert/delete, multi-select, validation display, and bulk requirement actions include confirmation safeguards; the event search focus regression is now fixed, but other rerender-sensitive inputs should still be sanity-checked, and browser-level interaction test work should not be proposed unless the user explicitly asks for that direction
-- container minimum capacities are now enforced in container mode, but the current solver baseline still uses backtracking and may slow down as staffing transforms expand larger scenarios
-- backward compatibility must continue to be protected for existing school and wedding use cases as staffing transforms are added
+- container minimum capacities are now enforced in container mode, and staffing multi-assignment semantics now work for repeated event assignments, but the current solver baseline still uses backtracking and may slow down as staffing transforms expand larger scenarios
+- backward compatibility must continue to be protected for existing school and wedding use cases as staffing transforms are added; targeted school and wedding validation regressions still pass after the staffing multi-assignment solver change
 - larger staffing scenarios may be slow with the current backtracking solver even before optimization is introduced

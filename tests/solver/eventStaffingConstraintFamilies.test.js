@@ -78,6 +78,31 @@ describe('FirstSolverAdapter - additive assignment-oriented constraint families'
     expectUnsat(result);
   });
 
+  it('accepts multiple fixed destinations per item when multiple container assignments are explicitly enabled', () => {
+    const project = scenario()
+      .containerMode()
+      .items('A')
+      .containers({ T1: 1, T2: 1 })
+      .fixedAssignment('A', 'T1')
+      .fixedAssignment('A', 'T2')
+      .buildNormalized();
+
+    project.assignmentMultiplicity = 'multiple';
+
+    const result = solve(project);
+
+    expectSolved(result);
+    expect(result.solutions[0]?.assignments).toHaveLength(2);
+    expect(result.solutions[0]?.assignments).toContainEqual(expect.objectContaining({
+      itemRef: { kind: 'item', id: 'A' },
+      containerRef: { kind: 'container', id: 'T1' },
+    }));
+    expect(result.solutions[0]?.assignments).toContainEqual(expect.objectContaining({
+      itemRef: { kind: 'item', id: 'A' },
+      containerRef: { kind: 'container', id: 'T2' },
+    }));
+  });
+
   it('enforces fixed assignments in position mode', () => {
     const project = scenario()
       .positionMode()

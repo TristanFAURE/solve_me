@@ -374,6 +374,7 @@ export function transformEventStaffingProject(domainProject = {}) {
     description: domainProject.description ?? '',
     viewHint: VIEW_HINTS.GENERIC,
     assignmentMode: ASSIGNMENT_MODES.CONTAINER,
+    assignmentMultiplicity: 'multiple',
     items: createPeopleItems(people),
     containers: createRequirementContainers(requirements, groupTypeLabelById, eventLabelById),
     assignmentExclusions: createCooldownAssignmentExclusions({

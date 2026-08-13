@@ -61,23 +61,51 @@ function buildContainerAssignmentSolution(assignmentsByItemId, itemLookup, conta
   });
 }
 
+function buildContainerMultiAssignmentSolution(assignments, itemLookup, containerLookup) {
+  return createSolution({
+    assignments: assignments.map(({ itemId, containerId }) => createAssignment({
+      itemRef: { kind: NODE_KINDS.ITEM, id: itemId },
+      containerRef: { kind: NODE_KINDS.CONTAINER, id: containerId },
+      positionRef: null,
+      metadata: {
+        itemLabel: itemLookup.get(itemId)?.label ?? itemId,
+        containerLabel: containerLookup.get(containerId)?.label ?? containerId,
+      },
+    })),
+    score: null,
+    violations: [],
+    metadata: {},
+  });
+}
+
 function buildAssignmentLookup(solution) {
-  return new Map(solution.assignments.map((assignment) => [assignment.itemRef.id, assignment]));
+  const map = new Map();
+  solution.assignments.forEach((assignment) => {
+    const assignments = map.get(assignment.itemRef.id) ?? [];
+    assignments.push(assignment);
+    map.set(assignment.itemRef.id, assignments);
+  });
+  return map;
 }
 
 function scoreSolution(solution, model) {
   const assignmentLookup = buildAssignmentLookup(solution);
 
   const assignmentScoreTotal = (model.softAssignmentScores ?? []).reduce((total, entry) => {
-    const assignment = assignmentLookup.get(entry.itemId);
-    const destinationId = assignment?.positionRef?.id ?? assignment?.containerRef?.id ?? null;
-    return total + (destinationId === entry.destinationId ? entry.score : 0);
+    const assignments = assignmentLookup.get(entry.itemId) ?? [];
+    const matchCount = assignments.filter((assignment) => {
+      const destinationId = assignment?.positionRef?.id ?? assignment?.containerRef?.id ?? null;
+      return destinationId === entry.destinationId;
+    }).length;
+    return total + (matchCount * entry.score);
   }, 0);
 
   const itemCountTargetTotal = (model.softItemCountTargets ?? []).reduce((total, target) => {
-    const assignment = assignmentLookup.get(target.itemId);
-    const destinationId = assignment?.positionRef?.id ?? assignment?.containerRef?.id ?? null;
-    const actualCount = target.destinationIds?.includes(destinationId) ? 1 : 0;
+    const assignments = assignmentLookup.get(target.itemId) ?? [];
+    const actualCount = assignments.filter((assignment) => {
+      const destinationId = assignment?.positionRef?.id ?? assignment?.containerRef?.id ?? null;
+      return target.destinationIds?.includes(destinationId);
+    }).length;
     return total - Math.abs(actualCount - target.targetCount);
   }, 0);
 
@@ -202,6 +230,26 @@ function buildComponentSoftScoreOptions(components, containerIds, assignmentScor
       total + getIncrementalScoreForDestination(itemId, containerId, assignmentScoreMap, targetScoreMap)
     ), 0),
   })));
+}
+
+function buildSingleAssignmentMapFromEntries(assignments) {
+  const map = new Map();
+  assignments.forEach(({ itemId, containerId }) => {
+    map.set(itemId, containerId);
+  });
+  return map;
+}
+
+function getAssignedDestinationIds(assignmentsByItemId, itemId) {
+  return assignmentsByItemId.get(itemId) ?? [];
+}
+
+function isDestinationAlreadyAssigned(assignmentsByItemId, itemId, destinationId) {
+  return getAssignedDestinationIds(assignmentsByItemId, itemId).includes(destinationId);
+}
+
+function getCurrentContainerForSingleAssignment(itemId, assignmentsByItemId) {
+  return assignmentsByItemId.get(itemId) ?? null;
 }
 
 function buildComponentSuffixUpperBounds(componentSoftScoreOptions) {
@@ -381,7 +429,11 @@ function buildAssignmentCountUpperBoundMap(bounds = []) {
   return map;
 }
 
-function hasConflictingFixedAssignments(fixedAssignmentMap) {
+function hasConflictingFixedAssignments(fixedAssignmentMap, assignmentMultiplicity = 'single') {
+  if (assignmentMultiplicity === 'multiple') {
+    return false;
+  }
+
   return [...fixedAssignmentMap.values()].some((destinations) => destinations.size > 1);
 }
 
@@ -396,10 +448,10 @@ function getSingleFixedDestinationId(fixedAssignmentMap, itemId) {
 
 function respectsAssignmentCountUpperBounds(assignmentsByItemId, itemId, destinationId, assignmentCountUpperBoundMap) {
   const bounds = assignmentCountUpperBoundMap.get(itemId) ?? [];
+  const assignedDestinationIds = assignmentsByItemId.get(itemId) ?? [];
 
   return bounds.every((bound) => {
-    const currentDestinationId = assignmentsByItemId.get(itemId);
-    const currentCount = currentDestinationId && bound.destinationIds.has(currentDestinationId) ? 1 : 0;
+    const currentCount = assignedDestinationIds.filter((assignedDestinationId) => bound.destinationIds.has(assignedDestinationId)).length;
     const nextCount = currentCount + (bound.destinationIds.has(destinationId) ? 1 : 0);
     return nextCount <= bound.maxCount;
   });
@@ -486,7 +538,7 @@ function canPlaceComponent(
     }
 
     for (const blockedId of mustNotShareMap.get(itemId) ?? []) {
-      if (assignmentsByItemId.get(blockedId) === containerId) {
+      if (getCurrentContainerForSingleAssignment(blockedId, assignmentsByItemId) === containerId) {
         return false;
       }
     }
@@ -609,6 +661,192 @@ function searchAssignments({
 function getAssignedContainerId(itemId, assignmentsByItemId, positionToContainerMap) {
   const positionId = assignmentsByItemId.get(itemId);
   return positionId ? (positionToContainerMap.get(positionId) ?? null) : null;
+}
+
+function canAddMultiAssignment({
+  itemId,
+  containerId,
+  assignmentsByItemId,
+  mustNotShareMap,
+  allowedContainerMap,
+  forbiddenContainerMap,
+  fixedAssignmentMap,
+  forbiddenAssignmentMap,
+  assignmentExclusionMap,
+  assignmentCountUpperBoundMap,
+}) {
+  const allowedContainerIds = allowedContainerMap.get(itemId);
+  const forbiddenContainerIds = forbiddenContainerMap.get(itemId) ?? [];
+  const fixedDestinationIds = fixedAssignmentMap.get(itemId) ?? new Set();
+  const forbiddenDestinationIds = forbiddenAssignmentMap.get(itemId) ?? new Set();
+  const assignedDestinationIds = getAssignedDestinationIds(assignmentsByItemId, itemId);
+
+  if (Array.isArray(allowedContainerIds) && allowedContainerIds.length > 0 && !allowedContainerIds.includes(containerId)) {
+    return false;
+  }
+
+  if (forbiddenContainerIds.includes(containerId)) {
+    return false;
+  }
+
+  if (forbiddenDestinationIds.has(containerId)) {
+    return false;
+  }
+
+  if (isDestinationAlreadyAssigned(assignmentsByItemId, itemId, containerId)) {
+    return false;
+  }
+
+  if (!respectsAssignmentCountUpperBounds(assignmentsByItemId, itemId, containerId, assignmentCountUpperBoundMap)) {
+    return false;
+  }
+
+  const blockedDestinationMap = assignmentExclusionMap.get(itemId) ?? new Map();
+  if (assignedDestinationIds.some((assignedDestinationId) => (blockedDestinationMap.get(containerId) ?? new Set()).has(assignedDestinationId))) {
+    return false;
+  }
+
+  if (fixedDestinationIds.size > 0) {
+    const fixedDestinationsAlreadyAssigned = [...fixedDestinationIds].filter((destinationId) => assignedDestinationIds.includes(destinationId)).length;
+    const fixedDestinationsRemaining = fixedDestinationIds.size - fixedDestinationsAlreadyAssigned;
+    if (!fixedDestinationIds.has(containerId) && fixedDestinationsRemaining > 0) {
+      return false;
+    }
+  }
+
+  for (const blockedItemId of mustNotShareMap.get(itemId) ?? []) {
+    if (isDestinationAlreadyAssigned(assignmentsByItemId, blockedItemId, containerId)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function searchMultipleContainerAssignments({
+  itemIds,
+  destinationIds,
+  assignmentIndex,
+  assignmentsByItemId,
+  assignmentEntries,
+  containerLoads,
+  containerLookup,
+  mustNotShareMap,
+  allowedContainerMap,
+  forbiddenContainerMap,
+  fixedAssignmentMap,
+  forbiddenAssignmentMap,
+  assignmentExclusionMap,
+  assignmentCountUpperBoundMap,
+  itemLookup,
+  solutions,
+  maxSolutions,
+  model,
+  currentScore,
+  assignmentScoreMap,
+  targetScoreMap,
+}) {
+  if (assignmentIndex >= itemIds.length * destinationIds.length) {
+    const allFixedAssignmentsSatisfied = [...fixedAssignmentMap.entries()].every(([itemId, requiredDestinationIds]) => {
+      const assignedDestinationIds = new Set(getAssignedDestinationIds(assignmentsByItemId, itemId));
+      return [...requiredDestinationIds].every((destinationId) => assignedDestinationIds.has(destinationId));
+    });
+
+    if (!allFixedAssignmentsSatisfied) {
+      return;
+    }
+
+    if (allContainerMinCapacitiesSatisfied(containerLoads, destinationIds, containerLookup)) {
+      pushRankedSolution(
+        solutions,
+        buildContainerMultiAssignmentSolution(assignmentEntries, itemLookup, containerLookup),
+        model,
+        maxSolutions,
+      );
+    }
+    return;
+  }
+
+  const itemId = itemIds[Math.floor(assignmentIndex / destinationIds.length)];
+  const containerId = destinationIds[assignmentIndex % destinationIds.length];
+
+  searchMultipleContainerAssignments({
+    itemIds,
+    destinationIds,
+    assignmentIndex: assignmentIndex + 1,
+    assignmentsByItemId,
+    assignmentEntries,
+    containerLoads,
+    containerLookup,
+    mustNotShareMap,
+    allowedContainerMap,
+    forbiddenContainerMap,
+    fixedAssignmentMap,
+    forbiddenAssignmentMap,
+    assignmentExclusionMap,
+    assignmentCountUpperBoundMap,
+    itemLookup,
+    solutions,
+    maxSolutions,
+    model,
+    currentScore,
+    assignmentScoreMap,
+    targetScoreMap,
+  });
+
+  if (!canAddMultiAssignment({
+    itemId,
+    containerId,
+    assignmentsByItemId,
+    mustNotShareMap,
+    allowedContainerMap,
+    forbiddenContainerMap,
+    fixedAssignmentMap,
+    forbiddenAssignmentMap,
+    assignmentExclusionMap,
+    assignmentCountUpperBoundMap,
+  })) {
+    return;
+  }
+
+  const nextLoad = (containerLoads.get(containerId) ?? 0) + 1;
+  const maxCapacity = getContainerMaxCapacity(containerLookup.get(containerId));
+  if (maxCapacity !== null && maxCapacity !== undefined && nextLoad > maxCapacity) {
+    return;
+  }
+
+  const assignedDestinationIds = getAssignedDestinationIds(assignmentsByItemId, itemId);
+  assignmentsByItemId.set(itemId, [...assignedDestinationIds, containerId]);
+  assignmentEntries.push({ itemId, containerId });
+  containerLoads.set(containerId, nextLoad);
+
+  searchMultipleContainerAssignments({
+    itemIds,
+    destinationIds,
+    assignmentIndex: assignmentIndex + 1,
+    assignmentsByItemId,
+    assignmentEntries,
+    containerLoads,
+    containerLookup,
+    mustNotShareMap,
+    allowedContainerMap,
+    forbiddenContainerMap,
+    fixedAssignmentMap,
+    forbiddenAssignmentMap,
+    assignmentExclusionMap,
+    assignmentCountUpperBoundMap,
+    itemLookup,
+    solutions,
+    maxSolutions,
+    model,
+    currentScore: currentScore + getIncrementalScoreForDestination(itemId, containerId, assignmentScoreMap, targetScoreMap),
+    assignmentScoreMap,
+    targetScoreMap,
+  });
+
+  assignmentEntries.pop();
+  containerLoads.set(containerId, nextLoad - 1);
+  assignmentsByItemId.set(itemId, assignedDestinationIds);
 }
 
 function canPlaceItemInPosition({
@@ -866,7 +1104,7 @@ export class FirstSolverAdapter extends SolverAdapter {
     }
 
     const fixedAssignmentMap = buildFixedAssignmentMap(model.fixedAssignments ?? []);
-    if (hasConflictingFixedAssignments(fixedAssignmentMap)) {
+    if (hasConflictingFixedAssignments(fixedAssignmentMap, model.assignmentMultiplicity)) {
       errors.push('A single item cannot have multiple fixed assignment destinations.');
     }
 
@@ -916,36 +1154,67 @@ export class FirstSolverAdapter extends SolverAdapter {
 
     if (model.assignmentMode === ASSIGNMENT_MODES.CONTAINER) {
       const mustNotShareMap = buildMustNotShareMap(model.constraints);
-      const components = normalizeComponents(model)
-        .slice()
-        .sort((left, right) => right.length - left.length);
       const containerIds = model.containers.map((container) => container.id);
-      const assignmentsByItemId = new Map();
-      const containerLoads = new Map(containerIds.map((containerId) => [containerId, 0]));
-      const componentSoftScoreOptions = buildComponentSoftScoreOptions(components, containerIds, assignmentScoreMap, targetScoreMap);
-      const componentSuffixUpperBounds = buildComponentSuffixUpperBounds(componentSoftScoreOptions);
 
-      searchAssignments({
-        components,
-        componentIndex: 0,
-        containerIds,
-        assignmentsByItemId,
-        mustNotShareMap,
-        containerLoads,
-        containerLookup,
-        solutions,
-        maxSolutions,
-        itemLookup,
-        allowedContainerMap,
-        forbiddenContainerMap,
-        fixedAssignmentMap,
-        forbiddenAssignmentMap,
-        assignmentCountUpperBoundMap,
-        model,
-        componentSoftScoreOptions,
-        componentSuffixUpperBounds,
-        currentScore: 0,
-      });
+      if (model.assignmentMultiplicity === 'multiple') {
+        const assignmentsByItemId = new Map(model.items.map((item) => [item.id, []]));
+        const assignmentEntries = [];
+        const containerLoads = new Map(containerIds.map((containerId) => [containerId, 0]));
+
+        searchMultipleContainerAssignments({
+          itemIds: model.items.map((item) => item.id),
+          destinationIds: containerIds,
+          assignmentIndex: 0,
+          assignmentsByItemId,
+          assignmentEntries,
+          containerLoads,
+          containerLookup,
+          mustNotShareMap,
+          allowedContainerMap,
+          forbiddenContainerMap,
+          fixedAssignmentMap,
+          forbiddenAssignmentMap,
+          assignmentExclusionMap,
+          assignmentCountUpperBoundMap,
+          itemLookup,
+          solutions,
+          maxSolutions,
+          model,
+          currentScore: 0,
+          assignmentScoreMap,
+          targetScoreMap,
+        });
+      } else {
+        const components = normalizeComponents(model)
+          .slice()
+          .sort((left, right) => right.length - left.length);
+        const assignmentsByItemId = new Map();
+        const containerLoads = new Map(containerIds.map((containerId) => [containerId, 0]));
+        const componentSoftScoreOptions = buildComponentSoftScoreOptions(components, containerIds, assignmentScoreMap, targetScoreMap);
+        const componentSuffixUpperBounds = buildComponentSuffixUpperBounds(componentSoftScoreOptions);
+
+        searchAssignments({
+          components,
+          componentIndex: 0,
+          containerIds,
+          assignmentsByItemId,
+          mustNotShareMap,
+          containerLoads,
+          containerLookup,
+          solutions,
+          maxSolutions,
+          itemLookup,
+          allowedContainerMap,
+          forbiddenContainerMap,
+          fixedAssignmentMap,
+          forbiddenAssignmentMap,
+          assignmentCountUpperBoundMap,
+          model,
+          componentSoftScoreOptions,
+          componentSuffixUpperBounds,
+          currentScore: 0,
+        });
+      }
     } else {
       const positionLookup = buildPositionLookup(model.positions);
       const positionToContainerMap = buildPositionToContainerMap(model.containments ?? []);
