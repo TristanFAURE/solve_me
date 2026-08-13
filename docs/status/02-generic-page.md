@@ -3,6 +3,7 @@
 ## Current implementation baseline
 
 The generic page is now a real in-browser editor rather than a sample-loader-only page.
+It now owns its own project draft instead of sharing the same live project object with school and wedding pages.
 
 Implemented capabilities include:
 
@@ -41,7 +42,7 @@ Imported and restored projects go through:
 - migration
 - validation
 
-before replacing current state.
+before replacing the generic page's own current draft.
 
 ## Version-policy baseline
 
@@ -60,6 +61,7 @@ The generic page now uses shared solution components for:
 - grouped container assignment display
 - previous/next solution navigation
 - position label display when position-mode solutions include a `positionRef`
+- domain-configurable panel copy so shared result components can use generic, school, or wedding wording without leaking wedding-specific labels into other pages
 
 ## Known limitations
 

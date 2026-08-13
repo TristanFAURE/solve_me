@@ -3,6 +3,7 @@
 ## Current domain baseline
 
 The school page is now a real school-language editor and solve flow.
+It now owns its own school draft instead of reusing the wedding or generic page's live project object.
 
 Main concepts exposed to users:
 
@@ -48,7 +49,9 @@ This lets the current generic container-mode solver enforce school eligibility h
 - teacher-class links
 - school-language validation messages
 - shared solution-panel integration
+- school-specific solved class cards with school wording
 - linked teachers and accepted levels visible on solved class cards
+- assigned student levels summarized on solved class cards
 - Excel export of solved results
 - Excel import of teacher-facing workbooks
 
@@ -70,9 +73,22 @@ Current workbook import baseline:
 - `Student` column is required
 - optional `Level` and `Class` columns may be read from `Students`
 - optional `Classes` sheet may enrich classes further
-- imported workbook becomes a shared generic project with `viewHint: school`
+- imported workbook becomes the school page's own project draft with `viewHint: school`
 
 Workbook import is a convenience format, not full-fidelity persistence.
+
+## Validation regression coverage
+
+The school validation flow now has a dedicated page-level test file:
+
+- `tests/pages/schoolValidation.test.js`
+
+Current coverage includes:
+
+- minimal valid school scenario
+- impossible teacher/student separation detection
+- student with no compatible class detection
+- multiple-level warning coverage
 
 ## Known limitations and risks
 
@@ -88,4 +104,5 @@ Workbook import is a convenience format, not full-fidelity persistence.
 - `src/pages/school/exportSchoolSolution.js`
 - `src/pages/school/importSchoolWorkbook.js`
 - `src/core/transform/domainMappings.js`
+- `tests/pages/schoolValidation.test.js`
 - `docs/03-feature-school-class-creation.md`

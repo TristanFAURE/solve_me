@@ -84,10 +84,10 @@ function createWeddingPageEditorState() {
 
 export function createAppState() {
   return {
-    currentProject: createEmptyProject({ viewHint: VIEW_HINTS.GENERIC }),
     currentView: 'generic',
     solverAdapterId: 'firstSolverAdapter',
     genericPage: {
+      project: createEmptyProject({ viewHint: VIEW_HINTS.GENERIC }),
       editor: createGenericPageEditorState(),
       lastValidation: null,
       lastNormalizedProject: null,
@@ -95,6 +95,7 @@ export function createAppState() {
       validationPanelExpanded: false,
     },
     schoolPage: {
+      project: createEmptyProject({ viewHint: VIEW_HINTS.SCHOOL, title: 'School scenario' }),
       editor: createSchoolPageEditorState(),
       message: '',
       lastValidation: null,
@@ -103,12 +104,23 @@ export function createAppState() {
       validationPanelExpanded: false,
     },
     weddingPage: {
+      project: createEmptyProject({ viewHint: VIEW_HINTS.WEDDING, title: 'Wedding plan' }),
       editor: createWeddingPageEditorState(),
       message: '',
       lastValidation: null,
       lastNormalizedProject: null,
       lastSolverResult: null,
       validationPanelExpanded: false,
+    },
+    eventStaffingPage: {
+      domainProject: null,
+      editor: null,
+      message: '',
+      lastValidation: null,
+      lastNormalizedProject: null,
+      lastSolverResult: null,
+      validationPanelExpanded: false,
+      commandBarExpanded: true,
     },
   };
 }

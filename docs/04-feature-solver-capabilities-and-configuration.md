@@ -57,14 +57,21 @@ The solver adapter must provide a machine-readable capability description.
 - supportsTimeout
 - supportsPartialResults
 - supportsUnsatExplanation
+- supportsAssignmentExclusions
+- supportsPerItemAssignmentUpperBounds
+- supportsScopedAssignmentUpperBounds
+- supportsFixedAssignments
+- supportsForbiddenAssignments
+- supportsSoftAssignmentScores
 
 ### Optional capability fields
 
 - maximumRecommendedSolutions
 - maximumRecommendedProblemSize
 - supportsGroupLevelPropagationNatively
-- supportsFixedAssignments
-- supportsForbiddenAssignments
+- supportsDerivedIncompatibilityExpansion
+- supportsScoreBreakdown
+- supportsSoftItemCountTargets
 - notes or warnings for the UI
 
 ## Functional requirements
@@ -81,6 +88,7 @@ The solver adapter must provide a machine-readable capability description.
 - If a saved model uses unsupported features, the UI must show a clear warning.
 - If unsupported hard constraints are present, solve must be blocked.
 - If unsupported soft preferences are present, the configured fallback policy must be applied.
+- New hard-constraint families should be added to capability checks in a backward-compatible way so existing pages keep working without API churn.
 
 ### Solver selection
 
@@ -183,6 +191,8 @@ Examples:
 - optimization mode requires optimization support
 - adjacency-heavy models require adjacency and position-mode support
 - all-solutions mode requires enumeration support or a compatible fallback strategy
+- models using per-item hard maxima require corresponding assignment-bound support
+- models using fixed or forbidden assignments require those capabilities or an equivalent preprocessing path
 
 ## Result metadata requirements
 
@@ -281,6 +291,84 @@ Examples:
 - The configuration object should be serializable for JSON export and local persistence.
 - The UI must not expose solver-internal terminology unless clearly labeled as advanced.
 - The implementation should be ready for multiple adapters even if only one exists in the MVP.
+- New solver features should extend the current solver contract in place when possible rather than introducing parallel public APIs.
+- Backward compatibility matters: existing generic, school, and wedding flows should continue to use the same solver entry points and option structure.
+- Domain transforms may compile domain-specific semantics such as ordered-event cooldowns into generic incompatibility constraints before solve, avoiding domain leakage into the solver API.
+- Solver evolution should prefer additive capability fields and additive normalized constraint families over renaming or reshaping the existing public API.
+
+-
+
++## Solver evolution required by the event staffing planner
++
++The event staffing planner introduces requirements that should be integrated into the current solver architecture without creating a separate public solver API.
++
++Recommended approach:
++
++- keep the current solver entry points and high-level option structure
++- keep the generic core vocabulary unchanged
++- extend normalization and solver capabilities additively
++- compile domain-specific ordering logic in transforms whenever possible
++
++### Requirements that should be handled primarily in transforms
++
++The following event-staffing semantics should be compiled into generic solver-ready constraints before solve:
++
++- ordered-event cooldown logic
++- one-assignment-per-person-per-event exclusivity
++- eligibility filtering where assignments are impossible
++- event-group to generic destination mapping
++
++In particular, ordered-event cooldowns should be transformed into explicit incompatibility constraints between relevant assignment destinations. The solver does not need a native concept of event order if the transform materializes the resulting exclusions.
++
++### Requirements that require additive solver capability growth
++
++The following features are not well represented by simple pairwise transform expansion alone and should be supported by the current solver architecture as additive capability growth:
++
++- assignment exclusions when represented explicitly in normalized data
++- per-item hard maximum assignment counts across all destinations
++- per-item hard maximum assignment counts over scoped subsets such as one group type across many events
++- fixed assignments when the transform cannot safely pre-commit them outside the solver
++- forbidden assignments when represented explicitly rather than removed during preprocessing
++- soft assignment scoring for event preferences and similar item-destination preferences
++- soft item count targets for person targets and fairness-oriented scoring
++
++### Backward-compatible API direction
++
++To reduce regression risk for school and wedding use cases:
++
++- keep `getCapabilities()`, `validateModel(model, options)`, and `solve(model, options)` unchanged as the public adapter entry points
++- add capability fields instead of replacing existing ones
++- add new normalized constraint families instead of renaming existing ones
++- preserve existing solve modes and option semantics
++- ensure existing models continue to validate and solve without requiring new fields
++
++### Recommended additive normalized constraint families
++
++The current solver architecture should grow to accept the following generic normalized families without changing the public API shape:
++
++- `assignmentExclusions[]`
+- - item-specific forbidden co-assignment between two destinations
++- `assignmentCountUpperBounds[]`
+- - item-specific hard maximum over a generic destination scope
++- `fixedAssignments[]`
+- - item must be assigned to a destination
++- `forbiddenAssignments[]`
+- - item must not be assigned to a destination
++- `softAssignmentScores[]`
+- - score or penalty attached to one item-destination assignment
++- `softItemCountTargets[]`
+- - soft target count for one item over a generic destination scope
+-
+
++These normalized additions are intended to cover scheduling-style domains while remaining generic enough for reuse in other pages.
++
++### Expected regression surface
++
++If this backward-compatible approach is followed:
++
++- school and wedding should see no semantic changes by default
++- regression risk should be concentrated in shared solver internals, normalization helpers, and capability-aware validation
++- the main areas requiring regression tests are existing hard assignment behavior, adjacency in wedding position mode, and existing capacity handling
 
 ## Acceptance criteria
 

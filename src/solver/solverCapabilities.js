@@ -9,5 +9,12 @@ export function createDefaultCapabilities() {
     positionMode: false,
     timeout: false,
     unsatExplanation: false,
+    assignmentExclusions: false,
+    perItemAssignmentUpperBounds: false,
+    scopedAssignmentUpperBounds: false,
+    fixedAssignments: false,
+    forbiddenAssignments: false,
+    softAssignmentScores: false,
+    softItemCountTargets: false,
   };
 }

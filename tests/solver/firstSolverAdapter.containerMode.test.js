@@ -110,6 +110,54 @@ describe('FirstSolverAdapter - container mode', () => {
     expectUnsat(result);
   });
 
+  it('enforces container minimum capacities across returned solutions', () => {
+    const project = scenario()
+      .containerMode()
+      .items('A', 'B', 'C')
+      .containers({ T1: 2, T2: 2 })
+      .buildNormalized();
+
+    project.containers = project.containers.map((container) => (
+      container.id === 'T1'
+        ? {
+          ...container,
+          metadata: {
+            ...container.metadata,
+            minCapacity: 2,
+          },
+        }
+        : container
+    ));
+
+    const result = solve(project);
+
+    expectSolved(result);
+    expect(result.solutions.every((solution) => {
+      const t1Load = solution.assignments.filter((assignment) => assignment.containerRef?.id === 'T1').length;
+      return t1Load >= 2;
+    })).toBe(true);
+  });
+
+  it('returns unsat when container minimum capacities cannot all be satisfied', () => {
+    const project = scenario()
+      .containerMode()
+      .items('A')
+      .containers({ T1: 1, T2: 1 })
+      .buildNormalized();
+
+    project.containers = project.containers.map((container) => ({
+      ...container,
+      metadata: {
+        ...container.metadata,
+        minCapacity: 1,
+      },
+    }));
+
+    const result = solve(project);
+
+    expectUnsat(result);
+  });
+
   it('returns no more than ten solutions for a highly symmetric scenario', () => {
     const project = scenario()
       .containerMode()

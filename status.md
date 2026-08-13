@@ -67,14 +67,12 @@ The app now has:
 
 Current recommended next work:
 
-- decide whether to extend automated coverage into `src/core/validate/**` or move on to the next major use case with the current solver baseline
-- manually test position-mode solving from the generic page
-- manually test wedding seat-aware solving end to end
-- fix any issues found in UI, transform, or solution display
-- then choose the next major step among:
-  - wedding `close gap`
-  - solver heuristics/performance
-  - soft-preference support
+- next planned step: finish wiring a real event-staffing validation + planner-facing workflow around the staffing transform
+- then add soft-solver behavior for staffing-facing:
+  - `softAssignmentScores[]`
+  - `softItemCountTargets[]`
+- continue regression coverage for existing school and wedding flows
+- then continue with manual testing and any performance work revealed by staffing-style constraint expansion
 
 ## Key invariant decisions
 
@@ -89,15 +87,22 @@ Preserve these project rules:
 
 ## Latest update
 
-- investigated the reported GitHub Actions failure in `.github/workflows/deploy.yml`
-- confirmed the failing step was `npm ci` due to lockfile drift, not a workflow configuration problem
-- verified locally that the current `package-lock.json` is now back in sync with `package.json` and includes the required `esbuild` entry
-- verified `npm ci` succeeds locally without any workflow changes, so the likely remaining action is to ensure the refreshed lockfile is committed and pushed before rerunning CI
+- separated generic, school, and wedding into independent per-page drafts so business-domain data no longer leaks when switching routes
+- kept the generic editor as its own draft instead of a shared live object used by specialized pages
+- preserved the earlier domain-configurable solve-result panel behavior
+- verified `npm test` passes with 63/63 tests green after the draft-isolation refactor
 
 Files modified:
 
 - `status.md`
+- `docs/status/02-generic-page.md`
+- `docs/status/03-school-page.md`
+- `docs/status/04-wedding-page.md`
 - `docs/status/05-recent-work-and-next-steps.md`
+- `src/app/state.js`
+- `src/pages/school/index.js`
+- `src/pages/wedding/index.js`
+- `src/pages/generic/index.js`
 
 ## Restart prompt for a new context
 
@@ -123,4 +128,17 @@ Always preserve these rules:
 - hard constraints and soft preferences remain distinct
 
 Before finishing, update `status.md` and the relevant `docs/status/*.md` file(s).
+
+If the task is to implement the event staffing planner solver path, also read:
+- `docs/00-core-architecture.md`
+- `docs/04-feature-solver-capabilities-and-configuration.md`
+- `docs/07-feature-domain-model-and-semantics.md`
+- `docs/10-feature-event-staffing-planner.md`
+
+Implementation direction already decided:
+- preserve the current public solver API shape
+- evolve normalized constraint families additively
+- compile ordered-event cooldown logic in transforms where possible
+- protect school and wedding behavior with regression tests
+- next implementation step to execute: complete `src/pages/eventStaffing/index.js`, wire the `/event-staffing` route end-to-end, then run the new page/domain regression tests plus focused school and wedding coverage
 ```

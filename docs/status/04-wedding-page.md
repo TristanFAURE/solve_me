@@ -3,6 +3,7 @@
 ## Current domain baseline
 
 The wedding page is now a real planner-facing editor using wedding-only language.
+It now owns its own wedding draft instead of reusing the school or generic page's live project object.
 
 Main concepts exposed to users:
 
@@ -61,6 +62,20 @@ Soft preferences are still not optimized.
 - switching into or out of `Keep this group together` should refresh controls immediately
 - seat panels should stay dense and compact for large events
 - advanced seat editing belongs later in the page than core authoring
+- shared solve-result components must still use wedding-specific wording such as guests/tables and must not inherit school-specific metadata blocks
+
+## Validation regression coverage
+
+The wedding validation flow now has a dedicated page-level test file:
+
+- `tests/pages/weddingValidation.test.js`
+
+Current coverage includes:
+
+- minimal valid seat-aware wedding scenario
+- cross-table seat adjacency rejection
+- adjacency-rule rejection outside seat-aware mode
+- seat-count versus capacity mismatch warnings
 
 ## Known limitations and risks
 
@@ -75,4 +90,5 @@ Soft preferences are still not optimized.
 - `src/pages/wedding/index.js`
 - `src/pages/wedding/tableTopology.js`
 - `src/pages/wedding/validateWeddingProject.js`
+- `tests/pages/weddingValidation.test.js`
 - `docs/02-feature-wedding-table-plan.md`

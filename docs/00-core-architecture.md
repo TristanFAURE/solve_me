@@ -175,6 +175,27 @@ Recommended fields:
 - `contains(Group, Item)` or equivalent membership relation.
 - `contains(Container, Position)` for position-aware problems.
 
+### Generic normalized assignment-oriented constraint families
+
+The normalized model may include additive generic constraint families to support domains that compile into assignment facts without introducing domain-specific vocabulary.
+
+Recommended families:
+
+- `assignmentExclusions[]`
+  - item-specific forbidden co-assignment between two destinations
+- `assignmentCountUpperBounds[]`
+  - item-specific maximum count over a generic destination scope
+- `fixedAssignments[]`
+  - item must be assigned to a specific destination
+- `forbiddenAssignments[]`
+  - item must not be assigned to a specific destination
+- `softAssignmentScores[]`
+  - score or penalty applied to assigning an item to a destination
+- `softItemCountTargets[]`
+  - soft target count for one item over a generic destination scope
+
+These families extend the normalized model without changing the public solver API shape.
+
 ### Assignment modes
 
 The system supports two generic assignment modes.
@@ -198,6 +219,8 @@ If positions exist for a problem, solving should happen at position level and co
 
 The core must distinguish hard constraints from soft preferences.
 
+In addition to relation-style constraints such as same-container and adjacency, the normalized model may include generic assignment-oriented constraint families that remain domain-agnostic.
+
 ### Hard constraints
 
 Hard constraints must always be satisfied.
@@ -210,6 +233,10 @@ Examples:
 - must not be adjacent
 - fixed capacity limits
 - fixed assignment restrictions
+- assignment exclusions for a specific item across specific destinations
+- assignment-count upper bounds for a specific item across a generic scope of destinations
+- fixed assignments
+- forbidden assignments
 
 If hard constraints cannot all be satisfied, the problem has no valid solution.
 
@@ -223,6 +250,8 @@ Examples:
 - prefer separate containers
 - prefer adjacent
 - prefer non-adjacent
+- assignment score adjustments for a specific item-destination pair
+- assignment-count targets for a specific item across a generic scope of destinations
 
 Soft preferences are only active when the selected solver supports optimization or weighted scoring.
 
@@ -300,6 +329,9 @@ The solver adapter should declare supported features such as:
 - timeout support
 - unsat explanation support
 - adjacency and positional solving
+- per-item assignment upper bounds
+- scoped assignment upper bounds
+- fixed and forbidden assignments
 
 ### Adapter result contract
 
@@ -344,6 +376,9 @@ Before solving, the system should perform validation and useful preprocessing.
 - normalize symmetric relations
 - remove duplicate constraints
 - build topology graphs for positional solving
+- compile domain-specific ordering semantics into generic incompatibility constraints when possible
+- derive scoped assignment-count constraints from domain transforms without introducing domain vocabulary into the core model
+- build destination scopes used by generic assignment-count bounds or count targets
 
 ## Solution model
 
@@ -395,6 +430,32 @@ The architecture should support:
 - optional best-solution-first optimization mode
 - warning when the problem size is likely to explode
 - graceful failure and partial results when supported by the solver
+
+Transforms that expand domain rules into generic incompatibilities or scoped count constraints must be designed carefully because they can increase normalized model size significantly.
++
++## Solver evolution strategy
++
++The solver architecture should evolve by extending the existing solver contract and normalized constraint families rather than by introducing a separate public solver API for each new domain.
++
++Guiding rules:
++
++- preserve the existing public adapter entry points
++- preserve backward compatibility for existing generic, school, and wedding flows
++- keep domain-specific semantics in transform layers whenever possible
++- add new generic constraint families only when a feature cannot be represented cleanly through preprocessing alone
++
++This is especially important for scheduling-oriented domains such as the event staffing planner, where some semantics can be compiled away in transforms while others require richer generic solver support.
++
++### Scheduling-oriented constraints and the generic architecture
++
++For scheduling-style domains built on ordered events and reusable categories:
++
++- event order itself should remain domain-level information
++- transforms may convert ordered-event cooldown rules into generic incompatibility constraints
++- transforms may convert one-assignment-per-event semantics into generic exclusivity constraints
++- the solver may still need generic support for assignment-count upper bounds and soft optimization objectives
++
++This preserves the generic core while allowing the current solver path to grow incrementally.
 
 ## Proposed folder structure
 

@@ -25,6 +25,12 @@ export function createEmptyProject(overrides = {}) {
     topologies: [],
     constraints: [],
     preferences: [],
+    assignmentExclusions: [],
+    assignmentCountUpperBounds: [],
+    fixedAssignments: [],
+    forbiddenAssignments: [],
+    softAssignmentScores: [],
+    softItemCountTargets: [],
     ...overrides,
   };
 }
@@ -47,6 +53,12 @@ export function isProject(value) {
     Array.isArray(value.containments) &&
     Array.isArray(value.topologies) &&
     Array.isArray(value.constraints) &&
-    Array.isArray(value.preferences),
+    Array.isArray(value.preferences) &&
+    Array.isArray(value.assignmentExclusions) &&
+    Array.isArray(value.assignmentCountUpperBounds) &&
+    Array.isArray(value.fixedAssignments) &&
+    Array.isArray(value.forbiddenAssignments) &&
+    Array.isArray(value.softAssignmentScores) &&
+    Array.isArray(value.softItemCountTargets),
   );
 }

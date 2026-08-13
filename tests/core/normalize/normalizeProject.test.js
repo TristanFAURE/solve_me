@@ -30,4 +30,31 @@ describe('normalizeProject', () => {
     expect(project.derived.adjacencyMap.get('P2')?.has('P3')).toBe(true);
     expect(project.derived.adjacencyMap.get('P3')?.has('P2')).toBe(true);
   });
+
+  it('dedupes additive assignment-oriented normalized families', () => {
+    const project = scenario()
+      .containerMode()
+      .items('A')
+      .containers({ T1: 1, T2: 1 })
+      .assignmentExclusion('A', 'T1', 'T2')
+      .assignmentExclusion('A', 'T2', 'T1')
+      .assignmentCountUpperBound('A', ['T1', 'T2'], 1)
+      .assignmentCountUpperBound('A', ['T2', 'T1'], 1)
+      .fixedAssignment('A', 'T1')
+      .fixedAssignment('A', 'T1')
+      .forbiddenAssignment('A', 'T2')
+      .forbiddenAssignment('A', 'T2')
+      .softAssignmentScore('A', 'T1', 5)
+      .softAssignmentScore('A', 'T1', 5)
+      .softItemCountTarget('A', ['T1', 'T2'], 1)
+      .softItemCountTarget('A', ['T2', 'T1'], 1)
+      .buildNormalized();
+
+    expect(project.assignmentExclusions).toHaveLength(1);
+    expect(project.assignmentCountUpperBounds).toHaveLength(1);
+    expect(project.fixedAssignments).toHaveLength(1);
+    expect(project.forbiddenAssignments).toHaveLength(1);
+    expect(project.softAssignmentScores).toHaveLength(1);
+    expect(project.softItemCountTargets).toHaveLength(1);
+  });
 });

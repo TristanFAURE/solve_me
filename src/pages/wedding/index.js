@@ -61,12 +61,12 @@ function createWeddingEditorState() {
 }
 
 function ensureWeddingProject(state) {
-  if (!state.currentProject) {
-    state.currentProject = createEmptyProject({ viewHint: VIEW_HINTS.WEDDING, title: 'Wedding plan' });
+  if (!state.weddingPage.project) {
+    state.weddingPage.project = createEmptyProject({ viewHint: VIEW_HINTS.WEDDING, title: 'Wedding plan' });
   }
 
-  state.currentProject.viewHint = VIEW_HINTS.WEDDING;
-  state.currentProject.assignmentMode = state.currentProject.assignmentMode || ASSIGNMENT_MODES.CONTAINER;
+  state.weddingPage.project.viewHint = VIEW_HINTS.WEDDING;
+  state.weddingPage.project.assignmentMode = state.weddingPage.project.assignmentMode || ASSIGNMENT_MODES.CONTAINER;
 
   if (!state.weddingPage) {
     state.weddingPage = {
@@ -85,6 +85,14 @@ function ensureWeddingProject(state) {
     ...createWeddingEditorState(),
     ...state.weddingPage.editor,
   };
+
+  if (typeof state.weddingPage.commandBarExpanded !== 'boolean') {
+    state.weddingPage.commandBarExpanded = true;
+  }
+
+  if (typeof state.weddingPage.validationPanelExpanded !== 'boolean') {
+    state.weddingPage.validationPanelExpanded = false;
+  }
 }
 
 function escapeHtml(value) {
@@ -110,6 +118,24 @@ function getTables(project) {
 
 function getSeats(project) {
   return Array.isArray(project?.positions) ? project.positions : [];
+}
+
+function renderWeddingSolutionPanelOptions() {
+  return {
+    panelTitle: 'Seating result',
+    panelEyebrow: 'Wedding solver output',
+    emptyResultMessage: 'Run solve after wedding validation to see table or seat assignments.',
+    unsatMessage: 'The solver completed but could not find a valid wedding seating arrangement for the current hard rules.',
+    noAssignmentsMessage: 'No guest placements are available for this solver result.',
+    noWarningsMessage: 'No wedding solver warnings.',
+    rawJsonSummaryLabel: 'View raw wedding solver result JSON',
+    containerKindLabel: 'Table',
+    assignmentCountLabel: 'Assigned guests',
+    emptyAssignmentsLabel: 'No assigned guests',
+    sectionSummaryLabel: 'Guests grouped by table.',
+    solutionPrefixLabel: 'Seating',
+    capacityLabel: 'Capacity',
+  };
 }
 
 function getSeatModeEnabled(project) {
@@ -196,8 +222,8 @@ function mergeValidationResults(primary, secondary) {
 
 function runWeddingValidationFlow(state) {
   const adapter = new FirstSolverAdapter();
-  const weddingValidation = validateWeddingProject(state.currentProject);
-  const genericValidation = validateProject(state.currentProject, adapter.getCapabilities());
+  const weddingValidation = validateWeddingProject(state.weddingPage.project);
+  const genericValidation = validateProject(state.weddingPage.project, adapter.getCapabilities());
   const validation = mergeValidationResults(weddingValidation, genericValidation);
 
   state.weddingPage.lastValidation = validation;
@@ -209,14 +235,14 @@ function runWeddingValidationFlow(state) {
     return;
   }
 
-  state.weddingPage.lastNormalizedProject = normalizeProject(state.currentProject);
+  state.weddingPage.lastNormalizedProject = normalizeProject(state.weddingPage.project);
   state.weddingPage.lastSolverResult = null;
 }
 
 function runWeddingSolveFlow(state) {
   const adapter = new FirstSolverAdapter();
-  const weddingValidation = validateWeddingProject(state.currentProject);
-  const genericValidation = validateProject(state.currentProject, adapter.getCapabilities());
+  const weddingValidation = validateWeddingProject(state.weddingPage.project);
+  const genericValidation = validateProject(state.weddingPage.project, adapter.getCapabilities());
   const validation = mergeValidationResults(weddingValidation, genericValidation);
 
   state.weddingPage.lastValidation = validation;
@@ -236,7 +262,7 @@ function runWeddingSolveFlow(state) {
     return;
   }
 
-  const normalizedProject = normalizeProject(state.currentProject);
+  const normalizedProject = normalizeProject(state.weddingPage.project);
   state.weddingPage.lastNormalizedProject = normalizedProject;
 
   const adapterValidation = adapter.validateModel(normalizedProject);
@@ -1001,7 +1027,7 @@ function addWeddingGuest(state) {
     return;
   }
 
-  state.currentProject.items.push(createItem({ id: createId('item'), label }));
+  state.weddingPage.project.items.push(createItem({ id: createId('item'), label }));
   state.weddingPage.editor.draftGuestLabel = '';
   clearWeddingMessage(state);
   resetWeddingDerivedState(state);
@@ -1013,7 +1039,7 @@ function addWeddingGroup(state) {
     return;
   }
 
-  state.currentProject.groups.push(createGroup({ id: createId('group'), label }));
+  state.weddingPage.project.groups.push(createGroup({ id: createId('group'), label }));
   state.weddingPage.editor.draftGroupLabel = '';
   clearWeddingMessage(state);
   resetWeddingDerivedState(state);
@@ -1040,7 +1066,7 @@ function addWeddingTable(state) {
     },
   });
 
-  state.currentProject.containers.push(table);
+  state.weddingPage.project.containers.push(table);
 
   editor.draftTableLabel = '';
   editor.draftTableMinCapacity = '0';
@@ -1053,14 +1079,14 @@ function addWeddingTable(state) {
 function addWeddingSeat(state) {
   const editor = state.weddingPage.editor;
   const label = editor.draftSeatLabel.trim();
-  if (!label || !editor.draftSeatTableId || !getSeatModeEnabled(state.currentProject)) {
+  if (!label || !editor.draftSeatTableId || !getSeatModeEnabled(state.weddingPage.project)) {
     return;
   }
 
   const seatId = createId('position');
-  state.currentProject.positions.push(createPosition({ id: seatId, label, metadata: { generated: false } }));
-  state.currentProject.containments.push(createContainmentRelation(createEntityRef('container', editor.draftSeatTableId), createEntityRef('position', seatId)));
-  const table = getTables(state.currentProject).find((entry) => entry.id === editor.draftSeatTableId);
+  state.weddingPage.project.positions.push(createPosition({ id: seatId, label, metadata: { generated: false } }));
+  state.weddingPage.project.containments.push(createContainmentRelation(createEntityRef('container', editor.draftSeatTableId), createEntityRef('position', seatId)));
+  const table = getTables(state.weddingPage.project).find((entry) => entry.id === editor.draftSeatTableId);
   if (table) {
     setTableGenerationMode(table, 'manual-adjusted');
   }
@@ -1073,19 +1099,19 @@ function addWeddingSeatAdjacency(state) {
   const editor = state.weddingPage.editor;
   const leftSeatId = editor.draftAdjacencyLeftSeatId;
   const rightSeatId = editor.draftAdjacencyRightSeatId;
-  if (!leftSeatId || !rightSeatId || leftSeatId === rightSeatId || !getSeatModeEnabled(state.currentProject)) {
+  if (!leftSeatId || !rightSeatId || leftSeatId === rightSeatId || !getSeatModeEnabled(state.weddingPage.project)) {
     return false;
   }
 
-  const leftTableId = getSeatTableId(state.currentProject, leftSeatId);
-  const rightTableId = getSeatTableId(state.currentProject, rightSeatId);
+  const leftTableId = getSeatTableId(state.weddingPage.project, leftSeatId);
+  const rightTableId = getSeatTableId(state.weddingPage.project, rightSeatId);
   if (!leftTableId || leftTableId !== rightTableId) {
     state.weddingPage.message = 'Custom seat adjacency currently links seats within the same table only. Choose two seats from one table. ⚠️';
     return false;
   }
 
-  const table = getTables(state.currentProject).find((entry) => entry.id === leftTableId);
-  const added = addAdjacencyBetween(state.currentProject, leftSeatId, rightSeatId);
+  const table = getTables(state.weddingPage.project).find((entry) => entry.id === leftTableId);
+  const added = addAdjacencyBetween(state.weddingPage.project, leftSeatId, rightSeatId);
   if (!added) {
     state.weddingPage.message = 'That seat link already exists, is invalid, or uses the same seat twice.';
     return false;
@@ -1111,12 +1137,12 @@ function removeAllWeddingSeats(project) {
 }
 
 function generateWeddingSeatsForTables(state) {
-  if (!getSeatModeEnabled(state.currentProject)) {
+  if (!getSeatModeEnabled(state.weddingPage.project)) {
     state.weddingPage.message = 'Turn on seat-aware mode before generating seats. 🪑';
     return false;
   }
 
-  const tables = getTables(state.currentProject);
+  const tables = getTables(state.weddingPage.project);
   if (tables.length === 0) {
     state.weddingPage.message = 'Add at least one table before generating seats. 🍽️';
     return false;
@@ -1132,7 +1158,7 @@ function generateWeddingSeatsForTables(state) {
     return false;
   }
 
-  const existingSeatCount = getSeats(state.currentProject).length;
+  const existingSeatCount = getSeats(state.weddingPage.project).length;
   const warningMessage = existingSeatCount > 0
     ? `This will delete ${existingSeatCount} existing seat${existingSeatCount === 1 ? '' : 's'} and recreate generated seats and perimeter topology for every table. Continue?`
     : 'This will create generated seats and perimeter topology for every table based on each table maximum capacity. Continue?';
@@ -1142,11 +1168,11 @@ function generateWeddingSeatsForTables(state) {
     return false;
   }
 
-  removeAllWeddingSeats(state.currentProject);
+  removeAllWeddingSeats(state.weddingPage.project);
 
   let createdSeatCount = 0;
   tablesWithCapacity.forEach((table) => {
-    const result = generateSeatsForTable(state.currentProject, table);
+    const result = generateSeatsForTable(state.weddingPage.project, table);
     createdSeatCount += result.createdSeatCount;
   });
 
@@ -1175,7 +1201,7 @@ function addWeddingConstraint(state) {
     return;
   }
 
-  state.currentProject.constraints.push(createConstraint({
+  state.weddingPage.project.constraints.push(createConstraint({
     kind: editor.draftConstraintKind,
     leftRef: createEntityRef(editor.draftConstraintLeftKind, editor.draftConstraintLeftId),
     rightRef: createEntityRef(editor.draftConstraintRightKind, editor.draftConstraintRightId),
@@ -1194,7 +1220,7 @@ function addWeddingPreference(state) {
   }
 
   const weight = Number.parseInt(editor.draftPreferenceWeight || '1', 10);
-  state.currentProject.preferences.push(createPreference({
+  state.weddingPage.project.preferences.push(createPreference({
     kind: editor.draftPreferenceKind,
     leftRef: createEntityRef(editor.draftPreferenceLeftKind, editor.draftPreferenceLeftId),
     rightRef: createEntityRef(editor.draftPreferenceRightKind, editor.draftPreferenceRightId),
@@ -1210,12 +1236,12 @@ function addWeddingPreference(state) {
 
 function updateWeddingLabel(state, kind, index, value) {
   const collection = kind === 'item'
-    ? state.currentProject.items
+    ? state.weddingPage.project.items
     : kind === 'group'
-      ? state.currentProject.groups
+      ? state.weddingPage.project.groups
       : kind === 'position'
-        ? state.currentProject.positions
-        : state.currentProject.containers;
+        ? state.weddingPage.project.positions
+        : state.weddingPage.project.containers;
 
   if (!collection?.[index]) {
     return;
@@ -1227,7 +1253,7 @@ function updateWeddingLabel(state, kind, index, value) {
 }
 
 function updateWeddingTableCapacity(state, index, field, value) {
-  const table = state.currentProject.containers[index];
+  const table = state.weddingPage.project.containers[index];
   if (!table) {
     return;
   }
@@ -1250,7 +1276,7 @@ function updateWeddingTableCapacity(state, index, field, value) {
 }
 
 function updateWeddingTableShape(state, index, value) {
-  const table = state.currentProject.containers[index];
+  const table = state.weddingPage.project.containers[index];
   if (!table) {
     return;
   }
@@ -1267,21 +1293,21 @@ function bindInputs(root, state) {
       const { name, value } = event.target;
 
       if (name === 'weddingTitle') {
-        state.currentProject.title = value;
+        state.weddingPage.project.title = value;
         clearWeddingMessage(state);
         resetWeddingDerivedState(state);
         return;
       }
 
       if (name === 'weddingDescription') {
-        state.currentProject.description = value;
+        state.weddingPage.project.description = value;
         clearWeddingMessage(state);
         resetWeddingDerivedState(state);
         return;
       }
 
       if (name === 'weddingAssignmentMode') {
-        state.currentProject.assignmentMode = value;
+        state.weddingPage.project.assignmentMode = value;
         clearWeddingMessage(state);
         resetWeddingDerivedState(state);
         renderWeddingPage(root, state);
@@ -1337,9 +1363,9 @@ function bindInputs(root, state) {
       }
 
       if (name === 'draftAdjacencyLeftSeatId') {
-        const selectedTableId = value ? getSeatTableId(state.currentProject, value) : '';
+        const selectedTableId = value ? getSeatTableId(state.weddingPage.project, value) : '';
         const currentRightSeatId = state.weddingPage.editor.draftAdjacencyRightSeatId;
-        const currentRightTableId = currentRightSeatId ? getSeatTableId(state.currentProject, currentRightSeatId) : '';
+        const currentRightTableId = currentRightSeatId ? getSeatTableId(state.weddingPage.project, currentRightSeatId) : '';
         if (!selectedTableId || currentRightTableId !== selectedTableId || currentRightSeatId === value) {
           state.weddingPage.editor.draftAdjacencyRightSeatId = '';
         }
@@ -1441,8 +1467,8 @@ function bindActions(root, state) {
 
     if (action === 'generate-wedding-table-seats') {
       element.addEventListener('click', () => {
-        const table = state.currentProject.containers[Number.parseInt(element.dataset.index, 10)];
-        if (!getSeatModeEnabled(state.currentProject)) {
+        const table = state.weddingPage.project.containers[Number.parseInt(element.dataset.index, 10)];
+        if (!getSeatModeEnabled(state.weddingPage.project)) {
           state.weddingPage.message = 'Turn on seat-aware mode before generating seats. 🪑';
           renderWeddingPage(root, state);
           return;
@@ -1459,7 +1485,7 @@ function bindActions(root, state) {
           return;
         }
 
-        const existingSeatCount = getSeatsForTable(state.currentProject, table.id).length;
+        const existingSeatCount = getSeatsForTable(state.weddingPage.project, table.id).length;
         const warningMessage = existingSeatCount > 0
           ? `This will replace ${existingSeatCount} existing seat${existingSeatCount === 1 ? '' : 's'} for ${table.label}. Continue?`
           : `Generate seats and perimeter topology for ${table.label}?`;
@@ -1470,7 +1496,7 @@ function bindActions(root, state) {
           return;
         }
 
-        const result = generateSeatsForTable(state.currentProject, table);
+        const result = generateSeatsForTable(state.weddingPage.project, table);
         clearWeddingMessage(state);
         resetWeddingDerivedState(state);
         state.weddingPage.message = `${table.label} generated ${result.createdSeatCount} seat${result.createdSeatCount === 1 ? '' : 's'} with a ${result.shape} perimeter topology. 🪑`;
@@ -1488,7 +1514,7 @@ function bindActions(root, state) {
             renderWeddingPage(root, state);
             return;
           }
-          setGroupTogetherShortcut(state.currentProject, groupId, true);
+          setGroupTogetherShortcut(state.weddingPage.project, groupId, true);
           clearWeddingMessage(state);
           resetWeddingDerivedState(state);
           state.weddingPage.message = 'Group together rule added.';
@@ -1511,7 +1537,7 @@ function bindActions(root, state) {
             renderWeddingPage(root, state);
             return;
           }
-          setGroupPreferTogetherShortcut(state.currentProject, groupId, state.weddingPage.editor.draftPreferenceWeight);
+          setGroupPreferTogetherShortcut(state.weddingPage.project, groupId, state.weddingPage.editor.draftPreferenceWeight);
           clearWeddingMessage(state);
           resetWeddingDerivedState(state);
           state.weddingPage.message = 'Group together preference added.';
@@ -1527,7 +1553,7 @@ function bindActions(root, state) {
 
     if (action === 'remove-wedding-guest') {
       element.addEventListener('click', () => {
-        removeNodeAndReferences(state.currentProject, 'items', Number.parseInt(element.dataset.index, 10));
+        removeNodeAndReferences(state.weddingPage.project, 'items', Number.parseInt(element.dataset.index, 10));
         clearWeddingMessage(state);
         resetWeddingDerivedState(state);
         renderWeddingPage(root, state);
@@ -1537,7 +1563,7 @@ function bindActions(root, state) {
 
     if (action === 'remove-wedding-group') {
       element.addEventListener('click', () => {
-        removeNodeAndReferences(state.currentProject, 'groups', Number.parseInt(element.dataset.index, 10));
+        removeNodeAndReferences(state.weddingPage.project, 'groups', Number.parseInt(element.dataset.index, 10));
         clearWeddingMessage(state);
         resetWeddingDerivedState(state);
         renderWeddingPage(root, state);
@@ -1547,7 +1573,7 @@ function bindActions(root, state) {
 
     if (action === 'remove-wedding-table') {
       element.addEventListener('click', () => {
-        removeNodeAndReferences(state.currentProject, 'containers', Number.parseInt(element.dataset.index, 10));
+        removeNodeAndReferences(state.weddingPage.project, 'containers', Number.parseInt(element.dataset.index, 10));
         clearWeddingMessage(state);
         resetWeddingDerivedState(state);
         renderWeddingPage(root, state);
@@ -1557,10 +1583,10 @@ function bindActions(root, state) {
 
     if (action === 'remove-wedding-seat') {
       element.addEventListener('click', () => {
-        const seat = state.currentProject.positions[Number.parseInt(element.dataset.index, 10)];
-        const tableId = seat ? getSeatTableId(state.currentProject, seat.id) : null;
-        const table = tableId ? getTables(state.currentProject).find((entry) => entry.id === tableId) : null;
-        removeNodeAndReferences(state.currentProject, 'positions', Number.parseInt(element.dataset.index, 10));
+        const seat = state.weddingPage.project.positions[Number.parseInt(element.dataset.index, 10)];
+        const tableId = seat ? getSeatTableId(state.weddingPage.project, seat.id) : null;
+        const table = tableId ? getTables(state.weddingPage.project).find((entry) => entry.id === tableId) : null;
+        removeNodeAndReferences(state.weddingPage.project, 'positions', Number.parseInt(element.dataset.index, 10));
         if (table) {
           setTableGenerationMode(table, 'manual-adjusted');
         }
@@ -1574,13 +1600,13 @@ function bindActions(root, state) {
     if (action === 'remove-wedding-seat-left') {
       element.addEventListener('click', () => {
         const seatId = element.dataset.seatId;
-        const tableId = getSeatTableId(state.currentProject, seatId);
-        const table = tableId ? getTables(state.currentProject).find((entry) => entry.id === tableId) : null;
+        const tableId = getSeatTableId(state.weddingPage.project, seatId);
+        const table = tableId ? getTables(state.weddingPage.project).find((entry) => entry.id === tableId) : null;
         if (!table) {
           return;
         }
 
-        const removed = removeGeneratedSeatAdjacency(state.currentProject, table, seatId, 'left');
+        const removed = removeGeneratedSeatAdjacency(state.weddingPage.project, table, seatId, 'left');
         state.weddingPage.message = removed
           ? 'Left-side adjacency removed. The seat stays in place and the generated ring now has a gap on that side. ↩️'
           : 'No generated left adjacency was available to remove.';
@@ -1593,13 +1619,13 @@ function bindActions(root, state) {
     if (action === 'remove-wedding-seat-right') {
       element.addEventListener('click', () => {
         const seatId = element.dataset.seatId;
-        const tableId = getSeatTableId(state.currentProject, seatId);
-        const table = tableId ? getTables(state.currentProject).find((entry) => entry.id === tableId) : null;
+        const tableId = getSeatTableId(state.weddingPage.project, seatId);
+        const table = tableId ? getTables(state.weddingPage.project).find((entry) => entry.id === tableId) : null;
         if (!table) {
           return;
         }
 
-        const removed = removeGeneratedSeatAdjacency(state.currentProject, table, seatId, 'right');
+        const removed = removeGeneratedSeatAdjacency(state.weddingPage.project, table, seatId, 'right');
         state.weddingPage.message = removed
           ? 'Right-side adjacency removed. The seat stays in place and the generated ring now has a gap on that side. ↪️'
           : 'No generated right adjacency was available to remove.';
@@ -1612,13 +1638,13 @@ function bindActions(root, state) {
     if (action === 'remove-wedding-seat-both') {
       element.addEventListener('click', () => {
         const seatId = element.dataset.seatId;
-        const tableId = getSeatTableId(state.currentProject, seatId);
-        const table = tableId ? getTables(state.currentProject).find((entry) => entry.id === tableId) : null;
+        const tableId = getSeatTableId(state.weddingPage.project, seatId);
+        const table = tableId ? getTables(state.weddingPage.project).find((entry) => entry.id === tableId) : null;
         if (!table) {
           return;
         }
 
-        const removed = removeGeneratedSeatBothSides(state.currentProject, table, seatId);
+        const removed = removeGeneratedSeatBothSides(state.weddingPage.project, table, seatId);
         state.weddingPage.message = removed
           ? 'Both generated adjacencies were removed for that seat. The seat remains, but it now has open gaps on each generated side. ⛔'
           : 'No generated left/right adjacency was available to remove.';
@@ -1630,7 +1656,7 @@ function bindActions(root, state) {
 
     if (action === 'remove-wedding-constraint') {
       element.addEventListener('click', () => {
-        state.currentProject.constraints.splice(Number.parseInt(element.dataset.index, 10), 1);
+        state.weddingPage.project.constraints.splice(Number.parseInt(element.dataset.index, 10), 1);
         clearWeddingMessage(state);
         resetWeddingDerivedState(state);
         renderWeddingPage(root, state);
@@ -1640,7 +1666,7 @@ function bindActions(root, state) {
 
     if (action === 'remove-wedding-preference') {
       element.addEventListener('click', () => {
-        state.currentProject.preferences.splice(Number.parseInt(element.dataset.index, 10), 1);
+        state.weddingPage.project.preferences.splice(Number.parseInt(element.dataset.index, 10), 1);
         clearWeddingMessage(state);
         resetWeddingDerivedState(state);
         renderWeddingPage(root, state);
@@ -1650,7 +1676,7 @@ function bindActions(root, state) {
 
     if (action === 'toggle-wedding-membership') {
       element.addEventListener('change', (event) => {
-        toggleWeddingMembership(state.currentProject, event.target.dataset.groupId, event.target.dataset.guestId, event.target.checked);
+        toggleWeddingMembership(state.weddingPage.project, event.target.dataset.groupId, event.target.dataset.guestId, event.target.checked);
         clearWeddingMessage(state);
         resetWeddingDerivedState(state);
         renderWeddingPage(root, state);
@@ -1694,8 +1720,8 @@ function bindActions(root, state) {
         }
 
         try {
-          state.currentProject = await importWeddingWorkbook(file);
-          state.currentProject.viewHint = VIEW_HINTS.WEDDING;
+          state.weddingPage.project = await importWeddingWorkbook(file);
+          state.weddingPage.project.viewHint = VIEW_HINTS.WEDDING;
           clearWeddingMessage(state);
           resetWeddingDerivedState(state);
           state.weddingPage.message = `Excel workbook imported from ${file.name}. Please validate the imported wedding plan. 💌`;
@@ -1714,7 +1740,7 @@ function bindActions(root, state) {
     if (action === 'export-wedding-solution') {
       element.addEventListener('click', () => {
         try {
-          exportWeddingSolutionWorkbook(state.currentProject, state.weddingPage.lastSolverResult, state.weddingPage.editor.activeSolutionIndex);
+          exportWeddingSolutionWorkbook(state.weddingPage.project, state.weddingPage.lastSolverResult, state.weddingPage.editor.activeSolutionIndex);
           state.weddingPage.message = `Excel export downloaded for solution ${state.weddingPage.editor.activeSolutionIndex + 1}. 📘`;
         } catch (error) {
           state.weddingPage.message = error instanceof Error
@@ -1728,7 +1754,7 @@ function bindActions(root, state) {
 
     if (action === 'toggle-wedding-mode') {
       element.addEventListener('click', () => {
-        state.currentProject.assignmentMode = getSeatModeEnabled(state.currentProject)
+        state.weddingPage.project.assignmentMode = getSeatModeEnabled(state.weddingPage.project)
           ? ASSIGNMENT_MODES.CONTAINER
           : ASSIGNMENT_MODES.POSITION;
         clearWeddingMessage(state);
@@ -1814,17 +1840,17 @@ export function renderWeddingPage(root, state) {
     body: `
       ${renderCommandBar(state.weddingPage.lastSolverResult, state.weddingPage.commandBarExpanded !== false)}
       ${state.weddingPage.message ? `<section class="command-bar-feedback">${escapeHtml(state.weddingPage.message)}</section>` : ''}
-      ${renderSummary(state.currentProject)}
-      ${renderMetadataPanel(state.currentProject)}
-      ${renderCreateCards(state.currentProject, state.weddingPage.editor)}
+      ${renderSummary(state.weddingPage.project)}
+      ${renderMetadataPanel(state.weddingPage.project)}
+      ${renderCreateCards(state.weddingPage.project, state.weddingPage.editor)}
       <section class="workspace-columns two-up">
-        ${renderGuestsPanel(state.currentProject)}
-        ${renderGroupsPanel(state.currentProject, state.weddingPage.editor)}
+        ${renderGuestsPanel(state.weddingPage.project)}
+        ${renderGroupsPanel(state.weddingPage.project, state.weddingPage.editor)}
       </section>
       <section class="workspace-columns two-up">
-        ${renderTablesPanel(state.currentProject)}
+        ${renderTablesPanel(state.weddingPage.project)}
       </section>
-      ${renderRulesPanel(state.currentProject, state.weddingPage.editor)}
+      ${renderRulesPanel(state.weddingPage.project, state.weddingPage.editor)}
       ${renderValidationPanel(state.weddingPage.lastValidation, {
       hasComputedSolution: Boolean(state.weddingPage.lastSolverResult),
       expanded: state.weddingPage.validationPanelExpanded,
@@ -1851,8 +1877,13 @@ export function renderWeddingPage(root, state) {
             </details>
           ` : '<p class="muted-text">Validate or solve the wedding plan to inspect the normalized project.</p>'}
       </section>
-      ${renderSolutionPanel(state.weddingPage.lastNormalizedProject ?? state.currentProject, state.weddingPage.lastSolverResult, state.weddingPage.editor.activeSolutionIndex)}
-      ${renderSeatsPanel(state.currentProject, state.weddingPage.editor)}
+      ${renderSolutionPanel(
+        state.weddingPage.lastNormalizedProject ?? state.weddingPage.project,
+        state.weddingPage.lastSolverResult,
+        state.weddingPage.editor.activeSolutionIndex,
+        renderWeddingSolutionPanelOptions(),
+      )}
+      ${renderSeatsPanel(state.weddingPage.project, state.weddingPage.editor)}
     </section>
     `,
   });

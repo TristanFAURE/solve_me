@@ -13,6 +13,11 @@ function getEntityLabel(project, kind, id) {
   return node ? node.label : `${kind}:${id}`;
 }
 
+function getContainerCapacityDisplay(container) {
+  const minCapacity = container.minCapacity ?? container.metadata?.minCapacity ?? 0;
+  const maxCapacity = container.maxCapacity ?? container.metadata?.maxCapacity ?? '∞';
+  return `${escapeHtml(minCapacity)} → ${escapeHtml(maxCapacity)}`;
+}
 
 function getAssignmentItemDisplay(project, assignment) {
   const itemLabel = assignment.metadata?.itemLabel ?? getEntityLabel(project, assignment.itemRef.kind, assignment.itemRef.id);
@@ -46,28 +51,57 @@ function groupAssignmentsByContainer(project, solution) {
   return [...grouped.values()];
 }
 
+function buildViewConfig(options = {}) {
+  const labels = {
+    containerKind: options.containerKindLabel ?? 'Container',
+    assignmentCount: options.assignmentCountLabel ?? 'Assigned items',
+    emptyAssignments: options.emptyAssignmentsLabel ?? 'No assigned items',
+    sectionSummary: options.sectionSummaryLabel ?? 'Assignments grouped by container.',
+    solutionPrefix: options.solutionPrefixLabel ?? 'Solution',
+    capacity: options.capacityLabel ?? 'Capacity',
+  };
+
+  return {
+    labels,
+    renderContainerMeta: typeof options.renderContainerMeta === 'function'
+      ? options.renderContainerMeta
+      : (container, assignments) => `
+          <div class="entity-meta-item"><dt>${escapeHtml(labels.capacity)}</dt><dd>${getContainerCapacityDisplay(container)}</dd></div>
+          <div class="entity-meta-item"><dt>${escapeHtml(labels.assignmentCount)}</dt><dd><ul class="solution-item-list">${assignments.length === 0 ? `<li class="muted-text">${escapeHtml(labels.emptyAssignments)}</li>` : assignments.map((assignment) => `<li>${getAssignmentItemDisplay(options.displayProject ?? options.project ?? { items: [], groups: [], containers: [], positions: [] }, assignment)}</li>`).join('')}</ul></dd></div>
+        `,
+  };
+}
+
 export function renderContainerAssignmentView(project, solution, index, totalSolutions, options = {}) {
   const grouped = groupAssignmentsByContainer(project, solution);
+  const displayProject = options.displayProject ?? project;
+  const viewConfig = buildViewConfig({ ...options, project: displayProject });
   const containerCards = grouped.map(({ container, assignments }) => {
-    const itemList = assignments.length === 0
-      ? '<li class="muted-text">No assigned guests</li>'
+    const defaultItemList = assignments.length === 0
+      ? `<li class="muted-text">${escapeHtml(viewConfig.labels.emptyAssignments)}</li>`
       : assignments
-        .map((assignment) => `<li>${getAssignmentItemDisplay(project, assignment)}</li>`)
+        .map((assignment) => `<li>${getAssignmentItemDisplay(displayProject, assignment)}</li>`)
         .join('');
+
+    const metaContent = typeof options.renderContainerMeta === 'function'
+      ? options.renderContainerMeta({ container, assignments, project, displayProject, defaultItemList, labels: viewConfig.labels })
+      : `
+          <div class="entity-meta-item"><dt>${escapeHtml(viewConfig.labels.capacity)}</dt><dd>${getContainerCapacityDisplay(container)}</dd></div>
+          <div class="entity-meta-item"><dt>${escapeHtml(viewConfig.labels.assignmentCount)}</dt><dd><ul class="solution-item-list">${defaultItemList}</ul></dd></div>
+        `;
 
     return `
       <article class="entity-card">
         <div class="entity-card-header">
           <div>
-            <p class="entity-kind">Container</p>
+            <p class="entity-kind">${escapeHtml(viewConfig.labels.containerKind)}</p>
             <h3>${escapeHtml(container.label)}</h3>
           </div>
           <span class="panel-count">${assignments.length}</span>
         </div>
         <p class="entity-id">${escapeHtml(container.id)}</p>
         <div class="entity-meta-grid">
-          <div class="entity-meta-item"><dt>Capacity</dt><dd>${escapeHtml(container.metadata?.minCapacity ?? 0)} → ${escapeHtml(container.metadata?.maxCapacity ?? '∞')}</dd></div>
-          <div class="entity-meta-item"><dt>Assigned guests</dt><dd><ul class="solution-item-list">${itemList}</ul></dd></div>
+          ${metaContent}
         </div>
       </article>
     `;
@@ -76,8 +110,8 @@ export function renderContainerAssignmentView(project, solution, index, totalSol
   return `
     <section class="top-gap">
       <div class="section-summary-row">
-        <span class="section-count-pill">Solution ${index + 1} of ${totalSolutions}</span>
-        <span class="muted-text">Assignments grouped by container.</span>
+        <span class="section-count-pill">${escapeHtml(viewConfig.labels.solutionPrefix)} ${index + 1} of ${totalSolutions}</span>
+        <span class="muted-text">${escapeHtml(viewConfig.labels.sectionSummary)}</span>
       </div>
       <div class="entity-board top-gap">
         ${containerCards}

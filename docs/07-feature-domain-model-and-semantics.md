@@ -262,6 +262,8 @@ Multiple group membership is therefore allowed by default, and validation should
 
 Capacity constraints apply at container level.
 
+In addition to container-level capacities, the normalized semantics may include generic item-scoped assignment-count bounds over arbitrary destination scopes when supported by the active solver path.
+
 ### Direct capacity
 
 `accepts(Container, maxCount)`
@@ -311,6 +313,8 @@ then:
 
 Hard constraints must always be satisfied.
 If one hard constraint cannot be satisfied together with the others, the problem is unsatisfiable.
+
+In addition to relation-style hard constraints, the normalized model may also contain assignment-oriented hard constraints that remain generic.
 
 ### Must share container
 
@@ -363,10 +367,47 @@ Validity condition:
 
 - requires position mode or equivalent support
 
+### Assignment exclusion
+
+Generic normalized meaning:
+
+- a specific item must not be assigned to both of two specified destinations
+
+Use cases:
+
+- one-assignment-within-a-derived-scope semantics
+- transform-generated cooldown exclusions
+- explicit incompatibility between two candidate destinations for one item
+
+### Assignment-count upper bound
+
+Generic normalized meaning:
+
+- a specific item may be assigned at most `N` times within a specified generic destination scope
+
+Use cases:
+
+- max total assignments for one item
+- max assignments for one item within a destination subset
+
+### Fixed assignment
+
+Generic normalized meaning:
+
+- a specific item must be assigned to a specified destination
+
+### Forbidden assignment
+
+Generic normalized meaning:
+
+- a specific item must not be assigned to a specified destination
+
 ## Soft preferences
 
 Soft preferences should be satisfied when possible but may be violated.
 They should influence ranking, score, or optimization when the solver supports them.
+
+In addition to relation-style soft preferences, the normalized model may include assignment-oriented soft scoring terms that remain generic.
 
 ### Prefer share container
 
@@ -410,6 +451,29 @@ If weights are supported:
 If weights are not supported:
 
 - preferences may be treated as equal-priority penalties
+
+### Soft assignment score
+
+Generic normalized meaning:
+
+- assigning a specific item to a specific destination adds a score or penalty
+
+Use cases:
+
+- positive preference for a derived destination set
+- negative preference for a derived destination set
+
+### Soft item count target
+
+Generic normalized meaning:
+
+- a specific item has a desired assignment count within a generic destination scope
+- deviation from that target affects optimization score but does not invalidate the solution
+
+Use cases:
+
+- person-specific assignment targets
+- fairness-oriented target balancing when represented through item-level targets
 
 ## Hard versus soft precedence
 
@@ -583,6 +647,8 @@ Examples:
 - group containment where parent is not a group
 - position containment where parent is not a container
 - unsupported operand combinations such as ambiguous group adjacency in MVP
+- assignment-count bounds referring to unknown destination scopes
+- fixed or forbidden assignments referring to unknown destinations
 
 ## Solver capability interaction
 
@@ -596,6 +662,10 @@ The solver adapter should expose capabilities such as:
 - all-solutions enumeration supported
 - adjacency supported
 - optimization supported
+- assignment exclusions supported
+- assignment-count upper bounds supported
+- fixed and forbidden assignments supported
+- assignment-oriented soft scoring supported
 
 Fallback policy should be explicit.
 Possible behaviors:

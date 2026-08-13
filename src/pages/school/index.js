@@ -48,11 +48,11 @@ function createSchoolEditorState() {
 }
 
 function ensureSchoolProject(state) {
-  if (!state.currentProject) {
-    state.currentProject = createEmptyProject({ viewHint: VIEW_HINTS.SCHOOL, title: 'School scenario' });
+  if (!state.schoolPage.project) {
+    state.schoolPage.project = createEmptyProject({ viewHint: VIEW_HINTS.SCHOOL, title: 'School scenario' });
   }
 
-  state.currentProject.viewHint = VIEW_HINTS.SCHOOL;
+  state.schoolPage.project.viewHint = VIEW_HINTS.SCHOOL;
 
   if (!state.schoolPage) {
     state.schoolPage = {
@@ -80,6 +80,14 @@ function ensureSchoolProject(state) {
     draftClassAcceptedLevelIds: state.schoolPage.editor.draftClassAcceptedLevelIds ?? {},
     draftClassTeacherIds: state.schoolPage.editor.draftClassTeacherIds ?? {},
   };
+
+  if (typeof state.schoolPage.commandBarExpanded !== 'boolean') {
+    state.schoolPage.commandBarExpanded = true;
+  }
+
+  if (typeof state.schoolPage.validationPanelExpanded !== 'boolean') {
+    state.schoolPage.validationPanelExpanded = false;
+  }
 }
 
 function escapeHtml(value) {
@@ -121,6 +129,25 @@ function getClasses(project) {
 
 function findNodeLabel(list, id) {
   return list.find((entry) => entry.id === id)?.label || id;
+}
+
+function findContainerById(project, containerId) {
+  return getClasses(project).find((container) => container.id === containerId) ?? null;
+}
+
+function getAssignedStudentIds(solution, containerId) {
+  return (solution?.assignments ?? [])
+    .filter((assignment) => assignment.containerRef?.id === containerId)
+    .map((assignment) => assignment.itemRef?.id)
+    .filter(Boolean);
+}
+
+function renderMembershipList(labels, emptyLabel) {
+  if (!labels.length) {
+    return `<span class="muted-text">${escapeHtml(emptyLabel)}</span>`;
+  }
+
+  return `<ul class="solution-item-list">${labels.map((label) => `<li>${escapeHtml(label)}</li>`).join('')}</ul>`;
 }
 
 function renderSelectOptions(entries, selectedValue, placeholder = 'Select…') {
@@ -693,6 +720,47 @@ function buildSchoolSolveProject(project) {
   return transformedProject;
 }
 
+function renderSchoolSolutionPanelOptions(project, normalizedProject) {
+  return {
+    panelTitle: 'Class placement result',
+    panelEyebrow: 'School solver output',
+    emptyResultMessage: 'Run solve after school validation to see proposed class placements.',
+    unsatMessage: 'The solver completed but could not place students into classes while satisfying the current school rules.',
+    noAssignmentsMessage: 'No student-to-class placements are available for this solver result.',
+    noWarningsMessage: 'No school solver warnings.',
+    rawJsonSummaryLabel: 'View raw school solver result JSON',
+    containerKindLabel: 'Class',
+    assignmentCountLabel: 'Assigned students',
+    emptyAssignmentsLabel: 'No assigned students',
+    sectionSummaryLabel: 'Students grouped by class, with class-facing school details.',
+    solutionPrefixLabel: 'Placement',
+    capacityLabel: 'Capacity',
+    displayProject: project,
+    renderContainerMeta: ({ container, assignments, defaultItemList }) => {
+      const sourceContainer = findContainerById(project, container.id) ?? container;
+      const acceptedLevelLabels = getContainerAcceptedLevelIds(sourceContainer)
+        .map((levelId) => findNodeLabel(getLevels(project), levelId));
+      const teacherLabels = getContainerTeacherIds(sourceContainer)
+        .map((teacherId) => findNodeLabel(getTeachers(project), teacherId));
+      const assignedStudentIds = getAssignedStudentIds({ assignments }, container.id);
+      const assignedLevels = [...new Set(
+        assignedStudentIds
+          .flatMap((studentId) => getContainedGroupIdsForItem(project, studentId))
+          .map((levelId) => findNodeLabel(getLevels(project), levelId)),
+      )];
+      const normalizedSourceContainer = normalizedProject?.containers?.find((entry) => entry.id === container.id) ?? container;
+
+      return `
+        <div class="entity-meta-item"><dt>Capacity</dt><dd>${escapeHtml(normalizedSourceContainer.metadata?.minCapacity ?? normalizedSourceContainer.minCapacity ?? 0)} → ${escapeHtml(normalizedSourceContainer.metadata?.maxCapacity ?? normalizedSourceContainer.maxCapacity ?? '∞')}</dd></div>
+        <div class="entity-meta-item"><dt>Accepted levels</dt><dd>${renderMembershipList(acceptedLevelLabels, 'All levels are allowed')}</dd></div>
+        <div class="entity-meta-item"><dt>Linked teachers</dt><dd>${renderMembershipList(teacherLabels, 'No teacher linked')}</dd></div>
+        <div class="entity-meta-item"><dt>Levels present in this class</dt><dd>${renderMembershipList(assignedLevels, 'No assigned student level yet')}</dd></div>
+        <div class="entity-meta-item"><dt>Assigned students</dt><dd><ul class="solution-item-list">${defaultItemList}</ul></dd></div>
+      `;
+    },
+  };
+}
+
 function renderNormalizationSummary(normalizedProject) {
   if (!normalizedProject) {
     return `
@@ -747,8 +815,8 @@ function mergeValidationResults(primary, secondary) {
 
 function runSchoolValidationFlow(state) {
   const adapter = new FirstSolverAdapter();
-  const schoolValidation = validateSchoolProject(state.currentProject);
-  const schoolProject = buildSchoolSolveProject(state.currentProject);
+  const schoolValidation = validateSchoolProject(state.schoolPage.project);
+  const schoolProject = buildSchoolSolveProject(state.schoolPage.project);
   const genericValidation = validateProject(schoolProject, adapter.getCapabilities());
   const validation = mergeValidationResults(schoolValidation, genericValidation);
 
@@ -767,8 +835,8 @@ function runSchoolValidationFlow(state) {
 
 function runSchoolSolveFlow(state) {
   const adapter = new FirstSolverAdapter();
-  const schoolValidation = validateSchoolProject(state.currentProject);
-  const schoolProject = buildSchoolSolveProject(state.currentProject);
+  const schoolValidation = validateSchoolProject(state.schoolPage.project);
+  const schoolProject = buildSchoolSolveProject(state.schoolPage.project);
   const genericValidation = validateProject(schoolProject, adapter.getCapabilities());
   const validation = mergeValidationResults(schoolValidation, genericValidation);
 
@@ -830,7 +898,7 @@ function addStudent(state) {
     return;
   }
 
-  state.currentProject.items.push(createItem({
+  state.schoolPage.project.items.push(createItem({
     id: createId('item'),
     label,
     metadata: { schoolRole: SCHOOL_ITEM_ROLES.STUDENT },
@@ -846,7 +914,7 @@ function addTeacher(state) {
     return;
   }
 
-  state.currentProject.items.push(createItem({
+  state.schoolPage.project.items.push(createItem({
     id: createId('item'),
     label,
     metadata: { schoolRole: SCHOOL_ITEM_ROLES.TEACHER },
@@ -862,7 +930,7 @@ function addLevel(state) {
     return;
   }
 
-  state.currentProject.groups.push(createGroup({ id: createId('group'), label }));
+  state.schoolPage.project.groups.push(createGroup({ id: createId('group'), label }));
   state.schoolPage.editor.draftLevelLabel = '';
   clearSchoolMessage(state);
   resetSchoolDerivedState(state);
@@ -878,7 +946,7 @@ function addClassroom(state) {
   const minCapacity = Number.parseInt(editor.draftClassMinCapacity || '0', 10);
   const maxCapacity = editor.draftClassMaxCapacity === '' ? null : Number.parseInt(editor.draftClassMaxCapacity, 10);
 
-  state.currentProject.containers.push(createContainer({
+  state.schoolPage.project.containers.push(createContainer({
     id: createId('container'),
     label,
     minCapacity: Number.isNaN(minCapacity) ? 0 : minCapacity,
@@ -939,7 +1007,7 @@ function addSchoolConstraint(state) {
     return;
   }
 
-  state.currentProject.constraints.push(createConstraint({
+  state.schoolPage.project.constraints.push(createConstraint({
     kind: editor.draftRuleKind,
     leftRef: createEntityRef('item', editor.draftRuleLeftId),
     rightRef: createEntityRef('item', editor.draftRuleRightId),
@@ -957,7 +1025,7 @@ function addSchoolPreference(state) {
     return;
   }
 
-  state.currentProject.preferences.push(createPreference({
+  state.schoolPage.project.preferences.push(createPreference({
     kind: editor.draftPreferenceKind,
     leftRef: createEntityRef('item', editor.draftPreferenceLeftId),
     rightRef: createEntityRef('item', editor.draftPreferenceRightId),
@@ -1007,10 +1075,10 @@ function removeNodeAndReferences(project, collectionName, index) {
 
 function updateSchoolLabel(state, kind, index, value) {
   const collection = kind === 'item'
-    ? state.currentProject.items
+    ? state.schoolPage.project.items
     : kind === 'group'
-      ? state.currentProject.groups
-      : state.currentProject.containers;
+      ? state.schoolPage.project.groups
+      : state.schoolPage.project.containers;
 
   if (!collection?.[index]) {
     return;
@@ -1022,7 +1090,7 @@ function updateSchoolLabel(state, kind, index, value) {
 }
 
 function updateClassCapacity(state, index, field, value) {
-  const classroom = state.currentProject.containers[index];
+  const classroom = state.schoolPage.project.containers[index];
   if (!classroom) {
     return;
   }
@@ -1049,14 +1117,14 @@ function bindInputs(root, state) {
       const { name, value } = event.target;
 
       if (name === 'schoolTitle') {
-        state.currentProject.title = value;
+        state.schoolPage.project.title = value;
         clearSchoolMessage(state);
         resetSchoolDerivedState(state);
         return;
       }
 
       if (name === 'schoolDescription') {
-        state.currentProject.description = value;
+        state.schoolPage.project.description = value;
         clearSchoolMessage(state);
         resetSchoolDerivedState(state);
         return;
@@ -1140,7 +1208,7 @@ function bindActions(root, state) {
 
     if (action === 'remove-student') {
       element.addEventListener('click', () => {
-        removeNodeAndReferences(state.currentProject, 'items', Number.parseInt(element.dataset.index, 10));
+        removeNodeAndReferences(state.schoolPage.project, 'items', Number.parseInt(element.dataset.index, 10));
         clearSchoolMessage(state);
         resetSchoolDerivedState(state);
         renderSchoolPage(root, state);
@@ -1150,7 +1218,7 @@ function bindActions(root, state) {
 
     if (action === 'remove-teacher') {
       element.addEventListener('click', () => {
-        removeNodeAndReferences(state.currentProject, 'items', Number.parseInt(element.dataset.index, 10));
+        removeNodeAndReferences(state.schoolPage.project, 'items', Number.parseInt(element.dataset.index, 10));
         clearSchoolMessage(state);
         resetSchoolDerivedState(state);
         renderSchoolPage(root, state);
@@ -1160,7 +1228,7 @@ function bindActions(root, state) {
 
     if (action === 'remove-level') {
       element.addEventListener('click', () => {
-        removeNodeAndReferences(state.currentProject, 'groups', Number.parseInt(element.dataset.index, 10));
+        removeNodeAndReferences(state.schoolPage.project, 'groups', Number.parseInt(element.dataset.index, 10));
         clearSchoolMessage(state);
         resetSchoolDerivedState(state);
         renderSchoolPage(root, state);
@@ -1170,7 +1238,7 @@ function bindActions(root, state) {
 
     if (action === 'remove-class') {
       element.addEventListener('click', () => {
-        removeNodeAndReferences(state.currentProject, 'containers', Number.parseInt(element.dataset.index, 10));
+        removeNodeAndReferences(state.schoolPage.project, 'containers', Number.parseInt(element.dataset.index, 10));
         clearSchoolMessage(state);
         resetSchoolDerivedState(state);
         renderSchoolPage(root, state);
@@ -1180,7 +1248,7 @@ function bindActions(root, state) {
 
     if (action === 'remove-school-constraint') {
       element.addEventListener('click', () => {
-        removeAt(state.currentProject.constraints, Number.parseInt(element.dataset.index, 10));
+        removeAt(state.schoolPage.project.constraints, Number.parseInt(element.dataset.index, 10));
         clearSchoolMessage(state);
         resetSchoolDerivedState(state);
         renderSchoolPage(root, state);
@@ -1190,7 +1258,7 @@ function bindActions(root, state) {
 
     if (action === 'remove-school-preference') {
       element.addEventListener('click', () => {
-        removeAt(state.currentProject.preferences, Number.parseInt(element.dataset.index, 10));
+        removeAt(state.schoolPage.project.preferences, Number.parseInt(element.dataset.index, 10));
         clearSchoolMessage(state);
         resetSchoolDerivedState(state);
         renderSchoolPage(root, state);
@@ -1200,7 +1268,7 @@ function bindActions(root, state) {
 
     if (action === 'toggle-student-level') {
       element.addEventListener('change', (event) => {
-        toggleMembership(state.currentProject, event.target.dataset.levelId, event.target.dataset.studentId, event.target.checked);
+        toggleMembership(state.schoolPage.project, event.target.dataset.levelId, event.target.dataset.studentId, event.target.checked);
         clearSchoolMessage(state);
         resetSchoolDerivedState(state);
         renderSchoolPage(root, state);
@@ -1210,7 +1278,7 @@ function bindActions(root, state) {
 
     if (action === 'toggle-teacher-level') {
       element.addEventListener('change', (event) => {
-        toggleMembership(state.currentProject, event.target.dataset.levelId, event.target.dataset.teacherId, event.target.checked);
+        toggleMembership(state.schoolPage.project, event.target.dataset.levelId, event.target.dataset.teacherId, event.target.checked);
         clearSchoolMessage(state);
         resetSchoolDerivedState(state);
         renderSchoolPage(root, state);
@@ -1220,7 +1288,7 @@ function bindActions(root, state) {
 
     if (action === 'toggle-class-level') {
       element.addEventListener('change', (event) => {
-        toggleContainerMetadataId(state.currentProject, event.target.dataset.classId, 'acceptedLevelIds', event.target.dataset.levelId, event.target.checked);
+        toggleContainerMetadataId(state.schoolPage.project, event.target.dataset.classId, 'acceptedLevelIds', event.target.dataset.levelId, event.target.checked);
         clearSchoolMessage(state);
         resetSchoolDerivedState(state);
         renderSchoolPage(root, state);
@@ -1230,7 +1298,7 @@ function bindActions(root, state) {
 
     if (action === 'toggle-class-teacher') {
       element.addEventListener('change', (event) => {
-        toggleContainerMetadataId(state.currentProject, event.target.dataset.classId, 'teacherIds', event.target.dataset.teacherId, event.target.checked);
+        toggleContainerMetadataId(state.schoolPage.project, event.target.dataset.classId, 'teacherIds', event.target.dataset.teacherId, event.target.checked);
         clearSchoolMessage(state);
         resetSchoolDerivedState(state);
         renderSchoolPage(root, state);
@@ -1282,8 +1350,8 @@ function bindActions(root, state) {
         }
 
         try {
-          state.currentProject = await importSchoolWorkbook(file);
-          state.currentProject.viewHint = VIEW_HINTS.SCHOOL;
+          state.schoolPage.project = await importSchoolWorkbook(file);
+          state.schoolPage.project.viewHint = VIEW_HINTS.SCHOOL;
           clearSchoolMessage(state);
           resetSchoolDerivedState(state);
           state.schoolPage.message = `Excel workbook imported from ${file.name}. Please validate the imported scenario. 📗`;
@@ -1302,7 +1370,7 @@ function bindActions(root, state) {
     if (action === 'export-school-solution') {
       element.addEventListener('click', () => {
         try {
-          exportSchoolSolutionWorkbook(state.currentProject, state.schoolPage.lastSolverResult, state.schoolPage.editor.activeSolutionIndex);
+          exportSchoolSolutionWorkbook(state.schoolPage.project, state.schoolPage.lastSolverResult, state.schoolPage.editor.activeSolutionIndex);
           state.schoolPage.message = `Excel export downloaded for solution ${state.schoolPage.editor.activeSolutionIndex + 1}. 📘`;
         } catch (error) {
           state.schoolPage.message = error instanceof Error
@@ -1391,39 +1459,44 @@ export function renderSchoolPage(root, state) {
     body: `
       ${renderSchoolCommandBar(state.schoolPage.lastSolverResult, state.schoolPage.commandBarExpanded !== false)}
       ${state.schoolPage.message ? `<section class="command-bar-feedback">${escapeHtml(state.schoolPage.message)}</section>` : ''}
-      ${renderSummary(state.currentProject)}
+      ${renderSummary(state.schoolPage.project)}
       <section class="card sticky-panel">
         <h2>📝 School scenario metadata</h2>
         <div class="form-grid two-columns">
           <label>
             <span>Scenario name</span>
-            <input type="text" name="schoolTitle" value="${escapeHtml(state.currentProject.title)}" />
+            <input type="text" name="schoolTitle" value="${escapeHtml(state.schoolPage.project.title)}" />
           </label>
           <label class="full-width">
             <span>Description</span>
-            <textarea name="schoolDescription" rows="3">${escapeHtml(state.currentProject.description)}</textarea>
+            <textarea name="schoolDescription" rows="3">${escapeHtml(state.schoolPage.project.description)}</textarea>
           </label>
         </div>
       </section>
-      ${renderCreateCards(state.currentProject, state.schoolPage.editor)}
+      ${renderCreateCards(state.schoolPage.project, state.schoolPage.editor)}
       <section class="workspace-columns two-up">
-        ${renderStudentsPanel(state.currentProject, state.schoolPage.editor)}
-        ${renderTeachersPanel(state.currentProject)}
+        ${renderStudentsPanel(state.schoolPage.project, state.schoolPage.editor)}
+        ${renderTeachersPanel(state.schoolPage.project)}
       </section>
       <section class="workspace-columns two-up">
-        ${renderLevelsPanel(state.currentProject)}
-        ${renderClassesPanel(state.currentProject)}
+        ${renderLevelsPanel(state.schoolPage.project)}
+        ${renderClassesPanel(state.schoolPage.project)}
       </section>
-      ${renderRulePanels(state.currentProject, state.schoolPage.editor)}
+      ${renderRulePanels(state.schoolPage.project, state.schoolPage.editor)}
       ${renderValidationPanel(state.schoolPage.lastValidation, {
       hasComputedSolution: Boolean(state.schoolPage.lastSolverResult),
       expanded: state.schoolPage.validationPanelExpanded,
     })}
       <section class="audit-section-grid">
         ${renderNormalizationSummary(state.schoolPage.lastNormalizedProject)}
-        ${renderSolutionPanel(state.schoolPage.lastNormalizedProject ?? state.currentProject, state.schoolPage.lastSolverResult, state.schoolPage.editor.activeSolutionIndex, { displayProject: state.currentProject })}
+        ${renderSolutionPanel(
+      state.schoolPage.lastNormalizedProject ?? state.schoolPage.project,
+      state.schoolPage.lastSolverResult,
+      state.schoolPage.editor.activeSolutionIndex,
+      renderSchoolSolutionPanelOptions(state.schoolPage.project, state.schoolPage.lastNormalizedProject),
+    )}
       </section>
-      ${renderProjectDebug(state.currentProject)}
+      ${renderProjectDebug(state.schoolPage.project)}
     `,
   });
 

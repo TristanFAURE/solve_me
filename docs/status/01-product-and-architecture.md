@@ -15,6 +15,7 @@ Planned pages:
 - generic constraint page
 - wedding table plan page
 - school class creation page
+- event staffing planner page
 
 The app lets users define assignment and grouping problems, run a constraint solver, and display one or more valid solutions.
 
@@ -161,9 +162,32 @@ In addition to the product and architecture decisions in this file, future work 
 - validate -> normalize -> solve separation
 - dependency license compatibility with the project MIT license
 
+## New documented domain direction: event staffing planner
+
+A new dedicated feature/specification document now exists for an event staffing planner use case:
+
+- `docs/10-feature-event-staffing-planner.md`
+
+This use case introduces a domain with:
+
+- ordered events, usually date-based
+- reusable group types across events
+- hard staffing minima and maxima per event-group
+- multiple assignments for the same person on the same event
+- hard cooldown rules across the ordered event list
+- default limits with per-person overrides
+- default eligibility with explicit exceptions
+- administrator-forced and administrator-forbidden assignments
+- soft event-level preferences imported from `.xlsx`
+- fairness as an optimization goal
+
+This is currently a specification step only.
+Implementation design is now guided by a backward-compatible solver evolution direction: keep the current public solver API shape, preserve existing generic/school/wedding flows, compile ordered-event logic in transforms where possible, and extend solver capabilities additively for count-bounds and soft optimization needs.
+
 ## Cross-cutting risks
 
 - normalization currently expands some group relations pairwise and may grow large
 - contradiction detection is still incomplete for advanced cases
 - the current solver is a straightforward backtracking implementation and may need stronger pruning for larger inputs
 - soft preferences remain ignored by the first solver
+- the event staffing planner spec likely requires solver and normalization evolution because worked-event limits, cooldown rules across ordered events, and same-event multi-assignment semantics do not map directly onto the current baseline feature set

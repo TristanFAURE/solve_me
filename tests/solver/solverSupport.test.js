@@ -15,6 +15,13 @@ describe('solver support modules', () => {
       positionMode: false,
       timeout: false,
       unsatExplanation: false,
+      assignmentExclusions: false,
+      perItemAssignmentUpperBounds: false,
+      scopedAssignmentUpperBounds: false,
+      fixedAssignments: false,
+      forbiddenAssignments: false,
+      softAssignmentScores: false,
+      softItemCountTargets: false,
     });
   });
 
@@ -25,6 +32,11 @@ describe('solver support modules', () => {
       ...createDefaultCapabilities(),
       adjacency: true,
       positionMode: true,
+      assignmentExclusions: true,
+      perItemAssignmentUpperBounds: true,
+      scopedAssignmentUpperBounds: true,
+      fixedAssignments: true,
+      forbiddenAssignments: true,
     });
   });
 

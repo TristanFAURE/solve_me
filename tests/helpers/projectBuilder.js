@@ -162,6 +162,42 @@ class ScenarioBuilder {
     return this;
   }
 
+  assignmentExclusion(itemId, firstDestinationId, secondDestinationId) {
+    this.assignmentExclusionsList = this.assignmentExclusionsList ?? [];
+    this.assignmentExclusionsList.push({ itemId, firstDestinationId, secondDestinationId });
+    return this;
+  }
+
+  assignmentCountUpperBound(itemId, destinationIds, maxCount) {
+    this.assignmentCountUpperBoundsList = this.assignmentCountUpperBoundsList ?? [];
+    this.assignmentCountUpperBoundsList.push({ itemId, destinationIds: [...destinationIds], maxCount });
+    return this;
+  }
+
+  fixedAssignment(itemId, destinationId) {
+    this.fixedAssignmentsList = this.fixedAssignmentsList ?? [];
+    this.fixedAssignmentsList.push({ itemId, destinationId });
+    return this;
+  }
+
+  forbiddenAssignment(itemId, destinationId) {
+    this.forbiddenAssignmentsList = this.forbiddenAssignmentsList ?? [];
+    this.forbiddenAssignmentsList.push({ itemId, destinationId });
+    return this;
+  }
+
+  softAssignmentScore(itemId, destinationId, score) {
+    this.softAssignmentScoresList = this.softAssignmentScoresList ?? [];
+    this.softAssignmentScoresList.push({ itemId, destinationId, score });
+    return this;
+  }
+
+  softItemCountTarget(itemId, destinationIds, targetCount) {
+    this.softItemCountTargetsList = this.softItemCountTargetsList ?? [];
+    this.softItemCountTargetsList.push({ itemId, destinationIds: [...destinationIds], targetCount });
+    return this;
+  }
+
   build() {
     return createEmptyProject({
       assignmentMode: this.assignmentModeValue,
@@ -173,6 +209,12 @@ class ScenarioBuilder {
       topologies: this.topologiesList,
       constraints: this.constraintsList,
       preferences: this.preferencesList,
+      assignmentExclusions: this.assignmentExclusionsList ?? [],
+      assignmentCountUpperBounds: this.assignmentCountUpperBoundsList ?? [],
+      fixedAssignments: this.fixedAssignmentsList ?? [],
+      forbiddenAssignments: this.forbiddenAssignmentsList ?? [],
+      softAssignmentScores: this.softAssignmentScoresList ?? [],
+      softItemCountTargets: this.softItemCountTargetsList ?? [],
     });
   }
 

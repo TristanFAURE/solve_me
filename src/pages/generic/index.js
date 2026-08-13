@@ -70,8 +70,8 @@ function createGenericPageState() {
 }
 
 function ensureProject(state) {
-  if (!state.currentProject) {
-    state.currentProject = createEmptyProject({ viewHint: VIEW_HINTS.GENERIC });
+  if (!state.genericPage.project) {
+    state.genericPage.project = createEmptyProject({ viewHint: VIEW_HINTS.GENERIC });
   }
 
   if (!state.genericPage) {
@@ -99,6 +99,10 @@ function ensureProject(state) {
 
   if (typeof state.genericPage.validationPanelExpanded !== 'boolean') {
     state.genericPage.validationPanelExpanded = false;
+  }
+
+  if (typeof state.genericPage.commandBarExpanded !== 'boolean') {
+    state.genericPage.commandBarExpanded = true;
   }
 }
 
@@ -758,7 +762,7 @@ function validateImportedProject(project) {
 }
 
 function applyImportedProject(state, project, successMessage = 'Project loaded successfully.', options = {}) {
-  state.currentProject = project;
+  state.genericPage.project = project;
   resetDerivedState(state);
   setStorageMessage(state, successMessage, options);
 }
@@ -793,7 +797,7 @@ function resetDerivedState(state) {
 
 function saveDraftFlow(state) {
   try {
-    saveDraft(state.currentProject);
+    saveDraft(state.genericPage.project);
     setStorageMessage(state, 'Draft saved to browser storage.');
   } catch (error) {
     setStorageError(state, `Draft save failed: ${error.message}`);
@@ -839,8 +843,8 @@ function loadDraftFlow(state) {
 
 function exportProjectFlow(state) {
   try {
-    const exportedJson = exportProject(state.currentProject);
-    triggerDownload(createExportFilename(state.currentProject), exportedJson);
+    const exportedJson = exportProject(state.genericPage.project);
+    triggerDownload(createExportFilename(state.genericPage.project), exportedJson);
     setStorageMessage(state, 'Project exported as JSON.');
   } catch (error) {
     setStorageError(state, `Export failed: ${error.message}`);
@@ -880,8 +884,8 @@ function importProjectFlow(state, jsonText) {
 }
 
 function updateProjectField(state, field, value) {
-  state.currentProject = {
-    ...state.currentProject,
+  state.genericPage.project = {
+    ...state.genericPage.project,
     [field]: value,
   };
   resetDerivedState(state);
@@ -913,7 +917,7 @@ function addItem(state) {
     return;
   }
 
-  state.currentProject.items.push(createItem({ id: createId('item'), label }));
+  state.genericPage.project.items.push(createItem({ id: createId('item'), label }));
   state.genericPage.editor.draftItemLabel = '';
   resetDerivedState(state);
 }
@@ -924,7 +928,7 @@ function addGroup(state) {
     return;
   }
 
-  state.currentProject.groups.push(createGroup({ id: createId('group'), label }));
+  state.genericPage.project.groups.push(createGroup({ id: createId('group'), label }));
   state.genericPage.editor.draftGroupLabel = '';
   resetDerivedState(state);
 }
@@ -939,7 +943,7 @@ function addContainer(state) {
   const minCapacity = Number.parseInt(editor.draftContainerMinCapacity || '0', 10);
   const maxCapacity = editor.draftContainerMaxCapacity === '' ? null : Number.parseInt(editor.draftContainerMaxCapacity, 10);
 
-  state.currentProject.containers.push(createContainer({
+  state.genericPage.project.containers.push(createContainer({
     id: createId('container'),
     label,
     minCapacity: Number.isNaN(minCapacity) ? 0 : minCapacity,
@@ -958,7 +962,7 @@ function addPosition(state) {
     return;
   }
 
-  state.currentProject.positions.push(createPosition({ id: createId('position'), label }));
+  state.genericPage.project.positions.push(createPosition({ id: createId('position'), label }));
   state.genericPage.editor.draftPositionLabel = '';
   resetDerivedState(state);
 }
@@ -969,7 +973,7 @@ function addContainment(state) {
     return;
   }
 
-  state.currentProject.containments.push(createContainmentRelation(
+  state.genericPage.project.containments.push(createContainmentRelation(
     createEntityRef(editor.draftContainmentFromKind, editor.draftContainmentFromId),
     createEntityRef(editor.draftContainmentToKind, editor.draftContainmentToId),
   ));
@@ -985,7 +989,7 @@ function addTopology(state) {
     return;
   }
 
-  state.currentProject.topologies.push(createAdjacencyRelation(
+  state.genericPage.project.topologies.push(createAdjacencyRelation(
     createEntityRef(NODE_KINDS.POSITION, editor.draftTopologyFromId),
     createEntityRef(NODE_KINDS.POSITION, editor.draftTopologyToId),
   ));
@@ -1003,7 +1007,7 @@ function addConstraintEntry(state) {
       return;
     }
 
-    state.currentProject.constraints.push(createConstraint({
+    state.genericPage.project.constraints.push(createConstraint({
       kind: editor.draftConstraintKind,
       leftRef: createEntityRef(NODE_KINDS.GROUP, editor.draftConstraintGroupId),
       rightRef: createEntityRef(NODE_KINDS.GROUP, editor.draftConstraintGroupId),
@@ -1019,7 +1023,7 @@ function addConstraintEntry(state) {
     return;
   }
 
-  state.currentProject.constraints.push(createConstraint({
+  state.genericPage.project.constraints.push(createConstraint({
     kind: editor.draftConstraintKind,
     leftRef: createEntityRef(editor.draftConstraintLeftKind, editor.draftConstraintLeftId),
     rightRef: createEntityRef(editor.draftConstraintRightKind, editor.draftConstraintRightId),
@@ -1039,7 +1043,7 @@ function addPreferenceEntry(state) {
       return;
     }
 
-    state.currentProject.preferences.push(createPreference({
+    state.genericPage.project.preferences.push(createPreference({
       kind: editor.draftPreferenceKind,
       leftRef: createEntityRef(NODE_KINDS.GROUP, editor.draftPreferenceGroupId),
       rightRef: createEntityRef(NODE_KINDS.GROUP, editor.draftPreferenceGroupId),
@@ -1057,7 +1061,7 @@ function addPreferenceEntry(state) {
     return;
   }
 
-  state.currentProject.preferences.push(createPreference({
+  state.genericPage.project.preferences.push(createPreference({
     kind: editor.draftPreferenceKind,
     leftRef: createEntityRef(editor.draftPreferenceLeftKind, editor.draftPreferenceLeftId),
     rightRef: createEntityRef(editor.draftPreferenceRightKind, editor.draftPreferenceRightId),
@@ -1140,21 +1144,21 @@ function removeAt(list, index) {
 }
 
 function removeNodeAndReferences(state, collectionName, index) {
-  const [removed] = state.currentProject[collectionName].splice(index, 1);
+  const [removed] = state.genericPage.project[collectionName].splice(index, 1);
   if (!removed) {
     return;
   }
 
   const matchesRef = (ref) => ref.id === removed.id && ref.kind === removed.kind;
-  state.currentProject.containments = state.currentProject.containments.filter((relation) => !matchesRef(relation.from) && !matchesRef(relation.to));
-  state.currentProject.topologies = state.currentProject.topologies.filter((relation) => !matchesRef(relation.from) && !matchesRef(relation.to));
-  state.currentProject.constraints = state.currentProject.constraints.filter((entry) => !matchesRef(entry.leftRef) && !matchesRef(entry.rightRef));
-  state.currentProject.preferences = state.currentProject.preferences.filter((entry) => !matchesRef(entry.leftRef) && !matchesRef(entry.rightRef));
+  state.genericPage.project.containments = state.genericPage.project.containments.filter((relation) => !matchesRef(relation.from) && !matchesRef(relation.to));
+  state.genericPage.project.topologies = state.genericPage.project.topologies.filter((relation) => !matchesRef(relation.from) && !matchesRef(relation.to));
+  state.genericPage.project.constraints = state.genericPage.project.constraints.filter((entry) => !matchesRef(entry.leftRef) && !matchesRef(entry.rightRef));
+  state.genericPage.project.preferences = state.genericPage.project.preferences.filter((entry) => !matchesRef(entry.leftRef) && !matchesRef(entry.rightRef));
   resetDerivedState(state);
 }
 
 function updateEntityLabel(state, kind, index, value) {
-  const collection = findCollectionByKind(state.currentProject, kind);
+  const collection = findCollectionByKind(state.genericPage.project, kind);
   if (!collection || !collection[index]) {
     return;
   }
@@ -1164,7 +1168,7 @@ function updateEntityLabel(state, kind, index, value) {
 }
 
 function updateContainerCapacity(state, index, field, value) {
-  const container = state.currentProject.containers[index];
+  const container = state.genericPage.project.containers[index];
   if (!container) {
     return;
   }
@@ -1186,14 +1190,14 @@ function updateContainerCapacity(state, index, field, value) {
 function runValidationFlow(state) {
   const adapter = new FirstSolverAdapter();
   const capabilities = adapter.getCapabilities();
-  const validation = validateProject(state.currentProject, capabilities);
+  const validation = validateProject(state.genericPage.project, capabilities);
 
   state.genericPage.lastValidation = validation;
   state.genericPage.lastSolverResult = null;
   state.genericPage.validationPanelExpanded = false;
 
   if (validation.valid) {
-    state.genericPage.lastNormalizedProject = normalizeProject(state.currentProject);
+    state.genericPage.lastNormalizedProject = normalizeProject(state.genericPage.project);
     return;
   }
 
@@ -1203,7 +1207,7 @@ function runValidationFlow(state) {
 function runSolveFlow(state) {
   const adapter = new FirstSolverAdapter();
   const capabilities = adapter.getCapabilities();
-  const validation = validateProject(state.currentProject, capabilities);
+  const validation = validateProject(state.genericPage.project, capabilities);
 
   state.genericPage.lastValidation = validation;
   state.genericPage.validationPanelExpanded = true;
@@ -1222,7 +1226,7 @@ function runSolveFlow(state) {
     return;
   }
 
-  const normalizedProject = normalizeProject(state.currentProject);
+  const normalizedProject = normalizeProject(state.genericPage.project);
   state.genericPage.lastNormalizedProject = normalizedProject;
 
   const adapterValidation = adapter.validateModel(normalizedProject);
@@ -1368,7 +1372,7 @@ function bindActions(root, state) {
 
     if (action === 'reset-project') {
       element.addEventListener('click', () => {
-        state.currentProject = createEmptyProject({ viewHint: VIEW_HINTS.GENERIC });
+        state.genericPage.project = createEmptyProject({ viewHint: VIEW_HINTS.GENERIC });
         state.genericPage.editor = createGenericPageState();
         clearStorageFeedback(state);
         resetDerivedState(state);
@@ -1435,7 +1439,7 @@ function bindActions(root, state) {
 
     if (action === 'remove-containment') {
       element.addEventListener('click', () => {
-        removeAt(state.currentProject.containments, Number.parseInt(element.dataset.index, 10));
+        removeAt(state.genericPage.project.containments, Number.parseInt(element.dataset.index, 10));
         resetDerivedState(state);
         renderGenericPage(root, state);
       });
@@ -1443,7 +1447,7 @@ function bindActions(root, state) {
 
     if (action === 'remove-topology') {
       element.addEventListener('click', () => {
-        removeAt(state.currentProject.topologies, Number.parseInt(element.dataset.index, 10));
+        removeAt(state.genericPage.project.topologies, Number.parseInt(element.dataset.index, 10));
         resetDerivedState(state);
         renderGenericPage(root, state);
       });
@@ -1451,7 +1455,7 @@ function bindActions(root, state) {
 
     if (action === 'remove-constraint') {
       element.addEventListener('click', () => {
-        removeAt(state.currentProject.constraints, Number.parseInt(element.dataset.index, 10));
+        removeAt(state.genericPage.project.constraints, Number.parseInt(element.dataset.index, 10));
         resetDerivedState(state);
         renderGenericPage(root, state);
       });
@@ -1459,7 +1463,7 @@ function bindActions(root, state) {
 
     if (action === 'remove-preference') {
       element.addEventListener('click', () => {
-        removeAt(state.currentProject.preferences, Number.parseInt(element.dataset.index, 10));
+        removeAt(state.genericPage.project.preferences, Number.parseInt(element.dataset.index, 10));
         resetDerivedState(state);
         renderGenericPage(root, state);
       });
@@ -1478,15 +1482,15 @@ export function renderGenericPage(root, state) {
     description: 'Create and edit a generic project, then run validation, normalization, and the solver adapter workflow.',
     body: `
     ${renderCommandBar(editor, state.genericPage.commandBarExpanded !== false)}
-    ${renderProjectSummary(state.currentProject)}
-    ${renderWorkspace(state.currentProject, editor)}
+    ${renderProjectSummary(state.genericPage.project)}
+    ${renderWorkspace(state.genericPage.project, editor)}
     <section class="audit-section-grid">
-      ${renderRelationList(state.currentProject, 'Containments', state.currentProject.containments, 'remove-containment')}
-      ${renderRelationList(state.currentProject, 'Topologies', state.currentProject.topologies, 'remove-topology')}
+      ${renderRelationList(state.genericPage.project, 'Containments', state.genericPage.project.containments, 'remove-containment')}
+      ${renderRelationList(state.genericPage.project, 'Topologies', state.genericPage.project.topologies, 'remove-topology')}
     </section>
     <section class="audit-section-grid">
-      ${renderConstraintList(state.currentProject, 'Hard constraints', state.currentProject.constraints, 'remove-constraint')}
-      ${renderConstraintList(state.currentProject, 'Soft preferences', state.currentProject.preferences, 'remove-preference', true)}
+      ${renderConstraintList(state.genericPage.project, 'Hard constraints', state.genericPage.project.constraints, 'remove-constraint')}
+      ${renderConstraintList(state.genericPage.project, 'Soft preferences', state.genericPage.project.preferences, 'remove-preference', true)}
     </section>
     ${renderValidationPanel(validation, {
       hasComputedSolution: Boolean(state.genericPage.lastSolverResult),
@@ -1494,7 +1498,21 @@ export function renderGenericPage(root, state) {
     })}
     <section class="audit-section-grid">
       ${renderNormalizationSummary(state.genericPage.lastNormalizedProject)}
-      ${renderSolutionPanel(state.currentProject, state.genericPage.lastSolverResult, editor.activeSolutionIndex)}
+      ${renderSolutionPanel(state.genericPage.project, state.genericPage.lastSolverResult, editor.activeSolutionIndex, {
+      panelTitle: 'Solve result',
+      panelEyebrow: 'Generic solver output',
+      emptyResultMessage: 'Run solve after validation to see generic assignments.',
+      unsatMessage: 'The solver completed but found no valid assignment satisfying the current hard constraints.',
+      noAssignmentsMessage: 'No concrete assignments are available for this generic solver result.',
+      noWarningsMessage: 'No generic solver warnings.',
+      rawJsonSummaryLabel: 'View raw generic solver result JSON',
+      containerKindLabel: 'Container',
+      assignmentCountLabel: 'Assigned items',
+      emptyAssignmentsLabel: 'No assigned items',
+      sectionSummaryLabel: 'Assignments grouped by container.',
+      solutionPrefixLabel: 'Solution',
+      capacityLabel: 'Capacity',
+    })}
     </section>
     `,
   });
