@@ -60,6 +60,24 @@ npm run build
 npm run preview
 ```
 
+### Run tests
+
+```bash
+npm run test
+```
+
+### Run tests with coverage
+
+```bash
+npm run test:coverage
+```
+
+Open the HTML coverage report at:
+
+```text
+coverage/index.html
+```
+
 ## Deploy to GitHub Pages
 
 This repository is configured to deploy automatically to **GitHub Pages** using **GitHub Actions**.
@@ -67,7 +85,7 @@ This repository is configured to deploy automatically to **GitHub Pages** using 
 ### Included automation
 
 - `vite.config.js` sets the correct base path for the repository site
-- `.github/workflows/deploy.yml` builds and deploys the `dist/` folder to GitHub Pages on every push to `main`
+- `.github/workflows/deploy.yml` runs tests, runs coverage, uploads the coverage artifact, builds the app, and deploys the `dist/` folder to GitHub Pages on every push to `main`
 - `.gitignore` excludes local build and dependency folders
 
 ### Deploy flow
@@ -75,6 +93,9 @@ This repository is configured to deploy automatically to **GitHub Pages** using 
 Every push to `main` will:
 
 - install dependencies with `npm ci`
+- run tests with `npm run test`
+- run coverage with `npm run test:coverage`
+- upload the generated coverage report as a workflow artifact
 - build the app with `npm run build`
 - publish the built site to GitHub Pages
 
@@ -135,12 +156,28 @@ src/
 The first solver adapter currently focuses on a narrow but working subset:
 
 - container-mode assignment
+- position-mode assignment
 - maximum-capacity enforcement
 - must-share constraints
 - must-not-share constraints
+- hard adjacency constraints in position mode
 - multiple returned solutions
 
 Some advanced semantics are modeled in the app but not yet fully solved by the first adapter.
+
+## Testing
+
+Solver and normalization tests are organized around generic semantics rather than page/domain features.
+
+Current test areas include:
+
+- normalization derivations such as adjacency maps and must-share components
+- first solver adapter behavior in container mode
+- first solver adapter behavior in position mode
+- solver validation and warnings
+- solver support modules and capability reporting
+
+Tests use small scenario helpers under `tests/helpers/` to keep constraints readable with low boilerplate.
 
 ## Documentation
 

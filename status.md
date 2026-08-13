@@ -62,6 +62,7 @@ The app now has:
 
 Current recommended next work:
 
+- decide whether to extend automated coverage into `src/core/validate/**` or move on to the next major use case with the current solver baseline
 - manually test position-mode solving from the generic page
 - manually test wedding seat-aware solving end to end
 - fix any issues found in UI, transform, or solution display
@@ -83,18 +84,29 @@ Preserve these project rules:
 
 ## Latest update
 
-- refactored the oversized `status.md` into one master file plus targeted sub-status files under `docs/status/`
-- moved detailed status context into domain-specific and architecture-specific files so future LLMs can load only the most relevant context
-- kept this master file as the restart entry point and routing guide
+- added direct tests for solver support modules and capability reporting, bringing `src/solver/**` support files to full coverage
+- expanded position-mode solver tests again to hit more edge paths in candidate handling and truncation behavior
+- updated the GitHub Actions deployment workflow so CI now runs tests and coverage before build/deploy and uploads the coverage artifact
+- improved concrete first-solver coverage to about 97% lines and 84% branches for `src/solver/adapters/firstSolverAdapter.js`
 
 Files modified:
 
 - `status.md`
-- `docs/status/01-product-and-architecture.md`
-- `docs/status/02-generic-page.md`
-- `docs/status/03-school-page.md`
-- `docs/status/04-wedding-page.md`
+- `package.json`
+- `package-lock.json`
+- `vitest.config.js`
+- `README.md`
+- `docs/08-testing-strategy.md`
 - `docs/status/05-recent-work-and-next-steps.md`
+- `tests/helpers/projectBuilder.js`
+- `tests/helpers/solverAssertions.js`
+- `tests/helpers/solverScenario.js`
+- `tests/core/normalize/normalizeProject.test.js`
+- `tests/solver/firstSolverAdapter.containerMode.test.js`
+- `tests/solver/firstSolverAdapter.positionMode.test.js`
+- `tests/solver/firstSolverAdapter.validation.test.js`
+- `tests/solver/solverSupport.test.js`
+- `.github/workflows/deploy.yml`
 
 ## Restart prompt for a new context
 

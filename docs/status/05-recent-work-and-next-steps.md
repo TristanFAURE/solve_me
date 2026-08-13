@@ -4,37 +4,44 @@
 
 Latest meaningful completed step:
 
-- reviewed the wedding topology implementation and confirmed the current wedding baseline already includes bulk/per-table seat generation, generated left/right removal, `remove both sides`, manual same-table adjacency creation, and single-group `Keep this group together`
-- reviewed the normalized topology path and confirmed the main solver gap was position-mode adjacency solving
-- extended `src/solver/adapters/firstSolverAdapter.js` so the first solver now supports both container mode and position mode
-- updated solver capabilities so the adapter now reports `adjacency: true` and `positionMode: true`
-- kept soft preferences unsupported
-- updated shared solution rendering so position-mode solutions display position labels
-- verified with `npm run build`
+- added automated test infrastructure with Vitest and V8 coverage reporting
+- added a solver-oriented testing strategy document in `docs/08-testing-strategy.md`
+- added low-boilerplate test helpers under `tests/helpers/` for readable generic constraint scenarios
+- added normalization tests for derived generic semantics
+- added first solver adapter tests for container mode, position mode, and solver validation/warnings
+- expanded solver tests to cover more restriction, unsat, warning, and truncation branches
+- added direct tests for solver support modules and capability reporting
+- updated the GitHub Actions deployment pipeline to run tests and coverage before build/deploy and upload the coverage report artifact
+- improved first solver adapter coverage to roughly 97% lines and 84% branches, with solver support files now fully covered
+- added npm scripts for test execution and coverage inspection
 
 ## Files touched most recently
 
-- `src/solver/adapters/firstSolverAdapter.js`
-- `src/components/solutions/containerAssignmentView.js`
+- `package.json`
+- `vitest.config.js`
+- `tests/helpers/projectBuilder.js`
+- `tests/helpers/solverAssertions.js`
+- `tests/helpers/solverScenario.js`
+- `tests/core/normalize/normalizeProject.test.js`
+- `tests/solver/firstSolverAdapter.containerMode.test.js`
+- `tests/solver/firstSolverAdapter.positionMode.test.js`
+- `tests/solver/firstSolverAdapter.validation.test.js`
+- `tests/solver/solverSupport.test.js`
+- `.github/workflows/deploy.yml`
+- `docs/08-testing-strategy.md`
+- `README.md`
 - `status.md`
 
 ## Recommended next step
 
-1. manually test position-mode solving from the generic page with a small scenario covering:
-   - `mustBeAdjacent`
-   - `mustNotBeAdjacent`
-   - `mustShareContainer`
-   - `mustNotShareContainer`
-2. manually test the wedding page in seat-aware mode end to end using generated seats and at least one adjacency rule
-3. fix any UI, transform, or display issues found during those tests
-4. after that, choose between:
-   - implementing wedding `close gap`
-   - improving solver heuristics
-   - adding soft-preference support
+1. review the remaining uncovered edge branches in `coverage/index.html`, mainly inside the concrete adapter's less common position-assignment paths
+2. decide whether to extend coverage work into `src/core/validate/**` next or treat the solver baseline as sufficient for the next use case
+3. manually test position-mode solving from the generic page and wedding page to validate UI and transform integration
+4. after that, proceed with the next major use case or solver improvement with the CI safety net in place
 
 ## Key open risks
 
-- position-mode solving is build-verified but still needs browser-level testing
+- the automated suite now covers most first-solver branches, but some less common adapter edge branches and all core validation modules still remain uncovered
+- position-mode solving still needs browser-level testing through the generic and wedding pages
 - larger seat-aware scenarios may be slow with current backtracking
-- shared solution display may need more wedding-specific wording once exercised more heavily
 - soft preferences remain unoptimized across the app
