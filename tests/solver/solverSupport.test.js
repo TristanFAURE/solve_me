@@ -37,6 +37,10 @@ describe('solver support modules', () => {
       scopedAssignmentUpperBounds: true,
       fixedAssignments: true,
       forbiddenAssignments: true,
+      softAssignmentScores: true,
+      softItemCountTargets: true,
+      optimization: true,
+      weightedPreferences: true,
     });
   });
 

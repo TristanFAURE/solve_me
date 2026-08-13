@@ -67,12 +67,9 @@ The app now has:
 
 Current recommended next work:
 
-- next planned step: finish wiring a real event-staffing validation + planner-facing workflow around the staffing transform
-- then add soft-solver behavior for staffing-facing:
-  - `softAssignmentScores[]`
-  - `softItemCountTargets[]`
-- continue regression coverage for existing school and wedding flows
-- then continue with manual testing and any performance work revealed by staffing-style constraint expansion
+- continue regression coverage for existing school and wedding flows while staffing behavior expands
+- run broader manual testing and assess performance on larger staffing-style scenarios now that solver optimization milestones 1 and 2 are in place
+- if further solver work is needed, refine pruning/bounding for larger mixed hard-soft staffing scenarios without changing the public solver API
 
 ## Key invariant decisions
 
@@ -84,24 +81,20 @@ Preserve these project rules:
 - adjacency is modeled through positions and topology, not domain-specific logic
 - hard constraints and soft preferences remain distinct
 - specialized pages should use domain-facing wording while mapping internally to the generic core
+- do not propose browser tests using `jsdom` or any other browser-test technology unless the user explicitly asks for that approach
 
 ## Latest update
 
-- updated the generic page so it reflects newer solver/model fields beyond basic constraints and preferences
-- added generic-page authoring and authored-entry audit coverage for:
-  - `fixedAssignments[]`
-  - `forbiddenAssignments[]`
-  - `assignmentExclusions[]`
-  - `assignmentCountUpperBounds[]`
-  - `softAssignmentScores[]`
-  - `softItemCountTargets[]`
-- expanded the generic normalization summary so these newer normalized arrays are visible before solver handoff
-- ran `node --check src/pages/generic/index.js`
+- added GUI controls in the staffing people form for per-event prefer / prefer-not / neutral choices and wired them to save into each person's domain preference map
+- made the in-form prefer / prefer-not event list explicitly scrollable so very long event schedules do not overgrow the person editor
+- preserved staffing people add/save behavior through the real form submit flow while extending edit-state restoration to include saved per-event preferences
 
 Files modified:
 
-- `src/pages/generic/index.js`
-- `docs/status/02-generic-page.md`
+- `src/pages/eventStaffing/index.js`
+- `src/pages/eventStaffing/summarySections.js`
+- `src/styles.css`
+- `tests/pages/eventStaffingWorkflow.test.js`
 - `docs/status/05-recent-work-and-next-steps.md`
 - `status.md`
 
@@ -141,5 +134,7 @@ Implementation direction already decided:
 - evolve normalized constraint families additively
 - compile ordered-event cooldown logic in transforms where possible
 - protect school and wedding behavior with regression tests
-- next implementation step to execute: complete `src/pages/eventStaffing/index.js`, wire the `/event-staffing` route end-to-end, then run the new page/domain regression tests plus focused school and wedding coverage
+- continue the staffing planner from the repaired browser/detail page by wiring transform + solve actions into the existing workflow
+- preserve the shared layout-class approach (`workspace-layout`, `workspace-panel`, `summary-grid`, `data-table`) for further staffing page refinement
+- keep protecting school and wedding behavior with regression tests while staffing planner workflow expands
 ```

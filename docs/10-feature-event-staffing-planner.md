@@ -372,9 +372,45 @@ The UI may provide convenience tools such as:
 - generate events from a date range
 - create requirements for every Friday, Saturday, Sunday
 - bulk-apply the same group requirement pattern to matching events
+- insert a new event before or after a selected event in the ordered list
+- delete one or more selected events
 
 These helpers are only authoring conveniences.
 They must generate explicit event and requirement data in the underlying configuration.
+
+## 2.1 Bulk selection and bulk requirement authoring
+
+The planner UI should support multi-select on events so the administrator can work on several dates at once.
+
+Recommended V1 bulk authoring operations include:
+
+- select multiple events from the event browser
+- assign one group type requirement to all selected events at once using one shared `min` and `max`
+- remove one group type requirement from all selected events at once
+- copy the full requirement pattern from the focused event to the rest of the selected events
+- remove all requirements from the selected events at once
+- delete all selected events at once
+
+Bulk assign semantics:
+
+- if a selected event does not yet have the chosen `(eventId, groupTypeId)` requirement, create it
+- if a selected event already has that requirement, update its `min` and `max`
+
+Bulk remove semantics:
+
+- remove the chosen `(eventId, groupTypeId)` requirement from each selected event if present
+- leave other requirements untouched
+
+Bulk copy-from-focused semantics:
+
+- use the currently focused event as the source
+- copy every requirement from that source event to the rest of the selected events
+- create missing target requirements and update matching target requirements when they already exist
+
+Bulk remove-all semantics:
+
+- remove every requirement attached to each selected event
+- do not alter the event rows themselves unless the delete-events action is used
 
 ## 3. Solution display
 
@@ -459,6 +495,7 @@ These questions should be resolved during technical design before coding the pag
 V1 is complete when:
 
 - an administrator can define events, group types, requirements, limits, cooldowns, and overrides in the web UI, including person-specific hard maximums and optional soft assignment targets
+- the administrator can multi-select events and apply at least the documented bulk actions for event insertion/deletion, group requirement assign/remove, copy-from-focused, and remove-all workflows
 - a preference matrix with `Y` / `N` values can be imported from `.xlsx`
 - the system can validate the domain configuration and reject invalid inputs
 - the solver can find valid schedules when they exist

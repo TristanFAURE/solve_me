@@ -293,4 +293,54 @@ describe('transformEventStaffingProject', () => {
     expect(result.status).toBe('solved');
     expect(result.solutions.every((solution) => solution.assignments.length <= 1)).toBe(true);
   });
+
+  it('compiles per-group soft targets and global per-group defaults into scoped soft item count targets', () => {
+    const transformed = normalizeProject(transformEventStaffingProject({
+      ...buildBaseDomainProject(),
+      people: [
+        {
+          id: 'P1',
+          name: 'Alice',
+          targetAssignmentsPerGroupType: { G2: 2 },
+        },
+        {
+          id: 'P2',
+          name: 'Bob',
+        },
+      ],
+      globalLimits: {
+        targetAssignmentsPerGroupType: 1,
+      },
+    }));
+
+    expect(transformed.softItemCountTargets).toContainEqual({
+      itemId: 'P1',
+      destinationIds: [
+        createEventStaffingDestinationId('E1', 'G2'),
+        createEventStaffingDestinationId('E2', 'G2'),
+        createEventStaffingDestinationId('E3', 'G2'),
+      ],
+      targetCount: 2,
+    });
+
+    expect(transformed.softItemCountTargets).toContainEqual({
+      itemId: 'P1',
+      destinationIds: [
+        createEventStaffingDestinationId('E1', 'G1'),
+        createEventStaffingDestinationId('E2', 'G1'),
+        createEventStaffingDestinationId('E3', 'G1'),
+      ],
+      targetCount: 1,
+    });
+
+    expect(transformed.softItemCountTargets).toContainEqual({
+      itemId: 'P2',
+      destinationIds: [
+        createEventStaffingDestinationId('E1', 'G2'),
+        createEventStaffingDestinationId('E2', 'G2'),
+        createEventStaffingDestinationId('E3', 'G2'),
+      ],
+      targetCount: 1,
+    });
+  });
 });

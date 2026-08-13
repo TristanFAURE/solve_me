@@ -93,7 +93,7 @@ describe('FirstSolverAdapter - validation', () => {
     expectValidationError(validation, 'supports only mustShareContainer and mustNotShareContainer hard constraints in container mode');
   });
 
-  it('warns that soft preferences are ignored', () => {
+  it('warns that general soft preferences are ignored', () => {
     const project = scenario()
       .containerMode()
       .items('A', 'B')
@@ -103,7 +103,7 @@ describe('FirstSolverAdapter - validation', () => {
 
     const result = solve(project);
 
-    expect(result.warnings).toContain('Soft preferences are ignored by the first solver adapter.');
+    expect(result.warnings).toContain('General soft preferences are ignored by the first solver adapter.');
   });
 
   it('warns that positions and adjacency are ignored in container mode', () => {

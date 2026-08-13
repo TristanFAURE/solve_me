@@ -1,3 +1,7 @@
+function isOmittedOptionalNumber(value) {
+  return value === undefined || value === null || value === '';
+}
+
 export function validateEventStaffingProject(domainProject = {}) {
   const errors = [];
   const warnings = [];
@@ -74,13 +78,35 @@ export function validateEventStaffingProject(domainProject = {}) {
       seenPersonIds.add(person.id);
     }
 
-    if (person?.maxAssignments !== undefined && (!Number.isInteger(person.maxAssignments) || person.maxAssignments < 0)) {
+    if (!isOmittedOptionalNumber(person?.maxAssignments) && (!Number.isInteger(person.maxAssignments) || person.maxAssignments < 0)) {
       errors.push({ level: 'error', code: 'event-staffing-invalid-person-max-assignments', message: `Person "${personName}" must use a non-negative integer maxAssignments value.`, path: `people[${index}].maxAssignments` });
     }
 
-    if (person?.targetAssignments !== undefined && (!Number.isInteger(person.targetAssignments) || person.targetAssignments < 0)) {
+    if (!isOmittedOptionalNumber(person?.targetAssignments) && (!Number.isInteger(person.targetAssignments) || person.targetAssignments < 0)) {
       errors.push({ level: 'error', code: 'event-staffing-invalid-person-target-assignments', message: `Person "${personName}" must use a non-negative integer targetAssignments value.`, path: `people[${index}].targetAssignments` });
     }
+
+    Object.entries(person?.maxAssignmentsPerGroupType ?? {}).forEach(([groupTypeId, limitValue]) => {
+      if (!groupTypeIds.has(groupTypeId)) {
+        errors.push({ level: 'error', code: 'event-staffing-unknown-person-group-max-group-type', message: `Person "${personName}" references unknown per-group max group type "${groupTypeId}".`, path: `people[${index}].maxAssignmentsPerGroupType.${groupTypeId}` });
+        return;
+      }
+
+      if (!Number.isInteger(limitValue) || limitValue < 0) {
+        errors.push({ level: 'error', code: 'event-staffing-invalid-person-group-max', message: `Person "${personName}" must use a non-negative integer maxAssignmentsPerGroupType value for group type "${groupTypeId}".`, path: `people[${index}].maxAssignmentsPerGroupType.${groupTypeId}` });
+      }
+    });
+
+    Object.entries(person?.targetAssignmentsPerGroupType ?? {}).forEach(([groupTypeId, targetValue]) => {
+      if (!groupTypeIds.has(groupTypeId)) {
+        errors.push({ level: 'error', code: 'event-staffing-unknown-person-group-target-group-type', message: `Person "${personName}" references unknown per-group target group type "${groupTypeId}".`, path: `people[${index}].targetAssignmentsPerGroupType.${groupTypeId}` });
+        return;
+      }
+
+      if (!Number.isInteger(targetValue) || targetValue < 0) {
+        errors.push({ level: 'error', code: 'event-staffing-invalid-person-group-target', message: `Person "${personName}" must use a non-negative integer targetAssignmentsPerGroupType value for group type "${groupTypeId}".`, path: `people[${index}].targetAssignmentsPerGroupType.${groupTypeId}` });
+      }
+    });
 
     const allowedGroupTypeIds = Array.isArray(person?.allowedGroupTypeIds) ? person.allowedGroupTypeIds : [];
     const forbiddenGroupTypeIds = Array.isArray(person?.forbiddenGroupTypeIds) ? person.forbiddenGroupTypeIds : [];
@@ -194,12 +220,16 @@ export function validateEventStaffingProject(domainProject = {}) {
     });
   });
 
-  if (domainProject?.globalLimits?.maxAssignmentsPerPerson !== undefined && (!Number.isInteger(domainProject.globalLimits.maxAssignmentsPerPerson) || domainProject.globalLimits.maxAssignmentsPerPerson < 0)) {
+  if (!isOmittedOptionalNumber(domainProject?.globalLimits?.maxAssignmentsPerPerson) && (!Number.isInteger(domainProject.globalLimits.maxAssignmentsPerPerson) || domainProject.globalLimits.maxAssignmentsPerPerson < 0)) {
     errors.push({ level: 'error', code: 'event-staffing-invalid-global-max-assignments', message: 'globalLimits.maxAssignmentsPerPerson must be a non-negative integer when provided.', path: 'globalLimits.maxAssignmentsPerPerson' });
   }
 
-  if (domainProject?.globalLimits?.maxAssignmentsPerGroupType !== undefined && (!Number.isInteger(domainProject.globalLimits.maxAssignmentsPerGroupType) || domainProject.globalLimits.maxAssignmentsPerGroupType < 0)) {
+  if (!isOmittedOptionalNumber(domainProject?.globalLimits?.maxAssignmentsPerGroupType) && (!Number.isInteger(domainProject.globalLimits.maxAssignmentsPerGroupType) || domainProject.globalLimits.maxAssignmentsPerGroupType < 0)) {
     errors.push({ level: 'error', code: 'event-staffing-invalid-global-group-limit', message: 'globalLimits.maxAssignmentsPerGroupType must be a non-negative integer when provided.', path: 'globalLimits.maxAssignmentsPerGroupType' });
+  }
+
+  if (!isOmittedOptionalNumber(domainProject?.globalLimits?.targetAssignmentsPerGroupType) && (!Number.isInteger(domainProject.globalLimits.targetAssignmentsPerGroupType) || domainProject.globalLimits.targetAssignmentsPerGroupType < 0)) {
+    errors.push({ level: 'error', code: 'event-staffing-invalid-global-group-target', message: 'globalLimits.targetAssignmentsPerGroupType must be a non-negative integer when provided.', path: 'globalLimits.targetAssignmentsPerGroupType' });
   }
 
   return {

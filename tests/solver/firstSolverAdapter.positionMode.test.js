@@ -185,6 +185,25 @@ describe('FirstSolverAdapter - position mode', () => {
     expect(result.truncatedByLimit).toBe(false);
   });
 
+  it('finds a globally better ranked set than plain enumeration order would keep in position mode', () => {
+    const project = scenario()
+      .positionMode()
+      .items('A', 'B', 'C')
+      .containers({ T1: ['P1', 'P2', 'P3'], T2: ['P4', 'P5', 'P6'], T3: ['P7', 'P8', 'P9'] })
+      .softAssignmentScore('A', 'P7', 100)
+      .softAssignmentScore('B', 'P8', 50)
+      .softAssignmentScore('C', 'P9', 25)
+      .buildNormalized();
+
+    const result = solve(project);
+
+    expectSolved(result);
+    expect(result.solutions[0].score).toBe(175);
+    expect(result.solutions[0].assignments.find((assignment) => assignment.itemRef.id === 'A')?.positionRef?.id).toBe('P7');
+    expect(result.solutions[0].assignments.find((assignment) => assignment.itemRef.id === 'B')?.positionRef?.id).toBe('P8');
+    expect(result.solutions[0].assignments.find((assignment) => assignment.itemRef.id === 'C')?.positionRef?.id).toBe('P9');
+  });
+
   it('limits solutions to the configured maximum', () => {
     const project = scenario()
       .positionMode()

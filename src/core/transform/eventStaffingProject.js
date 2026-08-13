@@ -281,16 +281,54 @@ function createPersonAssignmentUpperBounds({ people, requirements, globalLimits,
   return bounds;
 }
 
-function createSoftItemCountTargets(people, requirements) {
-  const allDestinationIds = requirements.map((requirement) => createDestinationId(requirement.eventId, requirement.groupTypeId));
+function buildDestinationIdsByGroupTypeId(requirements) {
+  const map = new Map();
 
-  return people
+  requirements.forEach((requirement) => {
+    const destinationIds = map.get(requirement.groupTypeId) ?? [];
+    destinationIds.push(createDestinationId(requirement.eventId, requirement.groupTypeId));
+    map.set(requirement.groupTypeId, destinationIds);
+  });
+
+  return map;
+}
+
+function createSoftItemCountTargets(people, requirements, availableGroupTypeIds, globalLimits) {
+  const allDestinationIds = requirements.map((requirement) => createDestinationId(requirement.eventId, requirement.groupTypeId));
+  const destinationIdsByGroupTypeId = buildDestinationIdsByGroupTypeId(requirements);
+  const targets = people
     .filter((person) => Number.isInteger(person?.targetAssignments))
     .map((person) => ({
       itemId: person.id,
       destinationIds: [...allDestinationIds],
       targetCount: person.targetAssignments,
     }));
+
+  people.forEach((person) => {
+    availableGroupTypeIds.forEach((groupTypeId) => {
+      const overrideValue = person?.targetAssignmentsPerGroupType?.[groupTypeId];
+      const targetAssignmentsForGroupType = Number.isInteger(overrideValue)
+        ? overrideValue
+        : (Number.isInteger(globalLimits?.targetAssignmentsPerGroupType) ? globalLimits.targetAssignmentsPerGroupType : null);
+
+      if (targetAssignmentsForGroupType === null) {
+        return;
+      }
+
+      const destinationIds = destinationIdsByGroupTypeId.get(groupTypeId) ?? [];
+      if (!destinationIds.length) {
+        return;
+      }
+
+      targets.push({
+        itemId: person.id,
+        destinationIds: [...destinationIds],
+        targetCount: targetAssignmentsForGroupType,
+      });
+    });
+  });
+
+  return targets;
 }
 
 export function transformEventStaffingProject(domainProject = {}) {
@@ -360,7 +398,12 @@ export function transformEventStaffingProject(domainProject = {}) {
       ...createForcedAssignments(domainProject.forbiddenAssignments),
     ],
     softAssignmentScores: createEventPreferenceScores(domainProject.preferences, requirements, orderedEvents),
-    softItemCountTargets: createSoftItemCountTargets(people, requirements),
+    softItemCountTargets: createSoftItemCountTargets(
+      people,
+      requirements,
+      availableGroupTypeIds,
+      domainProject.globalLimits,
+    ),
   });
 }
 

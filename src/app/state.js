@@ -82,6 +82,50 @@ function createWeddingPageEditorState() {
   };
 }
 
+function createEventStaffingPageEditorState() {
+  return {
+    eventSearchText: '',
+    selectedGroupTypeId: 'all',
+    onlyHeavyEvents: false,
+    selectedEventId: '',
+    selectedEventIds: [],
+    draftSelectedEventLabel: '',
+    draftSelectedEventDate: '',
+    draftSelectedEventOrderIndex: '',
+    draftInsertedEventLabel: '',
+    draftInsertedEventDate: '',
+    draftInsertedEventPosition: 'after',
+    draftRangeStartDate: '',
+    draftRangeEndDate: '',
+    draftRangeWeekdays: {
+      0: true,
+      5: true,
+      6: true,
+    },
+    draftRangeLabelTemplate: '{weekday} {day} {monthShort} {year}',
+    draftRequirementGroupTypeId: '',
+    draftRequirementMin: '0',
+    draftRequirementMax: '1',
+    draftBulkRequirementGroupTypeId: '',
+    draftBulkRequirementMin: '0',
+    draftBulkRequirementMax: '1',
+    draftGroupTypeLabel: '',
+    draftGroupTypeId: '',
+    draftPersonName: '',
+    draftPersonId: '',
+    draftPersonMaxAssignments: '',
+    draftPersonTargetAssignments: '',
+    draftPersonMaxAssignmentsPerGroupTypeRows: [],
+    draftPersonTargetAssignmentsPerGroupTypeRows: [],
+    draftPersonAllowedGroupTypeIds: [],
+    draftPersonForbiddenGroupTypeIds: [],
+    editingPersonIndex: null,
+    draftGlobalMaxAssignmentsPerPerson: '',
+    draftGlobalMaxAssignmentsPerGroupType: '',
+    draftGlobalTargetAssignmentsPerGroupType: '',
+  };
+}
+
 export function createAppState() {
   return {
     currentView: 'generic',
@@ -114,13 +158,14 @@ export function createAppState() {
     },
     eventStaffingPage: {
       domainProject: null,
-      editor: null,
+      editor: createEventStaffingPageEditorState(),
       message: '',
       lastValidation: null,
+      lastTransformedProject: null,
       lastNormalizedProject: null,
       lastSolverResult: null,
       validationPanelExpanded: false,
-      commandBarExpanded: true,
+      workflowCommandBarExpanded: true,
     },
   };
 }
