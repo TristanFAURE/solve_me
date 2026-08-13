@@ -89,15 +89,15 @@ Preserve these project rules:
 
 ## Latest update
 
-- added `docs/09-technical-and-architecture-constraints.md` as the dedicated cross-cutting constraints document
-- documented mandatory architectural invariants, solver-impacting testing obligations, and the requirement to check dependency license compatibility with the project MIT license before adding packages
-- linked the new document from `docs/status/01-product-and-architecture.md` and from this master status file so future agents read it for architecture- and dependency-related work
+- investigated the reported GitHub Actions failure in `.github/workflows/deploy.yml`
+- confirmed the failing step was `npm ci` due to lockfile drift, not a workflow configuration problem
+- verified locally that the current `package-lock.json` is now back in sync with `package.json` and includes the required `esbuild` entry
+- verified `npm ci` succeeds locally without any workflow changes, so the likely remaining action is to ensure the refreshed lockfile is committed and pushed before rerunning CI
 
 Files modified:
 
 - `status.md`
-- `docs/status/01-product-and-architecture.md`
-- `docs/09-technical-and-architecture-constraints.md`
+- `docs/status/05-recent-work-and-next-steps.md`
 
 ## Restart prompt for a new context
 
