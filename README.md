@@ -78,6 +78,30 @@ Open the HTML coverage report at:
 coverage/index.html
 ```
 
+### Run the manual solver benchmark
+
+This benchmark is not part of the default test suite or CI gate. It is meant for manual iteration on solver capacity and complexity.
+
+```bash
+npm run bench:solver
+```
+
+You can configure the generated benchmark size with environment variables:
+
+```bash
+BENCH_CONTAINERS=100 BENCH_ITEMS=1000 BENCH_CONSTRAINTS=1000 BENCH_SEED=12345 npm run bench:solver
+```
+
+The benchmark prints:
+
+- generated scenario size
+- normalization time
+- solve wall-clock time
+- solver-reported runtime
+- solve status
+- number of returned solutions
+- truncation flag
+
 ## Deploy to GitHub Pages
 
 This repository is configured to deploy automatically to **GitHub Pages** using **GitHub Actions**.
@@ -178,6 +202,8 @@ Current test areas include:
 - solver support modules and capability reporting
 
 Tests use small scenario helpers under `tests/helpers/` to keep constraints readable with low boilerplate.
+
+A separate manual benchmark script is available under `scripts/solverBenchmark.js` for large generated scenarios. It is intentionally opt-in and is not run by default in tests or CI.
 
 ## Documentation
 

@@ -84,10 +84,9 @@ Preserve these project rules:
 
 ## Latest update
 
-- added direct tests for solver support modules and capability reporting, bringing `src/solver/**` support files to full coverage
-- expanded position-mode solver tests again to hit more edge paths in candidate handling and truncation behavior
-- updated the GitHub Actions deployment workflow so CI now runs tests and coverage before build/deploy and uploads the coverage artifact
-- improved concrete first-solver coverage to about 97% lines and 84% branches for `src/solver/adapters/firstSolverAdapter.js`
+- investigated a GitHub Actions `npm ci` failure caused by `package.json` and `package-lock.json` being out of sync after adding the manual solver benchmark script
+- regenerated `package-lock.json` with `npm install --package-lock-only` so the lock file now includes the current `esbuild` dependency set required by the existing Vite/Vitest toolchain
+- this should unblock both test and build jobs in `.github/workflows/deploy.yml` without changing the workflow itself
 
 Files modified:
 
@@ -107,6 +106,7 @@ Files modified:
 - `tests/solver/firstSolverAdapter.validation.test.js`
 - `tests/solver/solverSupport.test.js`
 - `.github/workflows/deploy.yml`
+- `package-lock.json`
 
 ## Restart prompt for a new context
 

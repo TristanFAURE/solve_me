@@ -76,6 +76,9 @@ tests/
     firstSolverAdapter.containerMode.test.js
     firstSolverAdapter.positionMode.test.js
     firstSolverAdapter.validation.test.js
+    solverSupport.test.js
+scripts/
+  solverBenchmark.js
 ```
 
 ## Readability rule
@@ -117,3 +120,29 @@ Current coverage focus:
 - `src/core/**`
 
 Branch coverage is especially important for solver code because many correctness paths live in branching logic.
+
+## Manual benchmark
+
+Large-scale solver capacity and complexity checks should not run as part of the default automated suite.
+
+Instead, use an explicit opt-in benchmark script:
+
+- `npm run bench:solver`
+
+This benchmark is intended for manual iteration, not for pass/fail correctness gating.
+
+Its purpose is to:
+
+- generate large but solvable scenarios
+- measure normalization and solve times
+- help identify practical scaling limits
+- help reproduce performance regressions with a deterministic seed
+
+Current configuration is controlled through environment variables:
+
+- `BENCH_CONTAINERS`
+- `BENCH_ITEMS`
+- `BENCH_CONSTRAINTS`
+- `BENCH_SEED`
+
+The benchmark should always generate a scenario with at least one valid solution so it can exercise real solve work rather than just immediate unsat rejection.
