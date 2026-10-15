@@ -8,7 +8,7 @@ Event Staffing supports an opt-in static collaboration mode when the page query 
 
 GitHub Pages deployments infer the owner/repository from the Pages URL. Localhost reads non-secret `VITE_GITHUB_OWNER` and `VITE_GITHUB_REPO` values. Generated participant links contain only mode flags, the session folder, token, and encryption password; dates, groups, events, requirements, and repository coordinates are loaded from the encrypted manifest or deployment configuration. The repository default branch is read through the GitHub API.
 
-A short-lived fine-grained PAT with one-repository Contents read/write permission is required. The app verifies read access and creates/deletes a random probe file before enabling collaboration. Tokens and session passwords supplied in a URL are immediately moved to `sessionStorage` and removed from the address bar. They are never stored in project drafts or exported files.
+A short-lived fine-grained PAT with one-repository Contents read/write permission is required. The app verifies authenticated repository access and checks the repository push permission when GitHub provides it. It no longer creates/deletes probe files on page load; actual write permission is confirmed by session creation or participant save. Tokens and session passwords supplied in a URL are immediately moved to `sessionStorage` and removed from the address bar. They are never stored in project drafts or exported files.
 
 The accepted shared-PAT link design remains a security risk: anyone with the original URL can extract and use the PAT until it expires. Scope and lifetime must therefore remain minimal.
 

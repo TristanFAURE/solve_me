@@ -33,8 +33,10 @@ async function verify(root, state, collaboration) {
   try {
     if (!collaboration.mode.repository) throw new Error('Unable to determine the GitHub repository. Configure VITE_GITHUB_OWNER and VITE_GITHUB_REPO for localhost.');
     const client = createGitHubClient({ fetch: globalThis.fetch.bind(globalThis), token: collaboration.mode.token });
-    const branch = await client.getDefaultBranch(collaboration.mode.repository);
-    await client.probeWriteAccess({ ...collaboration.mode.repository, branch, path: `.event-staffing-collab/.probe-${globalThis.crypto.randomUUID()}.txt` });
+    const repositoryDetails = await client.getRepository(collaboration.mode.repository);
+    const branch = repositoryDetails?.default_branch;
+    if (typeof branch !== 'string' || !branch) throw new Error('GitHub repository response did not include a default branch.');
+    if (repositoryDetails?.permissions?.push === false) throw new Error('The GitHub token does not have repository write permission.');
     collaboration.client = client;
     collaboration.repository = { ...collaboration.mode.repository, branch };
     collaboration.status = 'verified';
