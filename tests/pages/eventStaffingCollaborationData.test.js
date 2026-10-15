@@ -134,6 +134,7 @@ describe('collaboration data modules', () => {
     const files = new Map();
     const githubClient = {
       createContent: vi.fn(async ({ path, content }) => {
+        if (files.has(path)) throw Object.assign(new Error('sha was not supplied'), { status: 422 });
         files.set(path, { content: btoa(content), sha: 'sha-1' });
       }),
       updateContent: vi.fn(async ({ path, content, sha }) => {
@@ -155,6 +156,7 @@ describe('collaboration data modules', () => {
     const manifest = await repository.createSession(project());
     expect(await repository.discoverSessions('autumn-gala')).toMatchObject([{ folder: manifest.folder, title: 'Autumn Gala' }]);
     await repository.saveResponse(manifest, response());
+    await expect(repository.saveResponse(manifest, response())).rejects.toBeInstanceOf(CollaborationConflictError);
     await expect(repository.loadResponse(manifest, 'alex@example.org', '0042')).resolves.toMatchObject({ response: { email: 'alex@example.org' }, sha: 'sha-1' });
     await expect(repository.loadResponse(manifest, 'alex@example.org', '9999')).rejects.toThrow(/does not match/);
     await expect(repository.saveResponse(manifest, response(), 'stale')).rejects.toBeInstanceOf(CollaborationConflictError);

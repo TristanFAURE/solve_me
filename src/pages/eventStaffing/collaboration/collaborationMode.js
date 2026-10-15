@@ -45,7 +45,7 @@ export function storeCollaborationCredentials(mode, { token, password }, storage
   return { ...mode, token: token || mode.token, password: password || mode.password };
 }
 
-export function buildParticipantCollaborationUrl({ location = globalThis.location, owner, repo, session, token, password }) {
+export function buildParticipantCollaborationUrl({ location = globalThis.location, session, token, password }) {
   const url = new URL(location.href);
   url.hash = '#/event-staffing';
   url.search = '';
@@ -54,9 +54,5 @@ export function buildParticipantCollaborationUrl({ location = globalThis.locatio
   url.searchParams.set('session', session);
   url.searchParams.set('token', token);
   url.searchParams.set('password', password);
-  if (['localhost', '127.0.0.1', '::1'].includes(url.hostname)) {
-    url.searchParams.set('owner', owner);
-    url.searchParams.set('repo', repo);
-  }
   return url.toString();
 }

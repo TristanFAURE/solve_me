@@ -116,7 +116,7 @@ export function bindCollaborationAdminPanel(root, state, rerender) {
         groups: collaborationGroups(state.eventStaffingPage.domainProject),
         configuration: collaborationConfiguration(state.eventStaffingPage.domainProject),
       });
-      admin.generatedUrl = buildParticipantCollaborationUrl({ location: globalThis.location, ...collaboration.repository, session: admin.manifest.folder, token: collaboration.mode.token, password: admin.password });
+      admin.generatedUrl = buildParticipantCollaborationUrl({ location: globalThis.location, session: admin.manifest.folder, token: collaboration.mode.token, password: admin.password });
       admin.message = 'A new collaboration revision was published.';
     } catch (error) {
       admin.error = error instanceof Error ? error.message : 'Unable to publish collaboration.';

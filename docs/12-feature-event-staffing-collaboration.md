@@ -6,7 +6,7 @@ Event Staffing supports an opt-in static collaboration mode when the page query 
 
 ## Repository and credentials
 
-GitHub Pages deployments infer the owner/repository from the Pages URL. Localhost reads non-secret `VITE_GITHUB_OWNER` and `VITE_GITHUB_REPO` values or explicit `owner`/`repo` query parameters. The repository default branch is read through the GitHub API.
+GitHub Pages deployments infer the owner/repository from the Pages URL. Localhost reads non-secret `VITE_GITHUB_OWNER` and `VITE_GITHUB_REPO` values. Generated participant links contain only mode flags, the session folder, token, and encryption password; dates, groups, events, requirements, and repository coordinates are loaded from the encrypted manifest or deployment configuration. The repository default branch is read through the GitHub API.
 
 A short-lived fine-grained PAT with one-repository Contents read/write permission is required. The app verifies read access and creates/deletes a random probe file before enabling collaboration. Tokens and session passwords supplied in a URL are immediately moved to `sessionStorage` and removed from the address bar. They are never stored in project drafts or exported files.
 

@@ -22,7 +22,9 @@ export class CollaborationConflictError extends Error {
 }
 
 function isConflict(error) {
-  return error?.status === 409 || error?.statusCode === 409 || error?.response?.status === 409;
+  return error?.status === 409 || error?.status === 422
+    || error?.statusCode === 409 || error?.statusCode === 422
+    || error?.response?.status === 409 || error?.response?.status === 422;
 }
 
 function decodeGitHubContent(file) {

@@ -92,11 +92,12 @@ describe('collaboration URL and credential handling', () => {
 
   it('builds participant links without duplicating dates or groups', () => {
     const url = buildParticipantCollaborationUrl({
-      location: new URL('http://localhost:4173/solve_me/#/event-staffing'), owner: 'owner', repo: 'repo', session: 'session--id', token: 'pat', password: 'long-password',
+      location: new URL('http://localhost:4173/solve_me/#/event-staffing'), session: 'session--id', token: 'pat', password: 'long-password',
     });
     expect(url).toContain('collab=true');
     expect(url).toContain('user=true');
-    expect(url).toContain('owner=owner');
+    expect(url).not.toContain('owner=');
+    expect(url).not.toContain('repo=');
     expect(url).not.toContain('groups=');
     expect(url).not.toContain('startDate=');
   });
