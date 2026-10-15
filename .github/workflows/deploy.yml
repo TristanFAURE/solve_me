@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '.event-staffing-collab/**'
   workflow_dispatch:
 
 permissions:
