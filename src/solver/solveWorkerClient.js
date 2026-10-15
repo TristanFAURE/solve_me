@@ -1,5 +1,5 @@
 import { createSolveRequest, isSolveResponse, SOLVE_MESSAGE_TYPES } from './solveProtocol.js';
-import { createInterruptedResult, withBrowserSolveDefaults } from './solveService.js';
+import { createInterruptedResult, shouldUseHighs, withBrowserSolveDefaults } from './solveService.js';
 import { buildSearchHints } from './searchHints.js';
 
 // Native solving owns the requested budget; this only covers result delivery and serialization.
@@ -17,7 +17,10 @@ function betterSolution(left, right) {
   return leftFingerprint.localeCompare(rightFingerprint) <= 0 ? left : right;
 }
 
-function defaultWorkerFactory() {
+function defaultWorkerFactory(model, options) {
+  if (shouldUseHighs(model, options)) {
+    return new Worker(new URL('./solveHighsWorker.js', import.meta.url), { type: 'module' });
+  }
   return new Worker(new URL('./solveWorker.js', import.meta.url), { type: 'module' });
 }
 
@@ -37,7 +40,7 @@ export class SolveWorkerClient {
     const effectiveOptions = withBrowserSolveDefaults(options);
     let worker;
     try {
-      worker = this.workerFactory();
+      worker = this.workerFactory(model, effectiveOptions);
     } catch (error) {
       return {
         requestId,

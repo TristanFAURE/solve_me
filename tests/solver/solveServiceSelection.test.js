@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { HIGHS_AUTO_PAIR_THRESHOLD, runHighsSolveService, shouldUseHighs } from '../../src/solver/solveService.js';
+import { runHighsSolveService } from '../../src/solver/highsSolveService.js';
+import { HIGHS_AUTO_PAIR_THRESHOLD, shouldUseHighs } from '../../src/solver/solveService.js';
 import { scenario } from '../helpers/projectBuilder.js';
 
 function model(items, containers, overrides = {}) {

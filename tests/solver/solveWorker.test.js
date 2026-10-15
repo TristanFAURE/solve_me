@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { solveWorkerRequest } from '../../src/solver/solveWorker.js';
+import { solveHighsWorkerRequest } from '../../src/solver/solveHighsWorker.js';
 
 function largeModel() {
   return {
@@ -12,7 +12,7 @@ function largeModel() {
 describe('solve Worker engine fallback', () => {
   it('uses the JS engine when automatic HiGHS initialization fails', async () => {
     const runJs = vi.fn(() => ({ status: 'solved' }));
-    const result = await solveWorkerRequest({ model: largeModel(), options: { engine: 'auto', timeLimitMs: 1000 } }, {
+    const result = await solveHighsWorkerRequest({ model: largeModel(), options: { engine: 'auto', timeLimitMs: 1000 } }, {
       loadHighsRuntime: () => Promise.reject(new Error('WASM unavailable')),
       runSolveService: runJs,
     });
@@ -23,7 +23,7 @@ describe('solve Worker engine fallback', () => {
   });
 
   it('reports a clear failure for an explicitly requested HiGHS engine', async () => {
-    await expect(solveWorkerRequest({ model: largeModel(), options: { engine: 'highs', timeLimitMs: 1000 } }, {
+    await expect(solveHighsWorkerRequest({ model: largeModel(), options: { engine: 'highs', timeLimitMs: 1000 } }, {
       loadHighsRuntime: () => Promise.reject(new Error('WASM unavailable')),
     })).rejects.toThrow('HiGHS engine initialization failed: WASM unavailable');
   });
