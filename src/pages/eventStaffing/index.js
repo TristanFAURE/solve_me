@@ -30,6 +30,18 @@ import {
   getEventStaffingReplacementFromPreview,
   previewEventStaffingWorkbookFile,
 } from './workbooks.js';
+
+const REPAIRABLE_VALIDATION_CODES = new Set([
+  'event-staffing-forced-forbidden-conflict',
+  'event-staffing-forced-unavailable-conflict',
+  'event-staffing-insufficient-slot-coverage',
+  'event-staffing-insufficient-group-coverage',
+]);
+
+function hasOnlyRepairableValidationErrors(validation) {
+  return (validation?.errors?.length ?? 0) > 0
+    && validation.errors.every((issue) => REPAIRABLE_VALIDATION_CODES.has(issue.code));
+}
 import {
   annotateAdministratorRepairResult,
   buildAdministratorRepairCandidates,
@@ -474,24 +486,89 @@ export function renderStaffingScheduleView(domainProject, solverResult, activeSo
   `;
 }
 
+export function getVisibleAdministratorRepairDates(domainProject, validationErrors = []) {
+  const blockingEventIds = new Set(validationErrors
+    .map((issue) => String(issue.path ?? ''))
+    .filter((path) => path.startsWith('events.'))
+    .map((path) => path.slice('events.'.length)));
+  const allDates = getAdministratorRepairDates(domainProject);
+  const blockingDayKeys = new Set((domainProject.events ?? [])
+    .filter((event) => blockingEventIds.has(event.id))
+    .map(getSlotDayKey));
+  return {
+    dates: allDates.filter((date) => blockingDayKeys.has(date.dateKey)),
+    filteredToBlockingDates: blockingDayKeys.size > 0,
+  };
+}
+
+export function moveAdministratorRepairDate(dates, currentDateKey, offset) {
+  if (dates.length === 0) return '';
+  const currentIndex = Math.max(0, dates.findIndex((date) => date.dateKey === currentDateKey));
+  return dates[Math.min(Math.max(currentIndex + offset, 0), dates.length - 1)].dateKey;
+}
+
+export function getAdministratorRepairSelectedIds(repairState, dateKey) {
+  return repairState?.selectedCandidateIdsByDate?.[dateKey]
+    ?? (repairState?.dateKey === dateKey ? repairState?.selectedCandidateIds : [])
+    ?? [];
+}
+
+export function updateAdministratorRepairState(repairState, dateKey, selectedCandidateIds = null) {
+  const selectedCandidateIdsByDate = { ...(repairState?.selectedCandidateIdsByDate ?? {}) };
+  const nextSelection = selectedCandidateIds ?? getAdministratorRepairSelectedIds(repairState, dateKey);
+  selectedCandidateIdsByDate[dateKey] = [...nextSelection];
+  return {
+    dateKey,
+    selectedCandidateIds: [...nextSelection],
+    selectedCandidateIdsByDate,
+  };
+}
+
+export function getAdministratorRepairSelection(domainProject, normalizedProject, dates, repairState = {}) {
+  const candidates = dates.flatMap(({ dateKey }) => buildAdministratorRepairCandidates(
+    domainProject,
+    normalizedProject,
+    dateKey,
+  ));
+  const candidateIds = new Set(candidates.map((candidate) => candidate.id));
+  const selectedIds = dates.flatMap(({ dateKey }) => getAdministratorRepairSelectedIds(repairState, dateKey))
+    .filter((id, index, ids) => candidateIds.has(id) && ids.indexOf(id) === index);
+  return { candidates, selectedIds };
+}
+
 export function renderAdministratorRepairPanel(domainProject, normalizedProject, solverResult, repairState = {}) {
-  if (solverResult?.status !== 'unsat' || !normalizedProject) return '';
-  const dates = getAdministratorRepairDates(domainProject);
+  const hasRepairableValidationConflict = hasOnlyRepairableValidationErrors({ errors: repairState.validationErrors ?? [] });
+  if ((solverResult?.status !== 'unsat' && !hasRepairableValidationConflict) || !normalizedProject) return '';
+  const validationErrors = repairState.validationErrors ?? validateEventStaffingProject(domainProject).errors;
+  const { dates, filteredToBlockingDates } = getVisibleAdministratorRepairDates(domainProject, validationErrors);
+  if (dates.length === 0) {
+    return `
+      <section class="panel administrator-repair-panel">
+        <p class="eyebrow">Unsatisfiable hard model</p>
+        <h2>Temporary administrator repair</h2>
+        <p>No date-local blocking constraint was identified. Review global workload limits and the non-relaxable coverage and cooldown rules.</p>
+      </section>`;
+  }
   const dateKey = dates.some((date) => date.dateKey === repairState.dateKey)
     ? repairState.dateKey
     : (dates[0]?.dateKey ?? '');
   const candidates = buildAdministratorRepairCandidates(domainProject, normalizedProject, dateKey);
-  const selected = new Set(repairState.selectedCandidateIds ?? []);
+  const selected = new Set(getAdministratorRepairSelectedIds(repairState, dateKey));
+  const allSelected = getAdministratorRepairSelection(domainProject, normalizedProject, dates, repairState).selectedIds;
   return `
     <section class="panel administrator-repair-panel">
-      <p class="eyebrow">Unsatisfiable hard model</p>
+      <p class="eyebrow">${solverResult?.status === 'unsat' ? 'Unsatisfiable hard model' : 'Repairable hard-constraint conflict'}</p>
       <h2>Temporary administrator repair</h2>
-      <p>Select narrowly scoped person restrictions to relax for one blocking date. The original project rules are unchanged; exceptions apply only to this repair solve. Coverage min/max and cooldown/rest rules always remain hard and are never available here. Relaxed prohibitions receive a strong penalty. A workload-limit exception permits at most one extra assignment and is explicitly reported when used; the equity objective still controls how work is distributed.</p>
-      <label>Blocking date
-        <select name="administratorRepairDate">
+      <p>Select narrowly scoped person restrictions on each blocking date. The repair solve uses selections from all dates, not only the date currently shown. The original project rules are unchanged; exceptions apply only to this repair solve. Coverage min/max and cooldown/rest rules always remain hard and are never available here. Relaxed prohibitions receive a strong penalty. Each selected workload-limit exception permits at most one extra assignment and is explicitly reported when used; the equity objective still controls how work is distributed.</p>
+      <div class="event-staffing-inline-actions">
+        <button type="button" data-event-staffing-action="previous-repair-date"${dates.findIndex((date) => date.dateKey === dateKey) <= 0 ? ' disabled' : ''} aria-label="Previous blocking date">←</button>
+        <label>${filteredToBlockingDates ? 'Blocking date' : 'Date to inspect'}
+          <select name="administratorRepairDate">
           ${dates.map((date) => `<option value="${escapeHtml(date.dateKey)}"${date.dateKey === dateKey ? ' selected' : ''}>${escapeHtml(date.label)}</option>`).join('')}
-        </select>
-      </label>
+          </select>
+        </label>
+        <button type="button" data-event-staffing-action="next-repair-date"${dates.findIndex((date) => date.dateKey === dateKey) >= dates.length - 1 ? ' disabled' : ''} aria-label="Next blocking date">→</button>
+      </div>
       <div class="event-staffing-inline-actions top-gap">
         <button type="button" data-event-staffing-action="select-all-repair-candidates"${candidates.length ? '' : ' disabled'}>Select all</button>
         <button type="button" data-event-staffing-action="clear-repair-candidates"${selected.size ? '' : ' disabled'}>Clear all</button>
@@ -501,7 +578,7 @@ export function renderAdministratorRepairPanel(domainProject, normalizedProject,
           <input type="checkbox" data-repair-candidate-id="${escapeHtml(candidate.id)}"${selected.has(candidate.id) ? ' checked' : ''} />
           <span>${escapeHtml(candidate.label)}</span>
         </label>`).join('')}</div>` : '<p class="muted-text top-gap">No relaxable person restrictions apply to this date. Check another date or revise hard coverage/cooldown rules directly.</p>'}
-      <button type="button" class="event-staffing-primary-button top-gap" data-event-staffing-action="solve-administrator-repair"${selected.size ? '' : ' disabled'}>Try with selected temporary exceptions</button>
+      <button type="button" class="event-staffing-primary-button top-gap" data-event-staffing-action="solve-administrator-repair"${allSelected.length ? '' : ' disabled'}>Try with all selected temporary exceptions (${allSelected.length})</button>
     </section>`;
 }
 
@@ -688,7 +765,7 @@ function renderBody(domainProject, state) {
     ${renderTabPanel('data', activeTab, dataContent)}
     ${renderTabPanel('rules', activeTab, `${renderPreferenceMatrix(domainProject, editor)}${renderRuleEditors(domainProject, editor)}`)}
     ${renderTabPanel('review', activeTab, renderReviewPanel(state))}
-    ${renderTabPanel('results', activeTab, `${renderAdministratorRepairPanel(domainProject, state.eventStaffingPage.lastNormalizedProject, state.eventStaffingPage.lastSolverResult, editor.administratorRepair)}${renderStaffingScheduleView(domainProject, state.eventStaffingPage.lastSolverResult, state.eventStaffingPage.activeSolutionIndex ?? 0)}${state.eventStaffingPage.lastSolverResult?.solutions?.length ? '<button type="button" data-event-staffing-action="export-solution-workbook">Export selected schedule workbook</button>' : ''}`)}
+    ${renderTabPanel('results', activeTab, `${renderSolveStatus(state.eventStaffingPage.solveExecution, 'data-event-staffing-action="cancel-solve"')}${renderAdministratorRepairPanel(domainProject, state.eventStaffingPage.lastNormalizedProject, state.eventStaffingPage.lastSolverResult, { ...editor.administratorRepair, validationErrors: state.eventStaffingPage.lastValidation?.errors ?? [] })}${renderStaffingScheduleView(domainProject, state.eventStaffingPage.lastSolverResult, state.eventStaffingPage.activeSolutionIndex ?? 0)}${state.eventStaffingPage.lastSolverResult?.solutions?.length ? '<button type="button" data-event-staffing-action="export-solution-workbook">Export selected schedule workbook</button>' : ''}`)}
   `;
 }
 
@@ -1230,7 +1307,8 @@ export function generateEventsFromDateRange(domainProject, editor) {
 
 export function runEventStaffingWorkflow(domainProject, capabilities = null) {
   const domainValidation = validateEventStaffingProject(domainProject);
-  if (!domainValidation.valid) {
+  const canPrepareRepair = hasOnlyRepairableValidationErrors(domainValidation);
+  if (!domainValidation.valid && !canPrepareRepair) {
     return {
       domainValidation,
       transformedProject: null,
@@ -1251,7 +1329,9 @@ export function runEventStaffingWorkflow(domainProject, capabilities = null) {
     normalizedProject,
     genericValidation,
     solverResult: null,
-    message: genericValidation.valid
+    message: canPrepareRepair
+      ? 'The staffing project has repairable hard-constraint conflicts. Review temporary administrator repair options.'
+      : genericValidation.valid
       ? 'The staffing project is valid and ready to solve.'
       : 'The staffing project transformed successfully but failed generic validation.',
   };
@@ -1991,7 +2071,7 @@ function bindInteractions(root, state) {
       }
 
       state.eventStaffingPage.activeSolutionIndex = 0;
-      editor.administratorRepair = { dateKey: '', selectedCandidateIds: [] };
+      editor.administratorRepair = { dateKey: '', selectedCandidateIds: [], selectedCandidateIdsByDate: {} };
       startSolveExecution({
         execution: state.eventStaffingPage.solveExecution,
         model: workflow.normalizedProject,
@@ -2013,15 +2093,17 @@ function bindInteractions(root, state) {
     });
   }
 
-  const repairDateSelect = root.querySelector('[name="administratorRepairDate"]');
-  if (repairDateSelect) {
+  root.querySelectorAll('[name="administratorRepairDate"]').forEach((repairDateSelect) => {
     repairDateSelect.addEventListener('change', (event) => {
-      editor.administratorRepair = { dateKey: event.target.value, selectedCandidateIds: [] };
+      editor.administratorRepair = updateAdministratorRepairState(editor.administratorRepair, event.target.value);
       rerender();
     });
-  }
+  });
 
-  const currentRepairDates = getAdministratorRepairDates(domainProject);
+  const currentRepairDates = getVisibleAdministratorRepairDates(
+    domainProject,
+    state.eventStaffingPage.lastValidation?.errors ?? [],
+  ).dates;
   const currentRepairDateKey = currentRepairDates.some((date) => date.dateKey === editor.administratorRepair?.dateKey)
     ? editor.administratorRepair.dateKey
     : (currentRepairDates[0]?.dateKey ?? '');
@@ -2030,64 +2112,100 @@ function bindInteractions(root, state) {
     : [];
   root.querySelectorAll('[data-repair-candidate-id]').forEach((checkbox) => {
     checkbox.addEventListener('change', () => {
-      editor.administratorRepair = {
-        dateKey: currentRepairDateKey,
-        selectedCandidateIds: toggleRepairCandidate(
-          editor.administratorRepair?.selectedCandidateIds,
+      editor.administratorRepair = updateAdministratorRepairState(
+        editor.administratorRepair,
+        currentRepairDateKey,
+        toggleRepairCandidate(
+          getAdministratorRepairSelectedIds(editor.administratorRepair, currentRepairDateKey),
           checkbox.dataset.repairCandidateId,
           checkbox.checked,
         ),
-      };
+      );
       rerender();
     });
   });
-  root.querySelector('[data-event-staffing-action="select-all-repair-candidates"]')?.addEventListener('click', () => {
-    editor.administratorRepair = {
-      dateKey: currentRepairDateKey,
-      selectedCandidateIds: selectAllRepairCandidates(currentRepairCandidates),
-    };
-    rerender();
-  });
-  root.querySelector('[data-event-staffing-action="clear-repair-candidates"]')?.addEventListener('click', () => {
-    editor.administratorRepair = { dateKey: currentRepairDateKey, selectedCandidateIds: [] };
-    rerender();
-  });
-  root.querySelector('[data-event-staffing-action="solve-administrator-repair"]')?.addEventListener('click', () => {
-    if (state.eventStaffingPage.lastSolverResult?.status !== 'unsat') return;
-    const selectedIds = editor.administratorRepair?.selectedCandidateIds ?? [];
-    if (selectedIds.length === 0) return;
-    const repairModel = createAdministratorRepairModel(
-      state.eventStaffingPage.lastNormalizedProject,
-      currentRepairCandidates,
-      selectedIds,
-    );
-    state.eventStaffingPage.activeSolutionIndex = 0;
-    startSolveExecution({
-      execution: state.eventStaffingPage.solveExecution,
-      model: repairModel,
-      options: buildAdministratorRepairSolveOptions(state.eventStaffingPage.solveOptions, domainProject.people),
-      onResult(solverResult) {
-        solverResult = annotateAdministratorRepairResult(
-          solverResult,
-          currentRepairCandidates,
-          selectedIds,
-          currentRepairDateKey,
-        );
-        solverResult = rankStaffingSolutionsByEquity(domainProject, solverResult);
-        state.eventStaffingPage.lastSolverResult = solverResult;
-        state.eventStaffingPage.message = solverResult.solutions?.length
-          ? `The repaired model returned ${solverResult.solutions.length} solution(s). Original project rules remain unchanged.`
-          : 'The selected temporary exceptions did not produce a staffing plan.';
-      },
-      onChange: rerender,
+  root.querySelectorAll('[data-event-staffing-action="previous-repair-date"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      editor.administratorRepair = updateAdministratorRepairState(
+        editor.administratorRepair,
+        moveAdministratorRepairDate(currentRepairDates, currentRepairDateKey, -1),
+      );
+      rerender();
     });
-    rerender();
+  });
+  root.querySelectorAll('[data-event-staffing-action="next-repair-date"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      editor.administratorRepair = updateAdministratorRepairState(
+        editor.administratorRepair,
+        moveAdministratorRepairDate(currentRepairDates, currentRepairDateKey, 1),
+      );
+      rerender();
+    });
+  });
+  root.querySelectorAll('[data-event-staffing-action="select-all-repair-candidates"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      editor.administratorRepair = updateAdministratorRepairState(
+        editor.administratorRepair,
+        currentRepairDateKey,
+        selectAllRepairCandidates(currentRepairCandidates),
+      );
+      rerender();
+    });
+  });
+  root.querySelectorAll('[data-event-staffing-action="clear-repair-candidates"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      editor.administratorRepair = updateAdministratorRepairState(editor.administratorRepair, currentRepairDateKey, []);
+      rerender();
+    });
+  });
+  root.querySelectorAll('[data-event-staffing-action="solve-administrator-repair"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (state.eventStaffingPage.lastSolverResult?.status !== 'unsat'
+        && !hasOnlyRepairableValidationErrors(state.eventStaffingPage.lastValidation)) return;
+      const repairSelection = getAdministratorRepairSelection(
+        domainProject,
+        state.eventStaffingPage.lastNormalizedProject,
+        currentRepairDates,
+        editor.administratorRepair,
+      );
+      const { candidates, selectedIds } = repairSelection;
+      if (selectedIds.length === 0) return;
+      const selectedDateKeys = currentRepairDates
+        .filter(({ dateKey }) => getAdministratorRepairSelectedIds(editor.administratorRepair, dateKey).length > 0)
+        .map(({ dateKey }) => dateKey);
+      const repairModel = createAdministratorRepairModel(
+        state.eventStaffingPage.lastNormalizedProject,
+        candidates,
+        selectedIds,
+      );
+      state.eventStaffingPage.activeSolutionIndex = 0;
+      startSolveExecution({
+        execution: state.eventStaffingPage.solveExecution,
+        model: repairModel,
+        options: buildAdministratorRepairSolveOptions(state.eventStaffingPage.solveOptions, domainProject.people),
+        onResult(solverResult) {
+          solverResult = annotateAdministratorRepairResult(
+            solverResult,
+            candidates,
+            selectedIds,
+            selectedDateKeys,
+          );
+          solverResult = rankStaffingSolutionsByEquity(domainProject, solverResult);
+          state.eventStaffingPage.lastSolverResult = solverResult;
+          state.eventStaffingPage.message = solverResult.solutions?.length
+            ? `The repaired model returned ${solverResult.solutions.length} solution(s). Original project rules remain unchanged.`
+            : 'The selected temporary exceptions did not produce a staffing plan.';
+          state.eventStaffingPage.activeWorkflowTab = 'results';
+        },
+        onChange: rerender,
+      });
+      rerender();
+    });
   });
 
-  const cancelSolveButton = root.querySelector('[data-event-staffing-action="cancel-solve"]');
-  if (cancelSolveButton) {
-    cancelSolveButton.addEventListener('click', () => cancelSolveExecution(state.eventStaffingPage.solveExecution));
-  }
+  root.querySelectorAll('[data-event-staffing-action="cancel-solve"]').forEach((button) => {
+    button.addEventListener('click', () => cancelSolveExecution(state.eventStaffingPage.solveExecution));
+  });
 
   const previousSolutionButton = root.querySelector('[data-event-staffing-action="show-previous-solution"]');
   if (previousSolutionButton) {

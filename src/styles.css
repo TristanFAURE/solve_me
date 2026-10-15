@@ -2,6 +2,8 @@
   font-family: Arial, sans-serif;
   color: #1f2937;
   background: #f8fafc;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 * {
@@ -10,6 +12,8 @@
 
 body {
   margin: 0;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 #app {
@@ -17,7 +21,9 @@ body {
 }
 
 .app-shell {
+  width: 100%;
   max-width: 1100px;
+  min-width: 0;
   margin: 0 auto;
   padding: 24px;
 }
@@ -59,6 +65,9 @@ body {
 }
 
 .workflow-tabs {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   margin-bottom: 16px;
   overflow-x: auto;
 }
@@ -420,6 +429,25 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.workflow-panel,
+.panel,
+.card,
+.workspace-panel,
+.form-grid,
+.form-grid > *,
+.school-rule-form-stack,
+.wedding-rule-options-row,
+.wedding-rule-options-with-weight-row {
+  min-width: 0;
+  max-width: 100%;
+}
+
+input,
+select,
+textarea {
+  max-width: 100%;
 }
 
 .form-grid input,
@@ -1529,6 +1557,11 @@ body {
   }
 
   .workspace-columns.two-up,
+  .form-grid.two-columns,
+  .form-grid.three-columns,
+  .form-grid.four-columns,
+  .form-grid.five-columns,
+  .form-grid.six-columns,
   .entity-meta-form-row,
   .entity-meta-form-row-three,
   .inline-field-grid,
@@ -1537,7 +1570,13 @@ body {
   .wedding-neighbor-grid,
   .wedding-group-selection-row,
   .school-preference-top-row,
+  .school-rule-top-row,
   .school-rule-participants-row {
+    grid-template-columns: 1fr;
+  }
+
+  .wedding-rule-options-row,
+  .wedding-rule-options-with-weight-row {
     grid-template-columns: 1fr;
   }
 

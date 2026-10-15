@@ -157,7 +157,7 @@ function createEventStaffingPageEditorState() {
     draftGlobalMaxAssignmentsPerPerson: '',
     draftGlobalMaxAssignmentsPerGroupType: '',
     draftGlobalTargetAssignmentsPerGroupType: '',
-    administratorRepair: { dateKey: '', selectedCandidateIds: [] },
+    administratorRepair: { dateKey: '', selectedCandidateIds: [], selectedCandidateIdsByDate: {} },
   };
 }
 

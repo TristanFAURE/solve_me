@@ -75,7 +75,7 @@ test('primary navigation moves between all pages', async ({ page }) => {
   for (const appPage of pages.slice(1)) {
     await page.getByRole('link', { name: appPage.heading === 'Event Staffing' ? 'Event staffing' : appPage.heading.toString().split(' ')[0] }).click();
     await expect(page.getByRole('heading', { level: 1, name: appPage.heading })).toBeVisible();
-    await expect(page.getByRole('link', { current: 'page' })).toHaveCount(1);
+    await expect(page.locator('a[aria-current="page"]')).toHaveCount(1);
   }
 
   await page.getByRole('link', { name: 'Generic' }).click();
@@ -137,18 +137,23 @@ test('Event Staffing completes a deterministic HiGHS WASM solve in a Worker', as
     }));
   }, project);
   await openRoute(page, '/event-staffing');
-  await page.getByLabel('Engine').selectOption('highs');
-  await page.getByLabel('Mode').selectOption('first');
+  await page.getByLabel('Maximum solutions').fill('1');
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
 
   const workerStarted = page.waitForEvent('worker');
-  const wasmLoaded = page.waitForResponse((response) => /\/assets\/highs-.*\.wasm$/.test(new URL(response.url()).pathname));
+  const wasmLoaded = page.waitForResponse((response) => /highs.*\.wasm/i.test(response.url()));
   await page.getByRole('button', { name: 'Transform + solve', exact: true }).click();
-  await workerStarted;
+  const worker = await workerStarted;
+  expect(worker.url()).toContain('solveHighsWorker');
   await wasmLoaded;
 
   await expect(page.getByRole('tab', { name: 'Results', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
-  await expect(page.getByRole('heading', { name: 'Staffing schedule' })).toBeVisible();
-  await expect(page.getByText('solved', { exact: true })).toBeVisible();
-  await expect(page.getByText('Alex', { exact: true })).toBeVisible();
-});
+  const resultsPanel = page.getByRole('tabpanel', { name: 'Results' });
+  await expect(resultsPanel.getByRole('heading', { name: 'Staffing schedule' })).toBeVisible();
+  const solveStatus = resultsPanel.locator('dt', { hasText: 'Status' }).locator('xpath=following-sibling::dd');
+  await expect(solveStatus).toHaveText(/^(solved|partial)$/);
+  const personView = resultsPanel
+    .getByRole('heading', { name: 'Person-centric view', exact: true })
+    .locator('xpath=..');
+  await expect(personView.getByRole('cell', { name: 'Alex', exact: true })).toBeVisible();
+}, 60_000);

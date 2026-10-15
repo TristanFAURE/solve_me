@@ -9,7 +9,10 @@ import {
   selectAllRepairCandidates,
   toggleRepairCandidate,
 } from '../../src/pages/eventStaffing/administratorRepair.js';
-import { buildAdministratorRepairSolveOptions, renderAdministratorRepairPanel, renderStaffingScheduleView } from '../../src/pages/eventStaffing/index.js';
+import { buildAdministratorRepairSolveOptions, getAdministratorRepairSelectedIds, getAdministratorRepairSelection, getVisibleAdministratorRepairDates, moveAdministratorRepairDate, renderAdministratorRepairPanel, renderStaffingScheduleView, updateAdministratorRepairState } from '../../src/pages/eventStaffing/index.js';
+import { createAppState } from '../../src/app/state.js';
+import { renderEventStaffingPage } from '../../src/pages/eventStaffing/index.js';
+import { validateEventStaffingProject } from '../../src/pages/eventStaffing/validateEventStaffingProject.js';
 
 function project() {
   return {
@@ -73,6 +76,35 @@ describe('Event Staffing administrator repair', () => {
     expect(toggleRepairCandidate(['a'], 'a', false)).toEqual([]);
   });
 
+  it('preserves selected temporary exceptions independently for each date', () => {
+    let state = updateAdministratorRepairState({}, '2026-10-15', ['a', 'b']);
+    state = updateAdministratorRepairState(state, '2026-10-16', ['c']);
+    state = updateAdministratorRepairState(state, '2026-10-15');
+
+    expect(getAdministratorRepairSelectedIds(state, '2026-10-15')).toEqual(['a', 'b']);
+    expect(getAdministratorRepairSelectedIds(state, '2026-10-16')).toEqual(['c']);
+    expect(state.selectedCandidateIds).toEqual(['a', 'b']);
+  });
+
+  it('combines selected temporary exceptions from every blocking date', () => {
+    const domain = project();
+    const model = normalized(domain);
+    const dates = getVisibleAdministratorRepairDates(domain, [
+      { code: 'event-staffing-insufficient-group-coverage', path: 'events.S1' },
+      { code: 'event-staffing-insufficient-group-coverage', path: 'events.S3' },
+    ]).dates;
+    const firstCandidate = buildAdministratorRepairCandidates(domain, model, dates[0].dateKey)[0];
+    const secondCandidate = buildAdministratorRepairCandidates(domain, model, dates[1].dateKey)[0];
+    let state = updateAdministratorRepairState({}, dates[0].dateKey, [firstCandidate.id]);
+    state = updateAdministratorRepairState(state, dates[1].dateKey, [secondCandidate.id]);
+    state = updateAdministratorRepairState(state, dates[0].dateKey);
+
+    const selection = getAdministratorRepairSelection(domain, model, dates, state);
+
+    expect(selection.selectedIds).toEqual([firstCandidate.id, secondCandidate.id]);
+    expect(selection.candidates.map(({ id }) => id)).toEqual(expect.arrayContaining(selection.selectedIds));
+  });
+
   it('keeps temporary exceptions costly and equity active in repair solves', () => {
     const options = buildAdministratorRepairSolveOptions({
       mode: 'topK',
@@ -119,6 +151,23 @@ describe('Event Staffing administrator repair', () => {
     expect(repaired.softAssignmentScores).toEqual(model.softAssignmentScores);
     expect(repaired.containers).toEqual(originalContainers);
     expect(repaired.assignmentExclusions).toEqual(originalExclusions);
+  });
+
+  it('applies selected workload maximum exceptions across multiple dates', () => {
+    const domain = project();
+    const model = normalized(domain);
+    const first = buildAdministratorRepairCandidates(domain, model, '2026-10-15')
+      .find((candidate) => candidate.type === 'total-workload-maximum' && candidate.itemId === 'P1');
+    const second = buildAdministratorRepairCandidates(domain, model, '2026-10-16')
+      .find((candidate) => candidate.type === 'total-workload-maximum' && candidate.itemId === 'P1');
+    const repaired = createAdministratorRepairModel(model, [first, second], [first.id, second.id]);
+
+    expect(repaired.assignmentCountUpperBounds[first.boundIndex].maxCount).toBe(first.originalMax + 2);
+    expect(repaired.assignmentCountUpperBounds).toContainEqual(expect.objectContaining({
+      itemId: 'P1',
+      maxCount: first.originalMax + 1,
+      metadata: expect.objectContaining({ eventStaffingScope: 'repair-other-date-guard' }),
+    }));
   });
 
   it('does not mistake slot exclusivity for a relaxable workload maximum', () => {
@@ -180,6 +229,23 @@ describe('Event Staffing administrator repair', () => {
     expect(unused.solutions[0].administratorExceptionsUsed).toEqual([]);
   });
 
+  it('attributes a multi-date workload exception only to the date that uses it', () => {
+    const domain = project();
+    const model = normalized(domain);
+    const first = buildAdministratorRepairCandidates(domain, model, '2026-10-15')
+      .find((candidate) => candidate.type === 'total-workload-maximum' && candidate.itemId === 'P1');
+    const second = buildAdministratorRepairCandidates(domain, model, '2026-10-16')
+      .find((candidate) => candidate.type === 'total-workload-maximum' && candidate.itemId === 'P1');
+    const result = annotateAdministratorRepairResult({
+      status: 'solved',
+      solutions: [{ assignments: [{ itemRef: { id: 'P1' }, containerRef: { id: 'event:S1::group:A' } }] }],
+    }, [first, second], [first.id, second.id], ['2026-10-15', '2026-10-16']);
+
+    expect(result.solutions[0].administratorExceptionsUsed).toEqual([
+      { id: first.id, type: first.type, label: first.label },
+    ]);
+  });
+
   it('renders repair controls only for unsat and accurately describes repaired solutions', () => {
     const domain = project();
     const model = normalized(domain);
@@ -187,7 +253,16 @@ describe('Event Staffing administrator repair', () => {
     expect(unsatHtml).toContain('Temporary administrator repair');
     expect(unsatHtml).toContain('Coverage min/max and cooldown/rest rules always remain hard');
     expect(unsatHtml).toContain('Select all');
+    expect(unsatHtml).toContain('Previous blocking date');
+    expect(unsatHtml).toContain('Next blocking date');
+    expect(unsatHtml).toContain('all dates, not only the date currently shown');
     expect(renderAdministratorRepairPanel(domain, model, { status: 'timeout' }, {})).toBe('');
+    expect(renderAdministratorRepairPanel(domain, model, null, {
+      validationErrors: [{ code: 'event-staffing-insufficient-group-coverage', path: 'events.S1' }],
+    })).toContain('Repairable hard-constraint conflict');
+    expect(renderAdministratorRepairPanel(domain, model, null, {
+      validationErrors: [{ code: 'event-staffing-invalid-requirement-bounds' }],
+    })).toBe('');
 
     const solution = {
       assignments: [{ itemRef: { id: 'P1' }, containerRef: { id: 'event:S1::group:A' } }],
@@ -199,5 +274,92 @@ describe('Event Staffing administrator repair', () => {
     expect(html).toContain('Administrator exceptions used');
     expect(html).toContain('The original hard model was not satisfied');
     expect(html).not.toContain('<strong>Hard constraints:</strong> satisfied');
+  });
+
+  it('limits the repair date selector to dates identified by validation', () => {
+    const domain = project();
+    const result = getVisibleAdministratorRepairDates(domain, [
+      { code: 'event-staffing-insufficient-group-coverage', path: 'events.S3' },
+    ]);
+
+    expect(result.filteredToBlockingDates).toBe(true);
+    expect(result.dates).toEqual([{ dateKey: '2026-10-16', label: '2026-10-16' }]);
+    expect(moveAdministratorRepairDate(result.dates, '2026-10-16', -1)).toBe('2026-10-16');
+  });
+
+  it('does not present every date as blocking when no date-local conflict is known', () => {
+    const domain = project();
+    const model = normalized(domain);
+
+    const html = renderAdministratorRepairPanel(domain, model, { status: 'unsat' }, { validationErrors: [] });
+
+    expect(getVisibleAdministratorRepairDates(domain, []).dates).toEqual([]);
+    expect(html).toContain('No date-local blocking constraint was identified');
+    expect(html).not.toContain('name="administratorRepairDate"');
+  });
+
+  it('binds the visible repair date and bulk-selection controls', () => {
+    const state = createAppState({ storage: null });
+    state.eventStaffingPage.domainProject = project();
+    state.eventStaffingPage.lastValidation = validateEventStaffingProject(state.eventStaffingPage.domainProject);
+    state.eventStaffingPage.lastNormalizedProject = normalized(state.eventStaffingPage.domainProject);
+    state.eventStaffingPage.lastSolverResult = { status: 'unsat', solutions: [], warnings: [], runtimeMs: 1 };
+    state.eventStaffingPage.activeWorkflowTab = 'results';
+    const controls = new Map();
+    const makeControl = () => ({
+      addEventListener(type, listener) { if (type === 'click' || type === 'change') this.activate = listener; },
+    });
+    const root = {
+      innerHTML: '',
+      querySelector: () => null,
+      querySelectorAll(selector) {
+        if (!controls.has(selector)) controls.set(selector, [makeControl()]);
+        return controls.get(selector);
+      },
+    };
+
+    renderEventStaffingPage(root, state);
+    controls.get('[data-event-staffing-action="select-all-repair-candidates"]')[0].activate();
+    expect(state.eventStaffingPage.editor.administratorRepair.selectedCandidateIds.length).toBeGreaterThan(0);
+    controls.get('[data-event-staffing-action="clear-repair-candidates"]')[0].activate();
+    expect(state.eventStaffingPage.editor.administratorRepair.selectedCandidateIds).toEqual([]);
+  });
+
+  it('shows temporary repair in Results but not Review', () => {
+    const state = createAppState({ storage: null });
+    state.eventStaffingPage.domainProject = project();
+    state.eventStaffingPage.lastValidation = validateEventStaffingProject(state.eventStaffingPage.domainProject);
+    state.eventStaffingPage.lastNormalizedProject = normalized(state.eventStaffingPage.domainProject);
+    state.eventStaffingPage.lastSolverResult = { status: 'unsat', solutions: [], warnings: [], runtimeMs: 1 };
+    const root = { innerHTML: '', querySelector: () => null, querySelectorAll: () => [] };
+
+    state.eventStaffingPage.activeWorkflowTab = 'review';
+    renderEventStaffingPage(root, state);
+    const reviewPanel = root.innerHTML.match(/<section id="workflow-panel-review"[\s\S]*?<\/section>/)?.[0] ?? '';
+    expect(reviewPanel).not.toContain('Temporary administrator repair');
+
+    state.eventStaffingPage.activeWorkflowTab = 'results';
+    renderEventStaffingPage(root, state);
+    const resultsPanel = root.innerHTML.match(/<section id="workflow-panel-results"[\s\S]*?<\/section>/)?.[0] ?? '';
+    expect(resultsPanel).toContain('Temporary administrator repair');
+  });
+
+  it('shows Worker progress and cancellation in Results during a repair solve', () => {
+    const state = createAppState({ storage: null });
+    state.eventStaffingPage.activeWorkflowTab = 'results';
+    state.eventStaffingPage.solveExecution = {
+      status: 'solving',
+      progress: { phase: 'optimizing', elapsedMs: 100, exploredNodes: 0, prunedNodes: 0, solutionCount: 1 },
+      timeLimitMs: 5000,
+      handle: null,
+    };
+    const root = { innerHTML: '', querySelector: () => null, querySelectorAll: () => [] };
+
+    renderEventStaffingPage(root, state);
+
+    const resultsPanel = root.innerHTML.match(/<section id="workflow-panel-results"[\s\S]*?<\/section>/)?.[0] ?? '';
+    expect(resultsPanel).not.toContain(' hidden');
+    expect(resultsPanel).toContain('Optimizing schedule');
+    expect(resultsPanel).toContain('data-event-staffing-action="cancel-solve"');
   });
 });

@@ -301,6 +301,21 @@ describe('event staffing planner workflow', () => {
     expect(workflow.message).toContain('ready to solve');
   });
 
+  it('prepares a normalized model when validation errors can be handled by administrator repair', () => {
+    const domainProject = buildValidDomainProject();
+    domainProject.people = [{ id: 'P1', name: 'Alice', allowedGroupTypeIds: ['G2'] }];
+    domainProject.preferences = [];
+    domainProject.forcedAssignments = [];
+    domainProject.forbiddenAssignments = [];
+
+    const workflow = runEventStaffingWorkflow(domainProject, new FirstSolverAdapter().getCapabilities());
+
+    expect(workflow.domainValidation.valid).toBe(false);
+    expect(workflow.domainValidation.errors.every((issue) => issue.code.includes('insufficient'))).toBe(true);
+    expect(workflow.normalizedProject).not.toBeNull();
+    expect(workflow.message).toContain('repairable hard-constraint conflicts');
+  });
+
   it('describes destructive delete impact before deleting events', () => {
     const domainProject = buildValidDomainProject();
     const editor = buildEditorState();

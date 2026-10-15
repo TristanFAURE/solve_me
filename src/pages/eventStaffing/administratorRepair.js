@@ -166,7 +166,9 @@ export function buildAdministratorRepairCandidates(domainProject, normalizedProj
     });
   });
 
-  return candidates.sort((left, right) => left.id.localeCompare(right.id));
+  return candidates
+    .map((candidate) => ({ ...candidate, dateKey }))
+    .sort((left, right) => left.id.localeCompare(right.id));
 }
 
 export function selectAllRepairCandidates(candidates) {
@@ -200,25 +202,40 @@ export function createAdministratorRepairModel(normalizedProject, candidates, se
   model.forbiddenAssignments = model.forbiddenAssignments.filter((entry) => !openedPairs.has(pairKey(entry.itemId, entry.destinationId)));
 
   const selectedCandidates = candidates.filter((candidate) => selected.has(candidate.id));
-  const maximumCandidatesByBound = new Map();
-  candidates.filter((candidate) => candidate.kind === 'maximum').forEach((candidate) => {
-    const entries = maximumCandidatesByBound.get(candidate.boundIndex) ?? [];
-    entries.push(candidate);
-    maximumCandidatesByBound.set(candidate.boundIndex, entries);
-  });
+  const selectedMaximumCandidatesByBound = new Map();
   selectedCandidates.filter((candidate) => candidate.kind === 'maximum').forEach((candidate) => {
-    if (!(maximumCandidatesByBound.get(candidate.boundIndex) ?? []).every((entry) => selected.has(entry.id))) return;
-    const bound = model.assignmentCountUpperBounds[candidate.boundIndex];
-    if (!bound || bound.itemId !== candidate.itemId || bound.maxCount !== candidate.originalMax) return;
-    const selectedDateIds = new Set(candidate.destinationIds);
+    const entries = selectedMaximumCandidatesByBound.get(candidate.boundIndex) ?? [];
+    entries.push(candidate);
+    selectedMaximumCandidatesByBound.set(candidate.boundIndex, entries);
+  });
+  selectedMaximumCandidatesByBound.forEach((boundCandidates, boundIndex) => {
+    const firstCandidate = boundCandidates[0];
+    const bound = model.assignmentCountUpperBounds[boundIndex];
+    if (!bound || bound.itemId !== firstCandidate.itemId || bound.maxCount !== firstCandidate.originalMax) return;
+    const selectedDateIds = new Set(boundCandidates.flatMap((candidate) => candidate.destinationIds));
     const offDateDestinationIds = bound.destinationIds.filter((id) => !selectedDateIds.has(id));
-    bound.maxCount += 1;
+    bound.maxCount += boundCandidates.length;
     if (offDateDestinationIds.length > 0) {
       model.assignmentCountUpperBounds.push({
         itemId: bound.itemId,
         destinationIds: offDateDestinationIds,
-        maxCount: candidate.originalMax,
-        metadata: { eventStaffingScope: 'repair-off-date-guard', repairCandidateId: candidate.id },
+        maxCount: firstCandidate.originalMax,
+        metadata: {
+          eventStaffingScope: 'repair-off-date-guard',
+          repairCandidateId: boundCandidates.length === 1 ? firstCandidate.id : undefined,
+          repairCandidateIds: boundCandidates.map((candidate) => candidate.id),
+        },
+      });
+    }
+    if (boundCandidates.length > 1) {
+      boundCandidates.forEach((candidate) => {
+        const candidateDestinationIds = new Set(candidate.destinationIds);
+        model.assignmentCountUpperBounds.push({
+          itemId: bound.itemId,
+          destinationIds: bound.destinationIds.filter((id) => !candidateDestinationIds.has(id)),
+          maxCount: firstCandidate.originalMax + boundCandidates.length - 1,
+          metadata: { eventStaffingScope: 'repair-other-date-guard', repairCandidateId: candidate.id },
+        });
       });
     }
   });
@@ -231,12 +248,20 @@ export function createAdministratorRepairModel(normalizedProject, candidates, se
   return model;
 }
 
-export function annotateAdministratorRepairResult(result, candidates, selectedIds, dateKey) {
+export function annotateAdministratorRepairResult(result, candidates, selectedIds, dateKeys) {
   const selected = candidates.filter((candidate) => new Set(selectedIds ?? []).has(candidate.id));
+  const selectedMaximumCandidatesByBound = new Map();
+  selected.filter((candidate) => candidate.kind === 'maximum').forEach((candidate) => {
+    const entries = selectedMaximumCandidatesByBound.get(candidate.boundIndex) ?? [];
+    entries.push(candidate);
+    selectedMaximumCandidatesByBound.set(candidate.boundIndex, entries);
+  });
+  const normalizedDateKeys = Array.isArray(dateKeys) ? dateKeys : [dateKeys].filter(Boolean);
   return {
     ...result,
     repairedModel: true,
-    repairDateKey: dateKey,
+    repairDateKey: normalizedDateKeys.length === 1 ? normalizedDateKeys[0] : undefined,
+    repairDateKeys: normalizedDateKeys,
     solutions: (result.solutions ?? []).map((solution) => {
       const assignmentKeys = new Set((solution.assignments ?? []).map((assignment) => pairKey(assignment.itemRef?.id, assignment.containerRef?.id ?? assignment.positionRef?.id)));
       const countsByPerson = new Map();
@@ -247,10 +272,18 @@ export function annotateAdministratorRepairResult(result, candidates, selectedId
       });
       const used = selected.filter((candidate) => {
         if (candidate.kind === 'forbidden') return candidate.destinationIds.some((id) => assignmentKeys.has(pairKey(candidate.itemId, id)));
-        const count = (countsByPerson.get(candidate.itemId) ?? []).filter((id) => {
-          return candidate.originalMax !== undefined && normalizedDestinationSet(candidate).has(id);
-        }).length;
-        return count > candidate.originalMax;
+        const assignedIds = countsByPerson.get(candidate.itemId) ?? [];
+        const boundCandidates = selectedMaximumCandidatesByBound.get(candidate.boundIndex) ?? [candidate];
+        const allBoundDestinations = normalizedDestinationSet(candidate);
+        const otherSelectedDestinations = new Set(boundCandidates
+          .filter((entry) => entry.id !== candidate.id)
+          .flatMap((entry) => entry.destinationIds));
+        const totalCount = assignedIds.filter((id) => allBoundDestinations.has(id)).length;
+        const countOutsideOtherSelectedDates = assignedIds.filter((id) => (
+          allBoundDestinations.has(id) && !otherSelectedDestinations.has(id)
+        )).length;
+        return totalCount > candidate.originalMax + boundCandidates.length - 1
+          || countOutsideOtherSelectedDates > candidate.originalMax;
       }).map(({ id, type, label }) => ({ id, type, label }));
       return { ...solution, administratorExceptionsUsed: used };
     }),

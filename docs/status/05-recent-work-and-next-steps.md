@@ -6,6 +6,9 @@ The ranked-solutions and shared-workflow implementation milestone is complete:
 
 - added a person-centric date-column availability calendar with previous/next person controls and whole-day/group rows, plus a collapsible date overview with previous/next navigation, people filtering, and editable group cells
 - added per-solution soft-goal trade-off explanations and workload spread while explicitly confirming that displayed solutions satisfy hard constraints
+- exposed temporary administrator repair only in Results for proven unsatisfiable solves or solve attempts with repairable validation conflicts
+- restricted the repair date selector to identified date-local blockers, added date arrows, preserved and applied selected exceptions across all dates, and made repair solves visibly cancellable in Results
+- fixed Playwright mobile overflow, navigation, and truthful partial-result assertions
 - clarified cooldown authoring as hard rest/spacing rules, including an example and the ordered-slot limitation
 - fixed small weighted Event Staffing plans incorrectly staying on the JavaScript search path; automatic selection now uses HiGHS and staffing results are ordered by equity first
 - fixed Event Staffing requirement submission so visible group/min/max controls cannot be replaced by stale editor state
@@ -42,7 +45,7 @@ Final automated verification must include:
 - `git diff --check`
 - review for credentials, tokens, internal URLs, and database secrets
 
-Final unit verification passed 279 tests, including whole-day/group availability precedence, administrator repair behavior, and a 94-assignment equity regression that produces workloads 31/31/32. The production build emitted separate JavaScript and HiGHS Workers plus the 3.53 MB WASM asset, and `git diff --check` passed. The 23 Playwright tests are discovered correctly but cannot execute in the current container because Chromium's required OS libraries, beginning with `libglib-2.0.so.0`, are unavailable. GitHub Actions installs those dependencies and runs the browser suite before deployment.
+Final unit verification passed 289 tests, including whole-day/group availability precedence, administrator repair behavior, and a 94-assignment equity regression that produces workloads 31/31/32. The production build emitted separate JavaScript and HiGHS Workers plus the 3.53 MB WASM asset, and `git diff --check` passed. All 23 Playwright tests are discovered; GitHub Actions installs Chromium before running them and uses no report server.
 
 ## Event Staffing scale result
 
