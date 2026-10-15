@@ -163,4 +163,35 @@ describe('collaboration data modules', () => {
     await repository.deleteResponse(manifest, 'alex@example.org', 'sha-1');
     expect(githubClient.deleteContent).toHaveBeenCalledWith(expect.objectContaining({ path: expect.stringContaining('/responses/digest/response.enc.json'), sha: 'sha-1' }));
   });
+
+  it('retries a transient branch conflict for a new response path but not an existing response', async () => {
+    let responseCreateAttempts = 0;
+    const files = new Map();
+    const githubClient = {
+      createContent: vi.fn(async ({ path, content }) => {
+        if (path.includes('/responses/')) {
+          responseCreateAttempts += 1;
+          if (files.has(path)) throw Object.assign(new Error('sha missing'), { status: 422 });
+          if (responseCreateAttempts === 1) throw Object.assign(new Error('branch moved'), { status: 409 });
+        }
+        files.set(path, { content: btoa(content), sha: 'sha-1' });
+      }),
+      updateContent: vi.fn(),
+      getContent: vi.fn(async ({ path }) => {
+        if (!files.has(path)) throw Object.assign(new Error('not found'), { status: 404 });
+        return files.get(path);
+      }),
+      listContents: vi.fn(async () => []),
+      deleteContent: vi.fn(),
+    };
+    const cryptoEnvelope = { encryptEnvelope: vi.fn(async (value) => value), decryptEnvelope: vi.fn(async (value) => value) };
+    const repository = createSessionRepository({
+      githubClient, cryptoEnvelope, repository: { owner: 'owner', repo: 'repo', branch: 'main' }, manifestPassword: 'manifest password',
+      randomUUID: () => '0123456789abcdef', sha256: async () => 'different-user', now: () => '2026-10-15T10:00:00.000Z',
+    });
+    const manifest = await repository.createSession(project());
+    await expect(repository.saveResponse(manifest, response())).resolves.toMatchObject({ email: 'alex@example.org' });
+    expect(responseCreateAttempts).toBe(2);
+    await expect(repository.saveResponse(manifest, response())).rejects.toBeInstanceOf(CollaborationConflictError);
+  });
 });

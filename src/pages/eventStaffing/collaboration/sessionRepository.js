@@ -27,6 +27,10 @@ function isConflict(error) {
     || error?.response?.status === 409 || error?.response?.status === 422;
 }
 
+function isNotFound(error) {
+  return error?.status === 404 || error?.statusCode === 404 || error?.response?.status === 404;
+}
+
 function decodeGitHubContent(file) {
   if (typeof file?.content !== 'string') throw new Error('GitHub file content is missing.');
   return new TextDecoder().decode(Uint8Array.from(atob(file.content.replaceAll('\n', '')), (character) => character.charCodeAt(0)));
@@ -161,7 +165,25 @@ export function createCollaborationSessionRepository({ githubClient, cryptoEnvel
       if (manifest.status !== 'open') throw new Error('This collaboration session is closed.');
       const response = createCollaborationResponse({ ...input, sessionId: manifest.sessionId, manifestRevision: manifest.revision }, { savedAt: clock() });
       const path = await collaborationResponsePath(manifest.folder, manifest.sessionId, response.email, sha256);
-      await writeEncrypted(path, response, manifestPassword, { ...(sha ? { sha } : {}), message: sha ? 'Update collaboration response' : 'Create collaboration response' });
+      if (sha) {
+        await writeEncrypted(path, response, manifestPassword, { sha, message: 'Update collaboration response' });
+        return response;
+      }
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          await writeEncrypted(path, response, manifestPassword, { message: 'Create collaboration response' });
+          return response;
+        } catch (error) {
+          if (!(error instanceof CollaborationConflictError)) throw error;
+          try {
+            await read(path);
+            throw error;
+          } catch (readError) {
+            if (!isNotFound(readError)) throw readError;
+          }
+          if (attempt === 2) throw error;
+        }
+      }
       return response;
     },
 
