@@ -89,6 +89,9 @@ Preserve these project rules:
 
 ## Latest update
 
+- added a person-centric Event Staffing availability calendar with dates as columns and whole-day/group rows, plus a collapsible selected-date overview with previous/next navigation and people filtering
+- added per-solution explanations for unmet soft preferences, target deviations, and workload spread while keeping hard constraints mandatory
+- added a transient administrator repair panel for proven unsatisfiable schedules; coverage and cooldowns remain hard while selected person constraints become penalized temporary exceptions
 - clarified Event Staffing cooldowns in the UI as hard rest/spacing rules over subsequent ordered slots
 - fixed poor equity in small repeated staffing plans by routing weighted solves to HiGHS regardless of pair count and sorting Event Staffing results by equity first
 - fixed Event Staffing requirement submission so the selected group and visible min/max values are read atomically when Add is clicked

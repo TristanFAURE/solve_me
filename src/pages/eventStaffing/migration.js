@@ -30,6 +30,10 @@ export function normalizePreferenceState(value) {
   return null;
 }
 
+export function getSlotDayKey(slot) {
+  return String(slot?.dateKey ?? slot?.date ?? '').trim() || `undated:${slot?.id ?? ''}`;
+}
+
 export function getSlotId(value) {
   return value?.slotId ?? value?.eventId ?? value?.id ?? null;
 }
@@ -63,7 +67,19 @@ export function migrateEventStaffingProject(project = {}) {
       const state = normalizePreferenceState(value);
       slotPreferences[slotId] = state ?? value;
     });
-    return { ...entry, slotPreferences };
+    const dayPreferences = Object.fromEntries(Object.entries(entry?.dayPreferences ?? entry?.dayAvailability ?? {}).map(([dayKey, value]) => [
+      dayKey,
+      normalizePreferenceState(value) ?? value,
+    ]));
+    const dayGroupPreferences = Object.fromEntries(Object.entries(entry?.dayGroupPreferences ?? {}).map(([dayKey, valuesByGroup]) => [
+      dayKey,
+      Object.fromEntries(Object.entries(valuesByGroup && typeof valuesByGroup === 'object' ? valuesByGroup : {}).map(([groupTypeId, value]) => [
+        groupTypeId,
+        normalizePreferenceState(value) ?? value,
+      ])),
+    ]));
+    const { dayAvailability: _legacyDayAvailability, ...migratedEntry } = entry ?? {};
+    return { ...migratedEntry, slotPreferences, dayPreferences, dayGroupPreferences };
   });
 
   return {
@@ -83,4 +99,59 @@ export function migrateEventStaffingProject(project = {}) {
 
 export function getPreferenceMap(entry) {
   return entry?.slotPreferences ?? entry?.eventPreferences ?? {};
+}
+
+export function getDayPreferenceMap(entry) {
+  return entry?.dayPreferences ?? entry?.dayAvailability ?? {};
+}
+
+export function getDayGroupPreferenceMap(entry) {
+  return entry?.dayGroupPreferences ?? {};
+}
+
+export function getEffectiveSlotPreference(entry, slot) {
+  const dayState = normalizePreferenceState(getDayPreferenceMap(entry)[getSlotDayKey(slot)]) ?? PREFERENCE_STATES.NEUTRAL;
+  if (dayState === PREFERENCE_STATES.UNAVAILABLE) {
+    return PREFERENCE_STATES.UNAVAILABLE;
+  }
+  if (Object.hasOwn(getPreferenceMap(entry), slot?.id)) {
+    return normalizePreferenceState(getPreferenceMap(entry)[slot.id]) ?? PREFERENCE_STATES.NEUTRAL;
+  }
+  return dayState;
+}
+
+export function getEffectiveAssignmentPreference(entry, slot, groupTypeId) {
+  const dayState = normalizePreferenceState(getDayPreferenceMap(entry)[getSlotDayKey(slot)]) ?? PREFERENCE_STATES.NEUTRAL;
+  if (dayState === PREFERENCE_STATES.UNAVAILABLE) return PREFERENCE_STATES.UNAVAILABLE;
+  const valuesByGroup = getDayGroupPreferenceMap(entry)[getSlotDayKey(slot)] ?? {};
+  if (Object.hasOwn(valuesByGroup, groupTypeId)) {
+    return normalizePreferenceState(valuesByGroup[groupTypeId]) ?? PREFERENCE_STATES.NEUTRAL;
+  }
+  if (Object.hasOwn(getPreferenceMap(entry), slot?.id)) {
+    return normalizePreferenceState(getPreferenceMap(entry)[slot.id]) ?? PREFERENCE_STATES.NEUTRAL;
+  }
+  return dayState;
+}
+
+export function moveSlotDayPreferences(domainProject, slotId, oldDayKey, newDayKey) {
+  if (!oldDayKey || !newDayKey || oldDayKey === newDayKey) return;
+  const oldDayStillUsed = (domainProject.events ?? []).some((slot) => (
+    slot.id !== slotId && getSlotDayKey(slot) === oldDayKey
+  ));
+  (domainProject.preferences ?? []).forEach((entry) => {
+    const dayPreferences = { ...getDayPreferenceMap(entry) };
+    const dayGroupPreferences = structuredClone(getDayGroupPreferenceMap(entry));
+    if (!oldDayStillUsed && Object.hasOwn(dayPreferences, oldDayKey) && !Object.hasOwn(dayPreferences, newDayKey)) {
+      dayPreferences[newDayKey] = dayPreferences[oldDayKey];
+    }
+    if (!oldDayStillUsed && Object.hasOwn(dayGroupPreferences, oldDayKey) && !Object.hasOwn(dayGroupPreferences, newDayKey)) {
+      dayGroupPreferences[newDayKey] = dayGroupPreferences[oldDayKey];
+    }
+    if (!oldDayStillUsed) {
+      delete dayPreferences[oldDayKey];
+      delete dayGroupPreferences[oldDayKey];
+    }
+    entry.dayPreferences = dayPreferences;
+    entry.dayGroupPreferences = dayGroupPreferences;
+  });
 }

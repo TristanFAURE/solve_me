@@ -2,9 +2,9 @@ import { ASSIGNMENT_MODES } from '../model/assignmentModes.js';
 import { createContainer, createItem } from '../model/nodes.js';
 import { createEmptyProject, VIEW_HINTS } from '../model/project.js';
 import {
+  getEffectiveAssignmentPreference,
   getPreferenceMap,
   migrateEventStaffingProject,
-  normalizePreferenceState,
   PREFERENCE_STATES,
 } from '../../pages/eventStaffing/migration.js';
 
@@ -137,6 +137,7 @@ function createPerEventExclusivityBounds({ people, orderedEvents, destinationIds
         itemId: person.id,
         destinationIds: [...destinationIds],
         maxCount: 1,
+        metadata: { eventStaffingScope: 'slot-exclusivity', eventId: event.id },
       });
     });
   });
@@ -232,12 +233,11 @@ function createEventPreferenceTerms(preferences, requirements, orderedEvents) {
       return;
     }
 
-    Object.entries(eventPreferences).forEach(([eventId, value]) => {
-      const state = normalizePreferenceState(value);
-      if (!eventIds.has(eventId) || !state || state === PREFERENCE_STATES.NEUTRAL) {
-        return;
-      }
+    orderedEvents.forEach((event) => {
+      const eventId = event.id;
       (requirementsByEventId.get(eventId) ?? []).forEach((requirement) => {
+        const state = getEffectiveAssignmentPreference(preference, event, requirement.groupTypeId);
+        if (!eventIds.has(eventId) || !state || state === PREFERENCE_STATES.NEUTRAL) return;
         const assignment = {
           itemId: personId,
           destinationId: createDestinationId(requirement.eventId, requirement.groupTypeId),
@@ -271,6 +271,7 @@ function createPersonAssignmentUpperBounds({ people, requirements, globalLimits,
         itemId: person.id,
         destinationIds: [...allDestinationIds],
         maxCount: maxAssignments,
+        metadata: { eventStaffingScope: 'person-total-maximum' },
       });
     }
 
@@ -293,6 +294,7 @@ function createPersonAssignmentUpperBounds({ people, requirements, globalLimits,
         itemId: person.id,
         destinationIds: [...destinationIds],
         maxCount: maxAssignmentsForGroupType,
+        metadata: { eventStaffingScope: 'person-category-maximum', groupTypeId },
       });
     });
   });

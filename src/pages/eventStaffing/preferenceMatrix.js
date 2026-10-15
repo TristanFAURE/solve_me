@@ -1,4 +1,11 @@
-import { getPreferenceMap, PREFERENCE_STATES } from './migration.js';
+import {
+  getDayGroupPreferenceMap,
+  getDayPreferenceMap,
+  getPreferenceMap,
+  getSlotDayKey,
+  normalizePreferenceState,
+  PREFERENCE_STATES,
+} from './migration.js';
 import { escapeHtml } from './utils.js';
 
 const CHOICES = [
@@ -14,29 +21,151 @@ export function setSlotPreference(domainProject, personId, slotId, state) {
     entry = { personId, slotPreferences: {} };
     domainProject.preferences.push(entry);
   }
-  entry.slotPreferences = { ...getPreferenceMap(entry), [slotId]: state };
+  const slotPreferences = { ...getPreferenceMap(entry) };
+  if (state === 'inherit') delete slotPreferences[slotId];
+  else slotPreferences[slotId] = state;
+  entry.slotPreferences = slotPreferences;
   delete entry.eventPreferences;
 }
 
-export function renderPreferenceMatrix(domainProject) {
+export function setDayAvailability(domainProject, personId, dayKey, state) {
+  let entry = domainProject.preferences.find((preference) => preference.personId === personId);
+  if (!entry) {
+    entry = { personId, slotPreferences: {}, dayPreferences: {} };
+    domainProject.preferences.push(entry);
+  }
+  const dayPreferences = { ...getDayPreferenceMap(entry) };
+  const normalized = normalizePreferenceState(state) ?? PREFERENCE_STATES.NEUTRAL;
+  if (normalized === PREFERENCE_STATES.NEUTRAL) delete dayPreferences[dayKey];
+  else dayPreferences[dayKey] = normalized;
+  entry.dayPreferences = dayPreferences;
+  entry.slotPreferences = { ...getPreferenceMap(entry) };
+  delete entry.eventPreferences;
+}
+
+export function setDayGroupPreference(domainProject, personId, dayKey, groupTypeId, state) {
+  let entry = domainProject.preferences.find((preference) => preference.personId === personId);
+  if (!entry) {
+    entry = { personId, slotPreferences: {}, dayPreferences: {}, dayGroupPreferences: {} };
+    domainProject.preferences.push(entry);
+  }
+  const dayGroupPreferences = structuredClone(getDayGroupPreferenceMap(entry));
+  const valuesByGroup = { ...(dayGroupPreferences[dayKey] ?? {}) };
+  if (state === 'inherit') delete valuesByGroup[groupTypeId];
+  else valuesByGroup[groupTypeId] = normalizePreferenceState(state) ?? PREFERENCE_STATES.NEUTRAL;
+  if (Object.keys(valuesByGroup).length === 0) delete dayGroupPreferences[dayKey];
+  else dayGroupPreferences[dayKey] = valuesByGroup;
+  entry.dayGroupPreferences = dayGroupPreferences;
+  entry.slotPreferences = { ...getPreferenceMap(entry) };
+  delete entry.eventPreferences;
+}
+
+export function movePreferenceMatrixDay(domainProject, currentDayKey, offset) {
+  const dayKeys = [...new Set(domainProject.events
+    .slice()
+    .sort((left, right) => left.orderIndex - right.orderIndex)
+    .map(getSlotDayKey))];
+  if (dayKeys.length === 0) return '';
+  const currentIndex = Math.max(0, dayKeys.indexOf(currentDayKey));
+  return dayKeys[Math.min(Math.max(currentIndex + offset, 0), dayKeys.length - 1)];
+}
+
+export function renderPreferenceMatrix(domainProject, viewState = {}) {
   const slots = domainProject.events.slice().sort((left, right) => left.orderIndex - right.orderIndex);
-  const preferencesByPersonId = new Map(domainProject.preferences.map((entry) => [entry.personId, getPreferenceMap(entry)]));
+  const preferenceEntriesByPersonId = new Map(domainProject.preferences.map((entry) => [entry.personId, entry]));
   if (domainProject.people.length === 0 || slots.length === 0) {
     return '<section class="panel"><h2>Preferences</h2><p class="muted-text">Add people and slots to edit the person-by-slot preference matrix.</p></section>';
   }
-  return `
+  const dateGroups = [];
+  const dateGroupsByKey = new Map();
+  slots.forEach((slot) => {
+    const dayKey = getSlotDayKey(slot);
+    if (!dateGroupsByKey.has(dayKey)) {
+      const group = { dayKey, label: slot.date || 'No date', slots: [] };
+      dateGroupsByKey.set(dayKey, group);
+      dateGroups.push(group);
+    }
+    dateGroupsByKey.get(dayKey).slots.push(slot);
+  });
+  const selectedPersonId = typeof viewState === 'string' ? viewState : viewState.preferenceMatrixPersonId;
+  const person = domainProject.people.find((entry) => entry.id === selectedPersonId) ?? domainProject.people[0];
+  const preferenceEntry = preferenceEntriesByPersonId.get(person.id);
+  const dayPreferences = getDayPreferenceMap(preferenceEntry);
+  const dayGroupPreferences = getDayGroupPreferenceMap(preferenceEntry);
+  const activeDayKey = dateGroupsByKey.has(viewState.preferenceMatrixDayKey)
+    ? viewState.preferenceMatrixDayKey
+    : dateGroups[0].dayKey;
+  const activeDateIndex = dateGroups.findIndex((group) => group.dayKey === activeDayKey);
+  const activeDate = dateGroups[activeDateIndex];
+  const peopleFilter = ['all', ...CHOICES.map(([value]) => value)].includes(viewState.preferenceMatrixPeopleFilter)
+    ? viewState.preferenceMatrixPeopleFilter
+    : 'all';
+  const visiblePeople = domainProject.people.filter((entry) => {
+    if (peopleFilter === 'all') return true;
+    const state = normalizePreferenceState(getDayPreferenceMap(preferenceEntriesByPersonId.get(entry.id))[activeDayKey]) ?? PREFERENCE_STATES.NEUTRAL;
+    return state === peopleFilter;
+  });
+  const personCalendar = `
     <section class="panel">
-      <h2>Person-by-slot preferences</h2>
-      <p class="muted-text">Prefer, neutral, and prefer not affect score. Unavailable is a hard prohibition for every category in the slot.</p>
+      <details class="details-panel availability-calendar-panel" open>
+      <summary>Person availability calendar</summary>
+      <p class="muted-text">Select one person, then review every date and staffing group. Whole-day Unavailable overrides every group and slot on that date. Otherwise each group can inherit or override the whole-day preference across all slots on that date.</p>
+      <label class="top-gap">Person<select name="preferenceMatrixPersonId">${domainProject.people.map((entry) => `<option value="${escapeHtml(entry.id)}"${entry.id === person.id ? ' selected' : ''}>${escapeHtml(entry.name)}</option>`).join('')}</select></label>
       <div class="table-wrap event-staffing-scroll-box top-gap">
         <table class="data-table preference-matrix">
-          <thead><tr><th>Person</th>${slots.map((slot) => `<th>${escapeHtml(slot.date || 'No date')}<br />${escapeHtml(slot.slotLabel)}</th>`).join('')}</tr></thead>
-          <tbody>${domainProject.people.map((person) => `
-            <tr><th>${escapeHtml(person.name)}</th>${slots.map((slot) => {
-    const current = preferencesByPersonId.get(person.id)?.[slot.id] ?? PREFERENCE_STATES.NEUTRAL;
-    return `<td><select data-slot-preference data-person-id="${escapeHtml(person.id)}" data-slot-id="${escapeHtml(slot.id)}" aria-label="${escapeHtml(`${person.name}, ${slot.slotLabel}`)}">${CHOICES.map(([value, label]) => `<option value="${value}"${current === value ? ' selected' : ''}>${label}</option>`).join('')}</select></td>`;
-  }).join('')}</tr>`).join('')}</tbody>
+          <thead><tr><th>Availability</th>${dateGroups.map((group) => `<th>${escapeHtml(group.label)}</th>`).join('')}</tr></thead>
+          <tbody>
+            <tr><th>Whole day</th>${dateGroups.map((group) => {
+    const dayState = dayPreferences[group.dayKey] ?? PREFERENCE_STATES.NEUTRAL;
+    return `<td><select data-day-availability data-person-id="${escapeHtml(person.id)}" data-day-key="${escapeHtml(group.dayKey)}" aria-label="${escapeHtml(`${person.name}, ${group.label}, whole day preference`)}">${CHOICES.map(([value, label]) => `<option value="${value}"${dayState === value ? ' selected' : ''}>${value === PREFERENCE_STATES.PREFER ? 'Available / prefer' : label}</option>`).join('')}</select></td>`;
+  }).join('')}</tr>
+            ${domainProject.groupTypes.map((groupType) => `<tr><th>${escapeHtml(groupType.label)}</th>${dateGroups.map((group) => {
+    const hasRequirement = group.slots.some((slot) => domainProject.requirements.some((requirement) => (
+      (requirement.slotId ?? requirement.eventId) === slot.id && requirement.groupTypeId === groupType.id
+    )));
+    if (!hasRequirement) return '<td><span class="muted-text">—</span></td>';
+    const dayState = dayPreferences[group.dayKey] ?? PREFERENCE_STATES.NEUTRAL;
+    const current = Object.hasOwn(dayGroupPreferences[group.dayKey] ?? {}, groupType.id)
+      ? dayGroupPreferences[group.dayKey][groupType.id]
+      : 'inherit';
+    const groupChoices = [['inherit', 'Use whole day'], ...CHOICES];
+    return `<td><select data-day-group-preference data-person-id="${escapeHtml(person.id)}" data-day-key="${escapeHtml(group.dayKey)}" data-group-type-id="${escapeHtml(groupType.id)}" aria-label="${escapeHtml(`${person.name}, ${group.label}, ${groupType.label}`)}"${dayState === PREFERENCE_STATES.UNAVAILABLE ? ' disabled title="Overridden by whole-day unavailability"' : ''}>${groupChoices.map(([value, label]) => `<option value="${value}"${current === value ? ' selected' : ''}>${label}</option>`).join('')}</select></td>`;
+  }).join('')}</tr>`).join('')}
+          </tbody>
         </table>
       </div>
+      </details>
     </section>`;
+  const dateCalendar = `
+    <section class="panel">
+      <details class="details-panel availability-calendar-panel" open>
+      <summary>Date availability overview</summary>
+      <p class="muted-text">Review or edit every person's group preference for one date. Values inherit from each person's whole-day setting unless overridden.</p>
+      <div class="event-staffing-inline-actions">
+        <button type="button" data-event-staffing-action="previous-preference-day"${activeDateIndex <= 0 ? ' disabled' : ''} aria-label="Previous availability date">←</button>
+        <label>Date<select name="preferenceMatrixDayKey">${dateGroups.map((group) => `<option value="${escapeHtml(group.dayKey)}"${group.dayKey === activeDayKey ? ' selected' : ''}>${escapeHtml(group.label)}</option>`).join('')}</select></label>
+        <button type="button" data-event-staffing-action="next-preference-day"${activeDateIndex >= dateGroups.length - 1 ? ' disabled' : ''} aria-label="Next availability date">→</button>
+        <label>Show people<select name="preferenceMatrixPeopleFilter"><option value="all"${peopleFilter === 'all' ? ' selected' : ''}>All</option>${CHOICES.map(([value, label]) => `<option value="${value}"${peopleFilter === value ? ' selected' : ''}>${value === PREFERENCE_STATES.PREFER ? 'Available / prefer' : label}</option>`).join('')}</select></label>
+      </div>
+      <div class="table-wrap event-staffing-scroll-box top-gap">
+        <table class="data-table preference-matrix">
+          <thead><tr><th>Group</th>${visiblePeople.map((entry) => `<th>${escapeHtml(entry.name)}<br /><small>${escapeHtml(normalizePreferenceState(getDayPreferenceMap(preferenceEntriesByPersonId.get(entry.id))[activeDayKey]) ?? PREFERENCE_STATES.NEUTRAL)}</small></th>`).join('')}</tr></thead>
+          <tbody>${domainProject.groupTypes.map((groupType) => `<tr><th>${escapeHtml(groupType.label)}</th>${visiblePeople.map((entry) => {
+    const personPreference = preferenceEntriesByPersonId.get(entry.id);
+    const dayState = normalizePreferenceState(getDayPreferenceMap(personPreference)[activeDayKey]) ?? PREFERENCE_STATES.NEUTRAL;
+    const hasRequirement = activeDate.slots.some((slot) => domainProject.requirements.some((requirement) => (
+      (requirement.slotId ?? requirement.eventId) === slot.id && requirement.groupTypeId === groupType.id
+    )));
+    if (!hasRequirement) return '<td><span class="muted-text">—</span></td>';
+    const valuesByGroup = getDayGroupPreferenceMap(personPreference)[activeDayKey] ?? {};
+    const current = Object.hasOwn(valuesByGroup, groupType.id) ? valuesByGroup[groupType.id] : 'inherit';
+    const groupChoices = [['inherit', 'Use whole day'], ...CHOICES];
+    return `<td><select data-day-group-preference data-person-id="${escapeHtml(entry.id)}" data-day-key="${escapeHtml(activeDayKey)}" data-group-type-id="${escapeHtml(groupType.id)}" aria-label="${escapeHtml(`${entry.name}, ${activeDate.label}, ${groupType.label}`)}"${dayState === PREFERENCE_STATES.UNAVAILABLE ? ' disabled title="Overridden by whole-day unavailability"' : ''}>${groupChoices.map(([value, label]) => `<option value="${value}"${current === value ? ' selected' : ''}>${label}</option>`).join('')}</select></td>`;
+  }).join('')}</tr>`).join('') || `<tr><td colspan="${visiblePeople.length + 1}" class="muted-text">No staffing groups are configured.</td></tr>`}</tbody>
+        </table>
+      </div>
+      ${visiblePeople.length === 0 ? '<p class="muted-text">No people match this whole-day filter.</p>' : ''}
+      </details>
+    </section>`;
+  return `${personCalendar}${dateCalendar}`;
 }

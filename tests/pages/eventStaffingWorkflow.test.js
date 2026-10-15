@@ -11,6 +11,7 @@ import {
   addRequirementToSelectedEvent,
   syncRequirementDraftFromControls,
   beginEditPerson,
+  buildStaffingSolutionTradeoffs,
   buildDeleteEventsConfirmationMessage,
   buildRemoveAllRequirementsConfirmationMessage,
   bulkAssignGroupToSelectedEvents,
@@ -22,6 +23,7 @@ import {
   generateEventsFromDateRange,
   insertEventNearSelection,
   removeRequirementFromSelectedEvent,
+  removeGroupType,
   renderStaffingScheduleView,
   rankStaffingSolutionsByEquity,
   runEventStaffingWorkflow,
@@ -171,6 +173,20 @@ describe('event staffing planner workflow', () => {
     expect(domainProject.requirements.some((requirement) => requirement.groupTypeId === 'G2' && ['E1', 'E2'].includes(requirement.eventId))).toBe(false);
   });
 
+  it('removes group references from people and date-group preferences', () => {
+    const domainProject = buildValidDomainProject();
+    domainProject.people[0].maxAssignmentsPerGroupType = { G1: 1, G2: 2 };
+    domainProject.people[0].targetAssignmentsPerGroupType = { G1: 1, G2: 2 };
+    domainProject.preferences[0].dayGroupPreferences = { day: { G1: 'prefer', G2: 'unavailable' } };
+    const editor = buildEditorState();
+
+    removeGroupType(domainProject, 1, editor);
+
+    expect(domainProject.people[0].maxAssignmentsPerGroupType).toEqual({ G1: 1 });
+    expect(domainProject.people[0].targetAssignmentsPerGroupType).toEqual({ G1: 1 });
+    expect(domainProject.preferences[0].dayGroupPreferences).toEqual({ day: { G1: 'prefer' } });
+  });
+
   it('submits requirement values from the visible controls instead of stale editor state', () => {
     const domainProject = buildValidDomainProject();
     const editor = buildEditorState();
@@ -231,6 +247,24 @@ describe('event staffing planner workflow', () => {
 
     expect(result.solutions.map((solution) => solution.fingerprint)).toEqual(['balanced', 'imbalanced']);
     expect(result).toMatchObject({ solutionSelection: 'equity-first', canonicalRankingComplete: false });
+  });
+
+  it('explains unmet soft preferences and target deviations without calling them hard violations', () => {
+    const domainProject = buildValidDomainProject();
+    domainProject.people[0].targetAssignments = 2;
+    domainProject.preferences = [{ personId: 'P1', slotPreferences: { E1: 'prefer', E2: 'preferNot' } }];
+    const solution = {
+      assignments: [{ itemRef: { id: 'P1' }, containerRef: { id: 'event:E2::group:G1' } }],
+    };
+
+    const tradeoffs = buildStaffingSolutionTradeoffs(domainProject, solution);
+
+    expect(tradeoffs).toMatchObject({ minimum: 0, maximum: 1, spread: 1 });
+    expect(tradeoffs.issues).toEqual(expect.arrayContaining([
+      expect.stringContaining('preferred Group 1'),
+      expect.stringContaining('preferred not to work'),
+      expect.stringContaining('target 2'),
+    ]));
   });
 
   it('supports copy-from-focused and remove-all bulk requirement tools', () => {

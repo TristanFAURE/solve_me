@@ -491,6 +491,19 @@ body {
   color: #6b7280;
 }
 
+.preference-matrix th,
+.preference-matrix td {
+  min-width: 9rem;
+  white-space: nowrap;
+}
+
+.preference-matrix th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #f8fafc;
+}
+
 .hero-card {
   display: flex;
   justify-content: space-between;

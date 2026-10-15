@@ -109,14 +109,14 @@ describe('transformEventStaffingProject', { timeout: 10000 }, () => {
       ],
     }));
 
-    expect(transformed.assignmentCountUpperBounds).toContainEqual({
+    expect(transformed.assignmentCountUpperBounds).toContainEqual(expect.objectContaining({
       itemId: 'P1',
       destinationIds: [
         createEventStaffingDestinationId('E1', 'G1'),
         createEventStaffingDestinationId('E1', 'G2'),
       ],
       maxCount: 1,
-    });
+    }));
 
     expect(transformed.forbiddenAssignments).toContainEqual({
       itemId: 'P1',
@@ -440,14 +440,14 @@ describe('transformEventStaffingProject', { timeout: 10000 }, () => {
       people: [{ id: 'P1', name: 'Alice', maxAssignmentsPerGroupType: { G1: 1 } }],
     }));
 
-    expect(transformed.assignmentCountUpperBounds).toContainEqual({
+    expect(transformed.assignmentCountUpperBounds).toContainEqual(expect.objectContaining({
       itemId: 'P1',
       destinationIds: [
         createEventStaffingDestinationId('E1', 'G1'),
         createEventStaffingDestinationId('E2', 'G1'),
       ],
       maxCount: 1,
-    });
+    }));
 
     const result = solve(transformed);
     expect(result.status).toBe('unsat');

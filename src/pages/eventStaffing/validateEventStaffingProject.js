@@ -1,4 +1,13 @@
-import { getPreferenceMap, migrateEventStaffingProject, normalizePreferenceState, PREFERENCE_STATES } from './migration.js';
+import {
+  getDayGroupPreferenceMap,
+  getDayPreferenceMap,
+  getEffectiveAssignmentPreference,
+  getPreferenceMap,
+  getSlotDayKey,
+  migrateEventStaffingProject,
+  normalizePreferenceState,
+  PREFERENCE_STATES,
+} from './migration.js';
 
 function isOmittedOptionalNumber(value) {
   return value === undefined || value === null || value === '';
@@ -25,6 +34,8 @@ export function validateEventStaffingProject(domainProject = {}) {
   const forbiddenAssignments = Array.isArray(domainProject.forbiddenAssignments) ? domainProject.forbiddenAssignments : [];
 
   const eventIds = new Set(events.map((event) => event?.id).filter((id) => typeof id === 'string' && id.trim().length > 0));
+  const dayKeys = new Set(events.map(getSlotDayKey));
+  const eventById = new Map(events.map((event) => [event.id, event]));
   const groupTypeIds = new Set(groupTypes.map((groupType) => groupType?.id).filter((id) => typeof id === 'string' && id.trim().length > 0));
   const personIds = new Set(people.map((person) => person?.id).filter((id) => typeof id === 'string' && id.trim().length > 0));
 
@@ -267,9 +278,41 @@ export function validateEventStaffingProject(domainProject = {}) {
       if (!state) {
         errors.push({ level: 'error', code: 'event-staffing-invalid-preference-value', message: `Preference value for person "${preference.personId}" and slot "${eventId}" is invalid.`, path: `preferences[${index}].slotPreferences.${eventId}` });
       }
-      if (state === PREFERENCE_STATES.UNAVAILABLE
-        && forcedAssignments.some((assignment) => assignment.personId === preference.personId && assignment.eventId === eventId)) {
-        errors.push({ level: 'error', code: 'event-staffing-forced-unavailable-conflict', message: `Person "${preference.personId}" is both forced and unavailable for slot "${eventId}".`, path: `preferences[${index}].slotPreferences.${eventId}` });
+    });
+
+    Object.entries(getDayPreferenceMap(preference)).forEach(([dayKey, value]) => {
+      if (!dayKeys.has(dayKey)) {
+        errors.push({ level: 'error', code: 'event-staffing-unknown-preference-day', message: `Preferences for person "${preference.personId}" reference unknown day "${dayKey}".`, path: `preferences[${index}].dayPreferences.${dayKey}` });
+      }
+      if (!normalizePreferenceState(value)) {
+        errors.push({ level: 'error', code: 'event-staffing-invalid-day-preference', message: `Day preference for person "${preference.personId}" and day "${dayKey}" is invalid.`, path: `preferences[${index}].dayPreferences.${dayKey}` });
+      }
+    });
+
+    Object.entries(getDayGroupPreferenceMap(preference)).forEach(([dayKey, valuesByGroup]) => {
+      if (!dayKeys.has(dayKey)) {
+        errors.push({ level: 'error', code: 'event-staffing-unknown-group-preference-day', message: `Group preferences for person "${preference.personId}" reference unknown day "${dayKey}".`, path: `preferences[${index}].dayGroupPreferences.${dayKey}` });
+      }
+      if (!valuesByGroup || typeof valuesByGroup !== 'object' || Array.isArray(valuesByGroup)) {
+        errors.push({ level: 'error', code: 'event-staffing-invalid-day-group-preference-map', message: `Group preferences for person "${preference.personId}" and day "${dayKey}" must be an object.`, path: `preferences[${index}].dayGroupPreferences.${dayKey}` });
+        return;
+      }
+      Object.entries(valuesByGroup).forEach(([groupTypeId, value]) => {
+        if (!groupTypeIds.has(groupTypeId)) {
+          errors.push({ level: 'error', code: 'event-staffing-unknown-preference-group', message: `Group preferences for person "${preference.personId}" reference unknown group "${groupTypeId}".`, path: `preferences[${index}].dayGroupPreferences.${dayKey}.${groupTypeId}` });
+        }
+        if (!normalizePreferenceState(value)) {
+          errors.push({ level: 'error', code: 'event-staffing-invalid-day-group-preference', message: `Group preference for person "${preference.personId}", day "${dayKey}", and group "${groupTypeId}" is invalid.`, path: `preferences[${index}].dayGroupPreferences.${dayKey}.${groupTypeId}` });
+        }
+      });
+    });
+
+    forcedAssignments.forEach((assignment) => {
+      const slot = eventById.get(assignment.eventId);
+      if (assignment.personId === preference.personId
+        && slot
+        && getEffectiveAssignmentPreference(preference, slot, assignment.groupTypeId) === PREFERENCE_STATES.UNAVAILABLE) {
+        errors.push({ level: 'error', code: 'event-staffing-forced-unavailable-conflict', message: `Person "${preference.personId}" is both forced and unavailable for ${slot.date || getSlotDayKey(slot)} / ${slot.slotLabel ?? slot.label ?? slot.id}.`, path: `preferences[${index}]` });
       }
     });
   });
@@ -287,14 +330,32 @@ export function validateEventStaffingProject(domainProject = {}) {
   }
 
   events.forEach((slot) => {
-    const totalMinimum = requirements.filter((requirement) => requirement.eventId === slot.id).reduce((sum, requirement) => sum + (Number.isInteger(requirement.min) ? requirement.min : 0), 0);
-    const unavailablePersonIds = new Set(preferences
-      .filter((entry) => normalizePreferenceState(getPreferenceMap(entry)?.[slot.id]) === PREFERENCE_STATES.UNAVAILABLE)
-      .map((entry) => entry.personId));
-    const availablePeople = people.filter((person) => !unavailablePersonIds.has(person.id)).length;
+    const slotRequirements = requirements.filter((requirement) => requirement.eventId === slot.id);
+    const totalMinimum = slotRequirements.reduce((sum, requirement) => sum + (Number.isInteger(requirement.min) ? requirement.min : 0), 0);
+    const preferenceByPersonId = new Map(preferences.map((entry) => [entry.personId, entry]));
+    const canWorkGroup = (person, requirement) => {
+      const allowed = Array.isArray(person.allowedGroupTypeIds) ? person.allowedGroupTypeIds : [];
+      const forbidden = Array.isArray(person.forbiddenGroupTypeIds) ? person.forbiddenGroupTypeIds : [];
+      if (allowed.length > 0 && !allowed.includes(requirement.groupTypeId)) return false;
+      if (forbidden.includes(requirement.groupTypeId)) return false;
+      if (forbiddenAssignments.some((assignment) => assignment.personId === person.id
+        && assignment.eventId === slot.id && assignment.groupTypeId === requirement.groupTypeId)) return false;
+      return getEffectiveAssignmentPreference(preferenceByPersonId.get(person.id), slot, requirement.groupTypeId) !== PREFERENCE_STATES.UNAVAILABLE;
+    };
+    const availablePeople = people.filter((person) => slotRequirements.some((requirement) => (
+      canWorkGroup(person, requirement)
+    ))).length;
     if (totalMinimum > availablePeople) {
       errors.push({ level: 'error', code: 'event-staffing-insufficient-slot-coverage', message: `Slot "${slot.slotLabel}" requires at least ${totalMinimum} people but only ${availablePeople} are available in the roster.`, path: `events.${slot.id}` });
     }
+    slotRequirements.forEach((requirement) => {
+      const availableForGroup = people.filter((person) => (
+        canWorkGroup(person, requirement)
+      )).length;
+      if (requirement.min > availableForGroup) {
+        errors.push({ level: 'error', code: 'event-staffing-insufficient-group-coverage', message: `Slot "${slot.slotLabel}" requires ${requirement.min} person(s) for group "${requirement.groupTypeId}" but only ${availableForGroup} are available.`, path: `events.${slot.id}` });
+      }
+    });
     if (totalMinimum === 0) warnings.push({ level: 'warning', code: 'event-staffing-zero-minimum-coverage', message: `Slot "${slot.slotLabel}" has no required minimum coverage.`, path: `events.${slot.id}` });
   });
 

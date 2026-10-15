@@ -20,8 +20,8 @@ import { renderSolveStatus } from '../../components/solutions/solveStatus.js';
 import { cancelSolveExecution, createSolveExecutionState, discardSolveExecution, startSolveExecution } from '../../solver/solveExecution.js';
 import { bindPageDraftAutosave, persistPageDraft } from '../../storage/localDrafts.js';
 import { bindWorkflowTabs, isWorkflowTab, renderWorkflowPanel as renderTabPanel, renderWorkflowTabs } from '../../components/common/workflowTabs.js';
-import { migrateEventStaffingProject, getPreferenceMap, normalizePreferenceState, PREFERENCE_STATES } from './migration.js';
-import { renderPreferenceMatrix, setSlotPreference } from './preferenceMatrix.js';
+import { getDayGroupPreferenceMap, getDayPreferenceMap, getEffectiveAssignmentPreference, getSlotDayKey, migrateEventStaffingProject, moveSlotDayPreferences, getPreferenceMap, normalizePreferenceState, PREFERENCE_STATES } from './migration.js';
+import { movePreferenceMatrixDay, renderPreferenceMatrix, setDayAvailability, setDayGroupPreference, setSlotPreference } from './preferenceMatrix.js';
 import { addAssignmentRule, addCooldownRule, renderRuleEditors } from './ruleEditors.js';
 import {
   applyEventStaffingPreferencePreview,
@@ -30,6 +30,14 @@ import {
   getEventStaffingReplacementFromPreview,
   previewEventStaffingWorkbookFile,
 } from './workbooks.js';
+import {
+  annotateAdministratorRepairResult,
+  buildAdministratorRepairCandidates,
+  createAdministratorRepairModel,
+  getAdministratorRepairDates,
+  selectAllRepairCandidates,
+  toggleRepairCandidate,
+} from './administratorRepair.js';
 
 function getGroupTypeLabelMap(domainProject) {
   return new Map(domainProject.groupTypes.map((groupType) => [groupType.id, groupType.label]));
@@ -70,6 +78,18 @@ export function rankStaffingSolutionsByEquity(domainProject, solverResult) {
       || (right.score ?? Number.NEGATIVE_INFINITY) - (left.score ?? Number.NEGATIVE_INFINITY)
       || String(left.fingerprint ?? '').localeCompare(String(right.fingerprint ?? ''))
     )),
+  };
+}
+
+export function buildAdministratorRepairSolveOptions(solveOptions, people) {
+  return {
+    ...solveOptions,
+    scoreWeights: {
+      ...solveOptions.scoreWeights,
+      preferences: Math.max(1, solveOptions.scoreWeights?.preferences ?? 1),
+      equity: Math.max(100, solveOptions.scoreWeights?.equity ?? 0),
+    },
+    equityEligibleItemIds: people.map((person) => person.id),
   };
 }
 
@@ -187,6 +207,77 @@ function buildSolutionOptionSummary(domainProject, solverResult, solutionIndex) 
   };
 }
 
+export function buildStaffingSolutionTradeoffs(domainProject, solution) {
+  const assignmentsByPersonAndSlot = new Map();
+  (solution?.assignments ?? []).forEach((assignment) => {
+    const destination = parseContainerAssignmentId(assignment.containerRef?.id);
+    if (!destination) return;
+    const key = `${assignment.itemRef?.id}\u0000${destination.eventId}`;
+    const groups = assignmentsByPersonAndSlot.get(key) ?? new Set();
+    groups.add(destination.groupTypeId);
+    assignmentsByPersonAndSlot.set(key, groups);
+  });
+  const preferencesByPersonId = new Map((domainProject.preferences ?? []).map((entry) => [entry.personId, entry]));
+  const requirementsByEventId = new Map();
+  (domainProject.requirements ?? []).forEach((requirement) => {
+    const entries = requirementsByEventId.get(requirement.eventId) ?? [];
+    entries.push(requirement);
+    requirementsByEventId.set(requirement.eventId, entries);
+  });
+  const issues = [];
+  const counts = [];
+  const groupLabels = getGroupTypeLabelMap(domainProject);
+
+  domainProject.people.forEach((person) => {
+    const preference = preferencesByPersonId.get(person.id);
+    let total = 0;
+    const perGroup = new Map();
+    (solution?.assignments ?? []).forEach((assignment) => {
+      if (assignment.itemRef?.id !== person.id) return;
+      const destination = parseContainerAssignmentId(assignment.containerRef?.id);
+      if (!destination) return;
+      total += 1;
+      perGroup.set(destination.groupTypeId, (perGroup.get(destination.groupTypeId) ?? 0) + 1);
+    });
+    counts.push(total);
+
+    domainProject.events.forEach((slot) => {
+      const assignedGroups = assignmentsByPersonAndSlot.get(`${person.id}\u0000${slot.id}`) ?? new Set();
+      const dayKey = String(slot.dateKey ?? slot.date ?? '').trim() || `undated:${slot.id}`;
+      const slotLabel = slot.slotLabel ?? slot.label ?? slot.id;
+      const preferenceStates = (requirementsByEventId.get(slot.id) ?? []).map((requirement) => ({
+        groupTypeId: requirement.groupTypeId,
+        state: getEffectiveAssignmentPreference(preference, slot, requirement.groupTypeId),
+      }));
+      const preferredGroups = preferenceStates.filter(({ state }) => state === PREFERENCE_STATES.PREFER);
+      if (preferredGroups.length > 0 && !preferredGroups.some(({ groupTypeId }) => assignedGroups.has(groupTypeId))) {
+        issues.push(`${person.name} preferred ${preferredGroups.map(({ groupTypeId }) => groupLabels.get(groupTypeId) ?? groupTypeId).join(' or ')} on ${slot.date || dayKey} / ${slotLabel}, but received no preferred assignment.`);
+      }
+      preferenceStates.filter(({ state, groupTypeId }) => (
+        state === PREFERENCE_STATES.PREFER_NOT && assignedGroups.has(groupTypeId)
+      )).forEach(({ groupTypeId }) => {
+        issues.push(`${person.name} preferred not to work ${groupLabels.get(groupTypeId) ?? groupTypeId} on ${slot.date || dayKey} / ${slotLabel}, but was assigned to it.`);
+      });
+    });
+
+    if (Number.isInteger(person.targetAssignments) && total !== person.targetAssignments) {
+      issues.push(`${person.name} has ${total} assignment(s), target ${person.targetAssignments}.`);
+    }
+    domainProject.groupTypes.forEach(({ id: groupTypeId }) => {
+      const target = person.targetAssignmentsPerGroupType?.[groupTypeId]
+        ?? domainProject.globalLimits?.targetAssignmentsPerGroupType;
+      const actual = perGroup.get(groupTypeId) ?? 0;
+      if (Number.isInteger(target) && actual !== target) {
+        issues.push(`${person.name} has ${actual} ${groupLabels.get(groupTypeId) ?? groupTypeId} assignment(s), target ${target}.`);
+      }
+    });
+  });
+
+  const minimum = counts.length > 0 ? Math.min(...counts) : 0;
+  const maximum = counts.length > 0 ? Math.max(...counts) : 0;
+  return { issues, minimum, maximum, spread: maximum - minimum };
+}
+
 export function renderStaffingScheduleView(domainProject, solverResult, activeSolutionIndex = 0) {
   const scheduleSummary = buildScheduleSummary(domainProject, solverResult, activeSolutionIndex);
   if (!scheduleSummary) {
@@ -276,6 +367,8 @@ export function renderStaffingScheduleView(domainProject, solverResult, activeSo
 
   const warnings = solverResult.warnings ?? [];
   const selectedSolution = solverResult.solutions[scheduleSummary.clampedSolutionIndex];
+  const tradeoffs = buildStaffingSolutionTradeoffs(domainProject, selectedSolution);
+  const exceptionsUsed = selectedSolution.administratorExceptionsUsed ?? [];
   const previousSolution = scheduleSummary.clampedSolutionIndex > 0 ? solverResult.solutions[scheduleSummary.clampedSolutionIndex - 1] : null;
   const assignmentKey = (assignment) => `${assignment.itemRef?.id ?? ''}::${assignment.containerRef?.id ?? ''}`;
   const changedAssignments = previousSolution
@@ -328,6 +421,19 @@ export function renderStaffingScheduleView(domainProject, solverResult, activeSo
         </section>
       ` : ''}
       ${warnings.length > 0 ? `<ul class="issue-list compact-issue-list top-gap">${warnings.map((warning) => `<li class="issue-list-item warning"><div>${escapeHtml(warning)}</div></li>`).join('')}</ul>` : '<p class="muted-text top-gap">No solver warnings for the staffing solve.</p>'}
+      <section class="workspace-panel top-gap">
+        <h3>Constraints and soft-goal trade-offs</h3>
+        ${solverResult.repairedModel
+    ? '<p><strong>Repaired model:</strong> satisfied. The original hard model was not satisfied; only the selected temporary person restrictions were relaxed. Coverage min/max and cooldown/rest rules remained hard.</p>'
+    : '<p><strong>Hard constraints:</strong> satisfied. Required coverage, unavailability, cooldowns, assignment limits, and forced/forbidden assignments were not relaxed.</p>'}
+        ${solverResult.repairedModel ? `<h4>Administrator exceptions used</h4>${exceptionsUsed.length > 0
+    ? `<ul class="issue-list compact-issue-list">${exceptionsUsed.map((exception) => `<li class="issue-list-item warning"><div>${escapeHtml(exception.label)}</div></li>`).join('')}</ul>`
+    : '<p class="muted-text">None of the selected temporary exceptions were used by this solution.</p>'}` : ''}
+        <p><strong>Workload range:</strong> ${escapeHtml(String(tradeoffs.minimum))} to ${escapeHtml(String(tradeoffs.maximum))} assignments per person (spread ${escapeHtml(String(tradeoffs.spread))}).</p>
+        ${tradeoffs.issues.length > 0
+    ? `<p><strong>Unmet soft goals (${tradeoffs.issues.length}):</strong></p><ul class="issue-list compact-issue-list">${tradeoffs.issues.slice(0, 50).map((issue) => `<li class="issue-list-item warning"><div>${escapeHtml(issue)}</div></li>`).join('')}</ul>${tradeoffs.issues.length > 50 ? `<p class="muted-text">Showing the first 50 of ${tradeoffs.issues.length} trade-offs.</p>` : ''}`
+    : '<p><strong>Unmet soft goals:</strong> none.</p>'}
+      </section>
       ${renderSearchHints(solverResult, {
     'use-first-mode': 'Find the first staffing schedule',
     'tighten-eligibility-bounds': 'Tighten person eligibility and staffing bounds',
@@ -366,6 +472,37 @@ export function renderStaffingScheduleView(domainProject, solverResult, activeSo
       </details>
     </section>
   `;
+}
+
+export function renderAdministratorRepairPanel(domainProject, normalizedProject, solverResult, repairState = {}) {
+  if (solverResult?.status !== 'unsat' || !normalizedProject) return '';
+  const dates = getAdministratorRepairDates(domainProject);
+  const dateKey = dates.some((date) => date.dateKey === repairState.dateKey)
+    ? repairState.dateKey
+    : (dates[0]?.dateKey ?? '');
+  const candidates = buildAdministratorRepairCandidates(domainProject, normalizedProject, dateKey);
+  const selected = new Set(repairState.selectedCandidateIds ?? []);
+  return `
+    <section class="panel administrator-repair-panel">
+      <p class="eyebrow">Unsatisfiable hard model</p>
+      <h2>Temporary administrator repair</h2>
+      <p>Select narrowly scoped person restrictions to relax for one blocking date. The original project rules are unchanged; exceptions apply only to this repair solve. Coverage min/max and cooldown/rest rules always remain hard and are never available here.</p>
+      <label>Blocking date
+        <select name="administratorRepairDate">
+          ${dates.map((date) => `<option value="${escapeHtml(date.dateKey)}"${date.dateKey === dateKey ? ' selected' : ''}>${escapeHtml(date.label)}</option>`).join('')}
+        </select>
+      </label>
+      <div class="event-staffing-inline-actions top-gap">
+        <button type="button" data-event-staffing-action="select-all-repair-candidates"${candidates.length ? '' : ' disabled'}>Select all</button>
+        <button type="button" data-event-staffing-action="clear-repair-candidates"${selected.size ? '' : ' disabled'}>Clear all</button>
+      </div>
+      ${candidates.length ? `<div class="event-staffing-checkbox-grid top-gap">${candidates.map((candidate) => `
+        <label class="event-staffing-checkbox-option">
+          <input type="checkbox" data-repair-candidate-id="${escapeHtml(candidate.id)}"${selected.has(candidate.id) ? ' checked' : ''} />
+          <span>${escapeHtml(candidate.label)}</span>
+        </label>`).join('')}</div>` : '<p class="muted-text top-gap">No relaxable person restrictions apply to this date. Check another date or revise hard coverage/cooldown rules directly.</p>'}
+      <button type="button" class="event-staffing-primary-button top-gap" data-event-staffing-action="solve-administrator-repair"${selected.size ? '' : ' disabled'}>Try with selected temporary exceptions</button>
+    </section>`;
 }
 
 function describeDeleteImpact(domainProject, eventIdsToDelete) {
@@ -549,9 +686,9 @@ function renderBody(domainProject, state) {
     ${renderWorkflowTabs(activeTab)}
     ${renderTabPanel('setup', activeTab, renderSetupPanel(domainProject, state))}
     ${renderTabPanel('data', activeTab, dataContent)}
-    ${renderTabPanel('rules', activeTab, `${renderPreferenceMatrix(domainProject)}${renderRuleEditors(domainProject, editor)}`)}
+    ${renderTabPanel('rules', activeTab, `${renderPreferenceMatrix(domainProject, editor)}${renderRuleEditors(domainProject, editor)}`)}
     ${renderTabPanel('review', activeTab, renderReviewPanel(state))}
-    ${renderTabPanel('results', activeTab, `${renderStaffingScheduleView(domainProject, state.eventStaffingPage.lastSolverResult, state.eventStaffingPage.activeSolutionIndex ?? 0)}${state.eventStaffingPage.lastSolverResult?.solutions?.length ? '<button type="button" data-event-staffing-action="export-solution-workbook">Export selected schedule workbook</button>' : ''}`)}
+    ${renderTabPanel('results', activeTab, `${renderAdministratorRepairPanel(domainProject, state.eventStaffingPage.lastNormalizedProject, state.eventStaffingPage.lastSolverResult, editor.administratorRepair)}${renderStaffingScheduleView(domainProject, state.eventStaffingPage.lastSolverResult, state.eventStaffingPage.activeSolutionIndex ?? 0)}${state.eventStaffingPage.lastSolverResult?.solutions?.length ? '<button type="button" data-event-staffing-action="export-solution-workbook">Export selected schedule workbook</button>' : ''}`)}
   `;
 }
 
@@ -915,12 +1052,25 @@ export function removeGroupType(domainProject, groupTypeIndex, editor) {
   });
   domainProject.people = domainProject.people.map((person) => ({
     ...person,
+    maxAssignmentsPerGroupType: Object.fromEntries(
+      Object.entries(person.maxAssignmentsPerGroupType ?? {}).filter(([groupTypeId]) => groupTypeId !== groupType.id),
+    ),
+    targetAssignmentsPerGroupType: Object.fromEntries(
+      Object.entries(person.targetAssignmentsPerGroupType ?? {}).filter(([groupTypeId]) => groupTypeId !== groupType.id),
+    ),
     allowedGroupTypeIds: Array.isArray(person.allowedGroupTypeIds)
       ? person.allowedGroupTypeIds.filter((groupTypeId) => groupTypeId !== groupType.id)
       : [],
     forbiddenGroupTypeIds: Array.isArray(person.forbiddenGroupTypeIds)
       ? person.forbiddenGroupTypeIds.filter((groupTypeId) => groupTypeId !== groupType.id)
       : [],
+  }));
+  domainProject.preferences = domainProject.preferences.map((preference) => ({
+    ...preference,
+    dayGroupPreferences: Object.fromEntries(Object.entries(getDayGroupPreferenceMap(preference)).map(([dayKey, valuesByGroup]) => [
+      dayKey,
+      Object.fromEntries(Object.entries(valuesByGroup).filter(([groupTypeId]) => groupTypeId !== groupType.id)),
+    ]).filter(([, valuesByGroup]) => Object.keys(valuesByGroup).length > 0)),
   }));
 
   if (editor.draftRequirementGroupTypeId === groupType.id) {
@@ -974,14 +1124,19 @@ export function addPerson(domainProject, editor) {
     forbiddenGroupTypeIds,
   };
   const sanitizedEventPreferences = sanitizePersonEventPreferences(editor.draftPersonEventPreferences);
+  const existingPreferenceEntry = domainProject.preferences.find((preference) => preference.personId === id);
+  const dayPreferences = { ...getDayPreferenceMap(existingPreferenceEntry) };
+  const dayGroupPreferences = structuredClone(getDayGroupPreferenceMap(existingPreferenceEntry));
 
   if (editingPersonIndex !== null && currentPerson) {
     domainProject.people[editingPersonIndex] = nextPerson;
     domainProject.preferences = domainProject.preferences.filter((preference) => preference.personId !== id);
-    if (Object.keys(sanitizedEventPreferences).length > 0) {
+    if (Object.keys(sanitizedEventPreferences).length > 0 || Object.keys(dayPreferences).length > 0 || Object.keys(dayGroupPreferences).length > 0) {
       domainProject.preferences.push({
         personId: id,
         eventPreferences: sanitizedEventPreferences,
+        ...(Object.keys(dayPreferences).length > 0 ? { dayPreferences } : {}),
+        ...(Object.keys(dayGroupPreferences).length > 0 ? { dayGroupPreferences } : {}),
       });
     }
     resetPersonEditor(editor);
@@ -989,11 +1144,13 @@ export function addPerson(domainProject, editor) {
   }
 
   domainProject.people.push(nextPerson);
-  if (Object.keys(sanitizedEventPreferences).length > 0) {
+  if (Object.keys(sanitizedEventPreferences).length > 0 || Object.keys(dayPreferences).length > 0 || Object.keys(dayGroupPreferences).length > 0) {
     domainProject.preferences = domainProject.preferences.filter((preference) => preference.personId !== id);
     domainProject.preferences.push({
       personId: id,
       eventPreferences: sanitizedEventPreferences,
+      ...(Object.keys(dayPreferences).length > 0 ? { dayPreferences } : {}),
+      ...(Object.keys(dayGroupPreferences).length > 0 ? { dayGroupPreferences } : {}),
     });
   }
   resetPersonEditor(editor);
@@ -1112,6 +1269,7 @@ export function deleteEvents(domainProject, eventIdsToDelete, editor) {
   }
 
   domainProject.events = normalizeEventOrderIndexes(domainProject.events.filter((event) => !idsToDelete.has(event.id)));
+  const remainingDayKeys = new Set(domainProject.events.map((event) => String(event.dateKey ?? event.date ?? '').trim() || `undated:${event.id}`));
   domainProject.requirements = domainProject.requirements.filter((requirement) => !idsToDelete.has(requirement.eventId));
   domainProject.forcedAssignments = domainProject.forcedAssignments.filter((assignment) => !idsToDelete.has(assignment.eventId));
   domainProject.forbiddenAssignments = domainProject.forbiddenAssignments.filter((assignment) => !idsToDelete.has(assignment.eventId));
@@ -1122,6 +1280,12 @@ export function deleteEvents(domainProject, eventIdsToDelete, editor) {
     ) : preference.eventPreferences,
     slotPreferences: Object.fromEntries(
       Object.entries(getPreferenceMap(preference)).filter(([eventId]) => !idsToDelete.has(eventId)),
+    ),
+    dayPreferences: Object.fromEntries(
+      Object.entries(getDayPreferenceMap(preference)).filter(([dayKey]) => remainingDayKeys.has(dayKey)),
+    ),
+    dayGroupPreferences: Object.fromEntries(
+      Object.entries(getDayGroupPreferenceMap(preference)).filter(([dayKey]) => remainingDayKeys.has(dayKey)),
     ),
   }));
 
@@ -1141,6 +1305,7 @@ function clearWorkflowOutputs(state) {
   state.eventStaffingPage.lastGenericValidation = null;
   state.eventStaffingPage.lastSolverResult = null;
   state.eventStaffingPage.activeSolutionIndex = 0;
+  state.eventStaffingPage.editor.administratorRepair = { dateKey: '', selectedCandidateIds: [] };
 }
 
 function refreshValidation(state) {
@@ -1244,6 +1409,46 @@ function bindInteractions(root, state) {
       refreshValidation(state);
     });
   });
+  root.querySelector('[name="preferenceMatrixPersonId"]')?.addEventListener('change', (event) => {
+    editor.preferenceMatrixPersonId = event.target.value;
+    rerender();
+  });
+  root.querySelector('[name="preferenceMatrixDayKey"]')?.addEventListener('change', (event) => {
+    editor.preferenceMatrixDayKey = event.target.value;
+    rerender();
+  });
+  root.querySelector('[name="preferenceMatrixPeopleFilter"]')?.addEventListener('change', (event) => {
+    editor.preferenceMatrixPeopleFilter = event.target.value;
+    rerender();
+  });
+  root.querySelector('[data-event-staffing-action="previous-preference-day"]')?.addEventListener('click', () => {
+    editor.preferenceMatrixDayKey = movePreferenceMatrixDay(domainProject, editor.preferenceMatrixDayKey, -1);
+    rerender();
+  });
+  root.querySelector('[data-event-staffing-action="next-preference-day"]')?.addEventListener('click', () => {
+    editor.preferenceMatrixDayKey = movePreferenceMatrixDay(domainProject, editor.preferenceMatrixDayKey, 1);
+    rerender();
+  });
+  root.querySelectorAll('[data-day-availability]').forEach((select) => {
+    select.addEventListener('change', () => {
+      setDayAvailability(domainProject, select.dataset.personId, select.dataset.dayKey, select.value);
+      refreshValidation(state);
+      rerender();
+    });
+  });
+  root.querySelectorAll('[data-day-group-preference]').forEach((select) => {
+    select.addEventListener('change', () => {
+      setDayGroupPreference(
+        domainProject,
+        select.dataset.personId,
+        select.dataset.dayKey,
+        select.dataset.groupTypeId,
+        select.value,
+      );
+      refreshValidation(state);
+      rerender();
+    });
+  });
 
   root.querySelector('.validation-panel-details')?.addEventListener('toggle', (event) => {
     state.eventStaffingPage.validationPanelExpanded = event.target.open;
@@ -1313,8 +1518,10 @@ function bindInteractions(root, state) {
 
       selectedEvent.label = String(editor.draftSelectedEventLabel ?? '').trim() || selectedEvent.label;
       selectedEvent.slotLabel = selectedEvent.label;
+      const oldDayKey = getSlotDayKey(selectedEvent);
       selectedEvent.date = String(editor.draftSelectedEventDate ?? '').trim();
-      selectedEvent.dateKey = selectedEvent.date || selectedEvent.dateKey || `undated:${selectedEvent.id}`;
+      selectedEvent.dateKey = selectedEvent.date || `undated:${selectedEvent.id}`;
+      moveSlotDayPreferences(domainProject, selectedEvent.id, oldDayKey, selectedEvent.dateKey);
       selectedEvent.orderIndex = parseNonNegativeInteger(editor.draftSelectedEventOrderIndex, selectedEvent.orderIndex);
       domainProject.events = normalizeEventOrderIndexes(domainProject.events);
       editor.lastSyncedSelectedEventId = '';
@@ -1776,6 +1983,7 @@ function bindInteractions(root, state) {
       }
 
       state.eventStaffingPage.activeSolutionIndex = 0;
+      editor.administratorRepair = { dateKey: '', selectedCandidateIds: [] };
       startSolveExecution({
         execution: state.eventStaffingPage.solveExecution,
         model: workflow.normalizedProject,
@@ -1796,6 +2004,77 @@ function bindInteractions(root, state) {
       rerender();
     });
   }
+
+  const repairDateSelect = root.querySelector('[name="administratorRepairDate"]');
+  if (repairDateSelect) {
+    repairDateSelect.addEventListener('change', (event) => {
+      editor.administratorRepair = { dateKey: event.target.value, selectedCandidateIds: [] };
+      rerender();
+    });
+  }
+
+  const currentRepairDates = getAdministratorRepairDates(domainProject);
+  const currentRepairDateKey = currentRepairDates.some((date) => date.dateKey === editor.administratorRepair?.dateKey)
+    ? editor.administratorRepair.dateKey
+    : (currentRepairDates[0]?.dateKey ?? '');
+  const currentRepairCandidates = state.eventStaffingPage.lastNormalizedProject
+    ? buildAdministratorRepairCandidates(domainProject, state.eventStaffingPage.lastNormalizedProject, currentRepairDateKey)
+    : [];
+  root.querySelectorAll('[data-repair-candidate-id]').forEach((checkbox) => {
+    checkbox.addEventListener('change', () => {
+      editor.administratorRepair = {
+        dateKey: currentRepairDateKey,
+        selectedCandidateIds: toggleRepairCandidate(
+          editor.administratorRepair?.selectedCandidateIds,
+          checkbox.dataset.repairCandidateId,
+          checkbox.checked,
+        ),
+      };
+      rerender();
+    });
+  });
+  root.querySelector('[data-event-staffing-action="select-all-repair-candidates"]')?.addEventListener('click', () => {
+    editor.administratorRepair = {
+      dateKey: currentRepairDateKey,
+      selectedCandidateIds: selectAllRepairCandidates(currentRepairCandidates),
+    };
+    rerender();
+  });
+  root.querySelector('[data-event-staffing-action="clear-repair-candidates"]')?.addEventListener('click', () => {
+    editor.administratorRepair = { dateKey: currentRepairDateKey, selectedCandidateIds: [] };
+    rerender();
+  });
+  root.querySelector('[data-event-staffing-action="solve-administrator-repair"]')?.addEventListener('click', () => {
+    if (state.eventStaffingPage.lastSolverResult?.status !== 'unsat') return;
+    const selectedIds = editor.administratorRepair?.selectedCandidateIds ?? [];
+    if (selectedIds.length === 0) return;
+    const repairModel = createAdministratorRepairModel(
+      state.eventStaffingPage.lastNormalizedProject,
+      currentRepairCandidates,
+      selectedIds,
+    );
+    state.eventStaffingPage.activeSolutionIndex = 0;
+    startSolveExecution({
+      execution: state.eventStaffingPage.solveExecution,
+      model: repairModel,
+      options: buildAdministratorRepairSolveOptions(state.eventStaffingPage.solveOptions, domainProject.people),
+      onResult(solverResult) {
+        solverResult = annotateAdministratorRepairResult(
+          solverResult,
+          currentRepairCandidates,
+          selectedIds,
+          currentRepairDateKey,
+        );
+        solverResult = rankStaffingSolutionsByEquity(domainProject, solverResult);
+        state.eventStaffingPage.lastSolverResult = solverResult;
+        state.eventStaffingPage.message = solverResult.solutions?.length
+          ? `The repaired model returned ${solverResult.solutions.length} solution(s). Original project rules remain unchanged.`
+          : 'The selected temporary exceptions did not produce a staffing plan.';
+      },
+      onChange: rerender,
+    });
+    rerender();
+  });
 
   const cancelSolveButton = root.querySelector('[data-event-staffing-action="cancel-solve"]');
   if (cancelSolveButton) {

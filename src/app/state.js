@@ -151,9 +151,13 @@ function createEventStaffingPageEditorState() {
     draftCooldownTriggerGroupTypeId: 'ANY',
     draftCooldownBlockedGroupTypeId: 'ANY',
     draftCooldownCount: '1',
+    preferenceMatrixPersonId: '',
+    preferenceMatrixDayKey: '',
+    preferenceMatrixPeopleFilter: 'all',
     draftGlobalMaxAssignmentsPerPerson: '',
     draftGlobalMaxAssignmentsPerGroupType: '',
     draftGlobalTargetAssignmentsPerGroupType: '',
+    administratorRepair: { dateKey: '', selectedCandidateIds: [] },
   };
 }
 

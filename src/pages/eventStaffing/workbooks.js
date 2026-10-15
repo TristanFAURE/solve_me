@@ -11,7 +11,7 @@ import { applyWorksheetLayout } from '../../workbooks/layout.js';
 import { transformEventStaffingProject } from '../../core/transform/eventStaffingProject.js';
 import { normalizeProject } from '../../core/normalize/normalizeProject.js';
 import { validateProject } from '../../core/validate/validateProject.js';
-import { getPreferenceMap, migrateEventStaffingProject, normalizePreferenceState, PREFERENCE_STATES } from './migration.js';
+import { getDayGroupPreferenceMap, getDayPreferenceMap, getEffectiveSlotPreference, getPreferenceMap, getSlotDayKey, migrateEventStaffingProject, normalizePreferenceState, PREFERENCE_STATES } from './migration.js';
 import { validateEventStaffingProject } from './validateEventStaffingProject.js';
 
 const IDENTITY_HEADERS = new Set(['Person ID', 'Name', 'Email']);
@@ -55,7 +55,7 @@ function preferenceColumnName(position) {
   return `Preference column ${position}`;
 }
 
-function createPreferenceSheet(project, columns, preferencesByPersonId) {
+function createPreferenceSheet(project, columns) {
   const firstHeader = ['Name', 'Email', 'Person ID', ...columns.map(({ slot }, index) => (
     index === 0 || columns[index - 1].slot.date !== slot.date ? slot.date : ''
   ))];
@@ -64,7 +64,10 @@ function createPreferenceSheet(project, columns, preferencesByPersonId) {
     person.name,
     person.email ?? '',
     person.id,
-    ...columns.map(({ slot }) => preferenceToWorkbookValue(preferencesByPersonId.get(person.id)?.[slot.id])),
+    ...columns.map(({ slot }) => preferenceToWorkbookValue(getEffectiveSlotPreference(
+      project.preferences.find((entry) => entry.personId === person.id),
+      slot,
+    ))),
   ]);
   const sheet = XLSX.utils.aoa_to_sheet(neutralizeMatrix([firstHeader, secondHeader, ...personRows]));
   const merges = [
@@ -93,7 +96,6 @@ function preferenceToWorkbookValue(value) {
 export function createEventStaffingPreferenceWorkbook(domainProject) {
   const project = migrateEventStaffingProject(domainProject);
   const columns = createSlotColumns(project);
-  const preferencesByPersonId = new Map(project.preferences.map((entry) => [entry.personId, getPreferenceMap(entry)]));
   const slotRows = columns.map(({ key, slot }, index) => ({
     'Preference column key': key,
     'Preference column position': index + 4,
@@ -114,7 +116,7 @@ export function createEventStaffingPreferenceWorkbook(domainProject) {
   ];
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, applyWorksheetLayout(XLSX.utils.aoa_to_sheet(neutralizeMatrix(instructions)), [24, 100], { autoFilter: false }), 'Instructions');
-  XLSX.utils.book_append_sheet(workbook, createPreferenceSheet(project, columns, preferencesByPersonId), 'Preferences');
+  XLSX.utils.book_append_sheet(workbook, createPreferenceSheet(project, columns), 'Preferences');
   XLSX.utils.book_append_sheet(workbook, applyWorksheetLayout(XLSX.utils.json_to_sheet(neutralizeRows(slotRows), { header: ['Preference column key', 'Preference column position', 'Slot ID', 'Date', 'Slot label', 'Category coverage'] }), [34, 26, 20, 14, 22, 40]), 'Slots');
   return workbook;
 }
@@ -296,6 +298,19 @@ export function parseEventStaffingPreferenceWorkbook(workbook, domainProject) {
     });
   });
 
+  const slotsById = new Map(project.events.map((slot) => [slot.id, slot]));
+  const retainedGroupOverrides = new Set();
+  changes.forEach(({ personId, slotId }) => {
+    const preference = project.preferences.find((entry) => entry.personId === personId);
+    const dayKey = getSlotDayKey(slotsById.get(slotId));
+    if (Object.keys(getDayGroupPreferenceMap(preference)[dayKey] ?? {}).length > 0) {
+      retainedGroupOverrides.add(`${personId}\u0000${dayKey}`);
+    }
+  });
+  if (retainedGroupOverrides.size > 0) {
+    report.issues.push(`${retainedGroupOverrides.size} day/group override set(s) remain active and take precedence over imported slot values. Edit them in the Rules availability calendar.`);
+  }
+
   return {
     report,
     changes,
@@ -353,9 +368,20 @@ export function applyEventStaffingPreferencePreview(domainProject, preview) {
   const preferencesByPersonId = new Map((domainProject.preferences ?? []).map((entry) => [entry.personId, {
     ...entry,
     slotPreferences: { ...getPreferenceMap(entry) },
+    dayPreferences: { ...getDayPreferenceMap(entry) },
+    dayGroupPreferences: structuredClone(getDayGroupPreferenceMap(entry)),
   }]));
+  const slotsById = new Map((domainProject.events ?? []).map((slot) => [slot.id, slot]));
+  const replacedDaysByPerson = new Map();
   preview.changes.forEach(({ personId, slotId, state }) => {
-    const entry = preferencesByPersonId.get(personId) ?? { personId, slotPreferences: {} };
+    const entry = preferencesByPersonId.get(personId) ?? { personId, slotPreferences: {}, dayPreferences: {}, dayGroupPreferences: {} };
+    const dayKey = getSlotDayKey(slotsById.get(slotId));
+    const replacedDays = replacedDaysByPerson.get(personId) ?? new Set();
+    if (!replacedDays.has(dayKey)) {
+      delete entry.dayPreferences[dayKey];
+      replacedDays.add(dayKey);
+      replacedDaysByPerson.set(personId, replacedDays);
+    }
     entry.slotPreferences[slotId] = state;
     preferencesByPersonId.set(personId, entry);
   });

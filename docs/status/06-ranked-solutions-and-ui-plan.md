@@ -56,8 +56,10 @@ Rules:
 - one date can contain several slots
 - one slot can contain several category requirements
 - one person can occupy at most one category in a slot
-- people provide one preference per slot
-- slot preference applies once regardless of assigned category
+- the Rules UI selects one person and displays dates as columns with `Whole day` and staffing-group rows
+- a second collapsible date overview provides previous/next date controls, people filtering, people as columns, and staffing groups as rows
+- whole-day unavailability blocks every slot/category on that date; group/date cells inherit or override other day preferences
+- legacy slot-level preferences and workbook imports remain supported
 - prefer, neutral, and prefer not are soft
 - unavailable is hard and compiles to forbidden assignments
 

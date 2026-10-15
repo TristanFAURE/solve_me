@@ -7,6 +7,7 @@ import {
   parseEventStaffingPreferenceWorkbook,
 } from '../../src/pages/eventStaffing/workbooks.js';
 import { neutralizeFormulaValue, validateWorkbookBounds, WorkbookSafetyError, WORKBOOK_LIMITS } from '../../src/workbooks/safety.js';
+import { getEffectiveAssignmentPreference, PREFERENCE_STATES } from '../../src/pages/eventStaffing/migration.js';
 
 function project() {
   return {
@@ -54,6 +55,27 @@ describe('Event Staffing workbooks', () => {
     applyEventStaffingPreferencePreview(current, preview);
     expect(current.preferences[0].slotPreferences.S1).toBe('unavailable');
     expect(current.events[0].id).toBe('S1');
+  });
+
+  it('clears whole-day values but preserves and reports group overrides during preference-only import', () => {
+    const current = project();
+    current.preferences = [{
+      personId: 'P1',
+      dayPreferences: { '2026-10-14': 'unavailable' },
+      dayGroupPreferences: { '2026-10-14': { C1: 'unavailable' } },
+      slotPreferences: {},
+    }];
+    const workbook = createEventStaffingPreferenceWorkbook(current);
+    workbook.Sheets.Preferences.D3.v = '';
+    const preview = parseEventStaffingPreferenceWorkbook(workbook, current);
+
+    applyEventStaffingPreferencePreview(current, preview);
+
+    expect(current.preferences[0].dayPreferences).toEqual({});
+    expect(current.preferences[0].dayGroupPreferences).toEqual({ '2026-10-14': { C1: 'unavailable' } });
+    expect(preview.report.issues).toContain('1 day/group override set(s) remain active and take precedence over imported slot values. Edit them in the Rules availability calendar.');
+    expect(getEffectiveAssignmentPreference(current.preferences[0], current.events[0], 'C1'))
+      .toBe(PREFERENCE_STATES.UNAVAILABLE);
   });
 
   it('exports P and imports P, X, and legacy Y case-insensitively', () => {
