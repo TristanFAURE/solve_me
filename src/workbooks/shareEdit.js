@@ -42,8 +42,8 @@ function assertSafeExportText(value) {
 export function participantMetadata(entity) {
   const participant = entity?.metadata?.participant ?? {};
   return {
-    email: String(participant.email ?? entity?.metadata?.email ?? '').trim(),
-    externalKey: String(participant.externalKey ?? entity?.metadata?.externalKey ?? '').trim(),
+    email: String(participant.email ?? entity?.email ?? entity?.metadata?.email ?? '').trim(),
+    externalKey: String(participant.externalKey ?? entity?.externalKey ?? entity?.metadata?.externalKey ?? '').trim(),
   };
 }
 
@@ -64,6 +64,38 @@ export function assertUniqueIdentityValues(participants, identityType, label = '
     if (seen.has(key)) throw new Error(`The selected ${identityType} values must be unique before export.`);
     seen.add(key);
   });
+}
+
+export function buildExportIdentityKeys(participants, identityType, label = 'participant') {
+  if (identityType !== IDENTITY_TYPES.FULL_NAME) {
+    assertUniqueIdentityValues(participants, identityType, label);
+    return new Map(participants.map((participant) => [participant.id, identityValue(participant, identityType)]));
+  }
+  const counts = new Map();
+  participants.forEach((participant) => {
+    const value = identityValue(participant, identityType);
+    if (!isValidIdentityValue(value, identityType)) throw new Error(`Every ${label} needs a full name before export.`);
+    const key = normalizeVisibleKey(value);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+  const indexes = new Map();
+  const used = new Set();
+  const result = new Map();
+  participants.forEach((participant) => {
+    const base = identityValue(participant, identityType);
+    const normalized = normalizeVisibleKey(base);
+    const nextIndex = (indexes.get(normalized) ?? 0) + 1;
+    indexes.set(normalized, nextIndex);
+    let value = counts.get(normalized) > 1 ? `${base} [${nextIndex}]` : base;
+    let suffix = nextIndex;
+    while (used.has(normalizeVisibleKey(value))) {
+      suffix += 1;
+      value = `${base} [${suffix}]`;
+    }
+    used.add(normalizeVisibleKey(value));
+    result.set(participant.id, value);
+  });
+  return result;
 }
 
 export function isValidIdentityValue(value, identityType) {

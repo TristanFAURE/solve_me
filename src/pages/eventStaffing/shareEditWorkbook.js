@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { createId } from '../../core/model/ids.js';
 import {
+  buildExportIdentityKeys,
   createShareEditWorkbook,
   IDENTITY_TYPES,
   isValidIdentityValue,
@@ -94,13 +95,7 @@ export function createEventStaffingShareEditWorkbook(domainProject, options = {}
   if (!IDENTITY_VALUES.has(identityType)) throw new Error('Unsupported workbook identity type.');
   const selectedIds = options.personIds ? new Set(options.personIds) : null;
   const people = (project.people ?? []).filter((person) => !selectedIds || selectedIds.has(person.id));
-  const identityKeys = new Set();
-  people.forEach((person) => {
-    const key = normalizeVisibleKey(identityValue(person, identityType));
-    if (!key) throw new Error(`Every Event Staffing participant needs a ${identityType} value before export.`);
-    if (identityKeys.has(key)) throw new Error(`The selected ${identityType} values must be unique before export.`);
-    identityKeys.add(key);
-  });
+  const visibleById = buildExportIdentityKeys(people.map((person) => ({ ...person, label: person.name })), identityType, 'Event Staffing participant');
   const groups = project.groupTypes ?? [];
   const slots = project.events ?? [];
   const rows = people.flatMap((person) => groups.map((group) => {
@@ -108,7 +103,7 @@ export function createEventStaffingShareEditWorkbook(domainProject, options = {}
     return {
       internalPersonId: person.id,
       internalGroupId: group.id,
-      personKey: identityValue(person, identityType),
+      personKey: visibleById.get(person.id),
       displayName: person.name ?? '',
       group: group.label ?? group.id,
       ...Object.fromEntries(slots.map((slot) => [

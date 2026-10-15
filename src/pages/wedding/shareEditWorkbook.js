@@ -6,7 +6,7 @@ import { createPreference } from '../../core/model/preferences.js';
 import { createEntityRef } from '../../core/model/relations.js';
 import {
   buildIdentityIndex,
-  assertUniqueIdentityValues,
+  buildExportIdentityKeys,
   createShareEditWorkbook,
   identityValue,
   isValidIdentityValue,
@@ -116,9 +116,8 @@ function relationLists(project) {
   return { hard, soft };
 }
 
-function exportRows(project, identityType) {
+function exportRows(project, identityType, visibleById) {
   const guests = project.items ?? [];
-  const visibleById = new Map(guests.map((guest) => [guest.id, identityValue(guest, identityType)]));
   const { hard, soft } = relationLists(project);
   return guests.map((guest) => {
     const hardValues = hard.get(guest.id) ?? {};
@@ -126,7 +125,7 @@ function exportRows(project, identityType) {
     const list = (values) => (values ?? []).map((id) => visibleById.get(id)).filter(Boolean).join('; ');
     return {
       internalId: guest.id,
-      guestKey: identityValue(guest, identityType),
+      guestKey: visibleById.get(guest.id),
       displayName: guest.label,
       mustSameTable: list(hardValues.mustSameTable),
       preferSameTable: list(softValues.preferSameTable),
@@ -139,14 +138,14 @@ function exportRows(project, identityType) {
 export function createWeddingShareEditWorkbook(project, options = {}) {
   const language = options.language === 'fr' ? 'fr' : 'en';
   const identityType = options.identityType ?? IDENTITY_TYPES.FULL_NAME;
-  assertUniqueIdentityValues(project?.items ?? [], identityType, 'Wedding guest');
+  const visibleById = buildExportIdentityKeys(project?.items ?? [], identityType, 'Wedding guest');
   const workbook = createShareEditWorkbook({
     domain: DOMAIN,
     projectTitle: project?.title ?? '',
     language,
     identityType,
     columns: columns(language),
-    rows: exportRows(project ?? {}, identityType),
+    rows: exportRows(project ?? {}, identityType, visibleById),
     revision: options.revision,
   });
   return appendWorkbookLegend(workbook, 'Wedding Share & Edit legend', WEDDING_WORKBOOK_LEGEND);

@@ -7,7 +7,7 @@ import { createContainmentRelation, createEntityRef } from '../../core/model/rel
 import { buildSchoolParticipantIndex, getContainedGroupIdsForItem, SCHOOL_ITEM_ROLES } from '../../core/transform/domainMappings.js';
 import {
   buildIdentityIndex,
-  assertUniqueIdentityValues,
+  buildExportIdentityKeys,
   createShareEditWorkbook,
   identityValue,
   isValidIdentityValue,
@@ -102,7 +102,7 @@ function directionalVotes(preference) {
     : [];
 }
 
-function exportRelationshipKeys(project, participant, kind, identityType, preferences = false) {
+function exportRelationshipKeys(project, participant, kind, visibleById, preferences = false) {
   const participants = new Map((project.items ?? []).map((item) => [item.id, item]));
   const entries = preferences ? (project.preferences ?? []) : (project.constraints ?? []);
   const ids = [];
@@ -115,7 +115,7 @@ function exportRelationshipKeys(project, participant, kind, identityType, prefer
     const otherId = counterpart(entry, participant.id);
     if (otherId) ids.push(otherId);
   });
-  return [...new Set(ids)].map((id) => identityValue(participants.get(id), identityType)).filter(Boolean).join('; ');
+  return [...new Set(ids)].map((id) => visibleById.get(id)).filter(Boolean).join('; ');
 }
 
 export function createSchoolShareEditWorkbook(project, options = {}) {
@@ -123,22 +123,22 @@ export function createSchoolShareEditWorkbook(project, options = {}) {
   const identityType = options.identityType ?? IDENTITY_TYPES.FULL_NAME;
   const participants = buildSchoolParticipantIndex(project);
   const allParticipants = [...participants.students, ...participants.teachers];
-  assertUniqueIdentityValues(allParticipants, identityType, 'School participant');
+  const visibleById = buildExportIdentityKeys(allParticipants, identityType, 'School participant');
   const levelLabels = new Map((project.groups ?? []).map((entry) => [entry.id, entry.label]));
   const classLabels = new Map((project.containers ?? []).map((entry) => [entry.id, entry.label]));
   const fixedByParticipant = new Map((project.fixedAssignments ?? []).map((entry) => [entry.itemId, entry.destinationId]));
   const rows = allParticipants.map((participant) => ({
     internalId: participant.id,
-    personKey: identityValue(participant, identityType),
+    personKey: visibleById.get(participant.id),
     displayName: participant.label,
     role: ROLE_LABELS[language][participant.metadata?.schoolRole] ?? ROLE_LABELS[language].student,
     levels: getContainedGroupIdsForItem(project, participant.id).map((id) => levelLabels.get(id) ?? id).join('; '),
     fixedClass: classLabels.get(fixedByParticipant.get(participant.id)) ?? '',
     excludedClasses: (participant.metadata?.forbiddenContainerIds ?? []).map((id) => classLabels.get(id) ?? id).join('; '),
-    mustShare: exportRelationshipKeys(project, participant, CONSTRAINT_KINDS.MUST_SHARE_CONTAINER, identityType),
-    preferShare: exportRelationshipKeys(project, participant, PREFERENCE_KINDS.PREFER_SHARE_CONTAINER, identityType, true),
-    preferSeparate: exportRelationshipKeys(project, participant, PREFERENCE_KINDS.PREFER_SEPARATE_CONTAINERS, identityType, true),
-    mustSeparate: exportRelationshipKeys(project, participant, CONSTRAINT_KINDS.MUST_NOT_SHARE_CONTAINER, identityType),
+    mustShare: exportRelationshipKeys(project, participant, CONSTRAINT_KINDS.MUST_SHARE_CONTAINER, visibleById),
+    preferShare: exportRelationshipKeys(project, participant, PREFERENCE_KINDS.PREFER_SHARE_CONTAINER, visibleById, true),
+    preferSeparate: exportRelationshipKeys(project, participant, PREFERENCE_KINDS.PREFER_SEPARATE_CONTAINERS, visibleById, true),
+    mustSeparate: exportRelationshipKeys(project, participant, CONSTRAINT_KINDS.MUST_NOT_SHARE_CONTAINER, visibleById),
   }));
   const workbook = createShareEditWorkbook({
     domain: DOMAIN,

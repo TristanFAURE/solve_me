@@ -54,6 +54,20 @@ describe('Wedding Share & Edit workbook', () => {
     expect(() => createWeddingShareEditWorkbook(current)).toThrow(/internal URLs/i);
   });
 
+  it('disambiguates duplicate full names while retaining stable IDs and relationship keys', () => {
+    const current = project([
+      createItem({ id: 'c1', label: 'Clio' }),
+      createItem({ id: 'c2', label: 'Clio' }),
+    ]);
+    current.constraints = [{ kind: 'mustShareContainer', leftRef: { kind: 'item', id: 'c1' }, rightRef: { kind: 'item', id: 'c2' }, metadata: {} }];
+    const workbook = createWeddingShareEditWorkbook(current);
+    const rows = data(workbook).slice(8);
+    expect(rows.map((row) => row[1])).toEqual(['Clio [1]', 'Clio [2]']);
+    expect(rows[0][3]).toBe('Clio [2]');
+    expect(rows[1][3]).toBe('Clio [1]');
+    expect(parseWeddingShareEditWorkbook(workbook, current).canApply).toBe(true);
+  });
+
   it('matches stable IDs before keys, creates guests, updates participant metadata, and does not mutate during preview', () => {
     const current = project();
     const snapshot = structuredClone(current);
