@@ -6,8 +6,13 @@ export const WORKFLOW_TABS = Object.freeze([
   { id: 'results', label: 'Results' },
 ]);
 
-export function isWorkflowTab(value) {
-  return WORKFLOW_TABS.some((tab) => tab.id === value);
+export const WORKFLOW_TABS_WITH_DISPLAY = Object.freeze([
+  ...WORKFLOW_TABS,
+  { id: 'display', label: 'Display' },
+]);
+
+export function isWorkflowTab(value, tabs = WORKFLOW_TABS) {
+  return tabs.some((tab) => tab.id === value);
 }
 
 export function renderWorkflowTabs(activeTab, tabs = WORKFLOW_TABS) {

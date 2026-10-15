@@ -25,8 +25,8 @@ This feature does not define:
 - invitation management
 - RSVP workflow
 - menu management
-- floor plan drawing tools
-- exact geometry-based seating visualization beyond generic seat adjacency modeling
+- editable floor-plan drawing tools
+- exact physical venue geometry or measurements; the solved-result Display tab is schematic only
 - multi-event planning
 
 ## User stories
@@ -244,6 +244,9 @@ Allows:
 - show busy state
 - show solved, unsat, timeout, partial, or error status
 - review returned seating solutions via the shared solution display feature
+- open a dedicated Display tab after Results to view schematic round, square, or rectangle tables without changing solver assignments
+- treat table-only guest positions as illustrative and position-mode seat placements as authoritative selected-solution assignments
+- optimize weighted same-table, different-table, adjacent, and non-adjacent preferences when using the JavaScript solver; hard seating rules always remain mandatory
 
 ## Modes of operation
 

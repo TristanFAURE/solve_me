@@ -19,6 +19,8 @@ This feature includes:
 - creation of school-language assignment rules and preferences relevant to class composition
 - solver execution for class assignment
 - display of one or more valid class distributions through the shared solution display layer
+- dedicated classroom-style Display tab after Results, with linked teachers and selected-solution student assignments
+- one-teacher-per-class domain matching after each student solution; explicit teacher-class links are hard, while unlinked teachers use level compatibility, class preferences, and teacher/student relationships
 - spreadsheet export of solved class distributions in a format that teachers or school staff can read easily
 - spreadsheet export of the complete editable school configuration before solving
 - spreadsheet import of school-authored `.xlsx` workbooks using the same teacher-facing sheet vocabulary as the export baseline
@@ -30,7 +32,7 @@ This feature does not define:
 
 - timetable scheduling
 - subject planning
-- classroom seating layout in the MVP
+- editable classroom seating or physical floor-plan layout; the solved-result Display tab uses illustrative desk positions only
 - grade management beyond assignment-relevant level tagging
 - attendance tracking
 - parent communication workflows
@@ -374,7 +376,7 @@ Behavior:
 
 Future extension:
 
-- a separate classroom seating feature could use position mode later
+- classroom desk positions remain illustrative; exact physical seating could use position mode in a separate future feature
 - that should remain a different feature from class creation itself
 
 ## Validation rules

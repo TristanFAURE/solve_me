@@ -21,6 +21,8 @@ import { bindPageDraftAutosave, loadDraft, persistPageDraft, saveDraft } from '.
 import { getProjectVersionInfo, migrateProjectModel } from '../../storage/modelVersioning.js';
 import { confirmProjectReplacement } from '../../app/dataSafety.js';
 import { renderFieldLabel } from '../../components/common/fieldHelp.js';
+import { bindJsonCopyButtons, renderJsonBlock } from '../../components/common/jsonBlock.js';
+import { renderJsonConfigurationSetup } from '../../components/common/jsonConfiguration.js';
 
 const REPLACE_PROJECT_MESSAGE = 'This will replace your current non-empty project. Continue?';
 
@@ -248,6 +250,7 @@ function renderSetup(project, editor, capabilities) {
         `)}
       </div>
     </section>
+    ${renderJsonConfigurationSetup({ prefix: 'generic', domainLabel: 'generic project', exportAction: 'export-project', importAction: 'import-project-file' })}
   `;
 }
 
@@ -1044,7 +1047,7 @@ function renderNormalizationSummary(normalizedProject) {
     </dl>
     <details class="details-panel advanced-diagnostics">
       <summary>Advanced diagnostics: normalized project JSON</summary>
-      <pre class="json-block">${escapeHtml(JSON.stringify(normalizedProject, null, 2))}</pre>
+      ${renderJsonBlock(normalizedProject, 'normalized project JSON')}
     </details>
     `;
 
@@ -1807,7 +1810,7 @@ function runSolveFlow(state, root) {
 }
 
 function bindFileInputs(root, state) {
-  root.querySelector('[data-action="import-project-file"]')?.addEventListener('change', async (event) => {
+  root.querySelectorAll('[data-action="import-project-file"]').forEach((input) => input.addEventListener('change', async (event) => {
     const [file] = event.target.files ?? [];
     if (!file) {
       return;
@@ -1820,7 +1823,7 @@ function bindFileInputs(root, state) {
     } finally {
       event.target.value = '';
     }
-  });
+  }));
 }
 
 function bindInputs(root, state) {
@@ -2196,6 +2199,7 @@ export function renderGenericPage(root, state) {
 
   bindInputs(root, state);
   bindFileInputs(root, state);
+  bindJsonCopyButtons(root);
   bindActions(root, state);
   bindEnterToAction(root, state);
   bindPageDraftAutosave(root, state.draftStorage, 'generic', () => state.genericPage.project, state.genericPage.persistence);

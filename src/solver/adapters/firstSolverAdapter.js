@@ -2,6 +2,7 @@ import { CONSTRAINT_KINDS } from '../../core/model/constraints.js';
 import { createAssignment, createSolution } from '../../core/model/solution.js';
 import { ASSIGNMENT_MODES } from '../../core/model/assignmentModes.js';
 import { NODE_KINDS } from '../../core/model/nodes.js';
+import { PREFERENCE_KINDS } from '../../core/model/preferences.js';
 import { SolverAdapter } from '../solverAdapter.js';
 import { createDefaultCapabilities } from '../solverCapabilities.js';
 import { createSolverResult } from '../solverResult.js';
@@ -44,6 +45,45 @@ function buildMustNotShareMap(constraints) {
     });
 
   return map;
+}
+
+function buildPreferencePairMap(preferences = []) {
+  const map = new Map();
+  preferences.forEach((preference) => {
+    const leftId = preference.leftRef?.id;
+    const rightId = preference.rightRef?.id;
+    if (!leftId || !rightId) return;
+    const left = map.get(leftId) ?? [];
+    left.push({ preference, otherItemId: rightId });
+    map.set(leftId, left);
+    const right = map.get(rightId) ?? [];
+    right.push({ preference, otherItemId: leftId });
+    map.set(rightId, right);
+  });
+  return map;
+}
+
+function getIncrementalRelationPreferenceScore({
+  itemId,
+  positionId,
+  assignmentsByItemId,
+  preferencePairMap,
+  positionToContainerMap,
+  adjacencyMap,
+}) {
+  const containerId = positionToContainerMap.get(positionId);
+  return (preferencePairMap.get(itemId) ?? []).reduce((total, { preference, otherItemId }) => {
+    const otherPositionId = assignmentsByItemId.get(otherItemId);
+    if (!otherPositionId) return total;
+    const sharesContainer = containerId === positionToContainerMap.get(otherPositionId);
+    const adjacent = adjacencyMap.get(positionId)?.has(otherPositionId) ?? false;
+    const satisfied = preference.kind === PREFERENCE_KINDS.PREFER_SHARE_CONTAINER ? sharesContainer
+      : preference.kind === PREFERENCE_KINDS.PREFER_SEPARATE_CONTAINERS ? !sharesContainer
+        : preference.kind === PREFERENCE_KINDS.PREFER_ADJACENT ? adjacent
+          : preference.kind === PREFERENCE_KINDS.PREFER_NON_ADJACENT ? !adjacent
+            : false;
+    return total + (satisfied ? preference.weight : 0);
+  }, 0);
 }
 
 function buildComponentLookup(components) {
@@ -1006,6 +1046,7 @@ function searchPositionAssignments({
   model,
   assignmentScoreMap,
   targetScoreMap,
+  preferencePairMap,
   suffixUpperBounds,
   currentScore,
   searchState,
@@ -1022,8 +1063,10 @@ function searchPositionAssignments({
   const candidatePositionIds = (candidatePositionIdsByItemId.get(itemId) ?? [])
     .slice()
     .sort((leftPositionId, rightPositionId) => {
-      const leftScore = getIncrementalScoreForDestination(itemId, leftPositionId, assignmentScoreMap, targetScoreMap);
-      const rightScore = getIncrementalScoreForDestination(itemId, rightPositionId, assignmentScoreMap, targetScoreMap);
+      const leftScore = getIncrementalScoreForDestination(itemId, leftPositionId, assignmentScoreMap, targetScoreMap)
+        + getIncrementalRelationPreferenceScore({ itemId, positionId: leftPositionId, assignmentsByItemId, preferencePairMap, positionToContainerMap, adjacencyMap });
+      const rightScore = getIncrementalScoreForDestination(itemId, rightPositionId, assignmentScoreMap, targetScoreMap)
+        + getIncrementalRelationPreferenceScore({ itemId, positionId: rightPositionId, assignmentsByItemId, preferencePairMap, positionToContainerMap, adjacencyMap });
       return rightScore - leftScore;
     });
 
@@ -1077,8 +1120,11 @@ function searchPositionAssignments({
       model,
       assignmentScoreMap,
       targetScoreMap,
+      preferencePairMap,
       suffixUpperBounds,
-      currentScore: currentScore + getIncrementalScoreForDestination(itemId, positionId, assignmentScoreMap, targetScoreMap),
+      currentScore: currentScore
+        + getIncrementalScoreForDestination(itemId, positionId, assignmentScoreMap, targetScoreMap)
+        + getIncrementalRelationPreferenceScore({ itemId, positionId, assignmentsByItemId, preferencePairMap, positionToContainerMap, adjacencyMap }),
       searchState,
     });
     assignedPositionIds.delete(positionId);
@@ -1099,6 +1145,7 @@ export class FirstSolverAdapter extends SolverAdapter {
       forbiddenAssignments: true,
       softAssignmentScores: true,
       softItemCountTargets: true,
+      softPreferences: true,
       optimization: true,
       weightedPreferences: true,
       scoreDetails: true,
@@ -1140,10 +1187,6 @@ export class FirstSolverAdapter extends SolverAdapter {
       errors.push(model.assignmentMode === ASSIGNMENT_MODES.POSITION
         ? 'First solver adapter currently supports mustShareContainer, mustNotShareContainer, mustBeAdjacent, and mustNotBeAdjacent hard constraints in position mode.'
         : 'First solver adapter currently supports only mustShareContainer and mustNotShareContainer hard constraints in container mode.');
-    }
-
-    if (model.preferences.length > 0) {
-      warnings.push('General soft preferences are ignored by the first solver adapter.');
     }
 
     if (model.assignmentMode === ASSIGNMENT_MODES.CONTAINER && (model.positions.length > 0 || model.topologies.length > 0)) {
@@ -1369,6 +1412,7 @@ export class FirstSolverAdapter extends SolverAdapter {
       const mustBeAdjacentMap = buildConstraintPairMap(model.constraints, CONSTRAINT_KINDS.MUST_BE_ADJACENT);
       const mustNotBeAdjacentMap = buildConstraintPairMap(model.constraints, CONSTRAINT_KINDS.MUST_NOT_BE_ADJACENT);
       const adjacencyMap = model.derived?.adjacencyMap ?? new Map();
+      const preferencePairMap = buildPreferencePairMap(model.preferences);
       const assignmentsByItemId = new Map();
       const assignedPositionIds = new Set();
       const candidatePositionIdsByItemId = new Map(model.items.map((item) => {
@@ -1404,14 +1448,32 @@ export class FirstSolverAdapter extends SolverAdapter {
             return leftCandidates - rightCandidates;
           }
 
+          const leftAdjacencyPriority = (mustBeAdjacentMap.get(leftItemId)?.size ?? 0)
+            + (mustNotBeAdjacentMap.get(leftItemId)?.size ?? 0)
+            + (preferencePairMap.get(leftItemId)?.filter(({ preference }) => (
+              preference.kind === PREFERENCE_KINDS.PREFER_ADJACENT
+              || preference.kind === PREFERENCE_KINDS.PREFER_NON_ADJACENT
+            )).length ?? 0);
+          const rightAdjacencyPriority = (mustBeAdjacentMap.get(rightItemId)?.size ?? 0)
+            + (mustNotBeAdjacentMap.get(rightItemId)?.size ?? 0)
+            + (preferencePairMap.get(rightItemId)?.filter(({ preference }) => (
+              preference.kind === PREFERENCE_KINDS.PREFER_ADJACENT
+              || preference.kind === PREFERENCE_KINDS.PREFER_NON_ADJACENT
+            )).length ?? 0);
+          if (leftAdjacencyPriority !== rightAdjacencyPriority) {
+            return rightAdjacencyPriority - leftAdjacencyPriority;
+          }
+
           const leftDegree = (mustShareMap.get(leftItemId)?.size ?? 0)
             + (mustNotShareMap.get(leftItemId)?.size ?? 0)
             + (mustBeAdjacentMap.get(leftItemId)?.size ?? 0)
-            + (mustNotBeAdjacentMap.get(leftItemId)?.size ?? 0);
+            + (mustNotBeAdjacentMap.get(leftItemId)?.size ?? 0)
+            + (preferencePairMap.get(leftItemId)?.length ?? 0);
           const rightDegree = (mustShareMap.get(rightItemId)?.size ?? 0)
             + (mustNotShareMap.get(rightItemId)?.size ?? 0)
             + (mustBeAdjacentMap.get(rightItemId)?.size ?? 0)
-            + (mustNotBeAdjacentMap.get(rightItemId)?.size ?? 0);
+            + (mustNotBeAdjacentMap.get(rightItemId)?.size ?? 0)
+            + (preferencePairMap.get(rightItemId)?.length ?? 0);
 
           if (leftDegree !== rightDegree) {
             return rightDegree - leftDegree;
@@ -1456,6 +1518,7 @@ export class FirstSolverAdapter extends SolverAdapter {
         model,
         assignmentScoreMap,
         targetScoreMap,
+        preferencePairMap,
         suffixUpperBounds,
         currentScore: 0,
         searchState,

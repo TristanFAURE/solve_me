@@ -1,5 +1,6 @@
 import { SOLVE_MODES } from '../../solver/solveOptions.js';
 import { renderFieldLabel } from './fieldHelp.js';
+import { renderJsonBlock } from './jsonBlock.js';
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -88,7 +89,7 @@ export function renderAdvancedDiagnostics(project, normalizedProject) {
     <details class="details-panel advanced-diagnostics">
       <summary>Advanced diagnostics</summary>
       <h3>Raw project JSON</h3>
-      <pre class="json-block">${escapeHtml(JSON.stringify(project, null, 2))}</pre>
-      ${normalizedProject ? `<h3>Normalized solver JSON</h3><pre class="json-block">${escapeHtml(JSON.stringify(normalizedProject, null, 2))}</pre>` : '<p class="muted-text">Validate the project to generate normalized solver JSON.</p>'}
+      ${renderJsonBlock(project, 'raw project JSON')}
+      ${normalizedProject ? `<h3>Normalized solver JSON</h3>${renderJsonBlock(normalizedProject, 'normalized solver JSON')}` : '<p class="muted-text">Validate the project to generate normalized solver JSON.</p>'}
     </details>`;
 }

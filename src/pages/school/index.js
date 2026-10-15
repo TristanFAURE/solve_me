@@ -1,12 +1,13 @@
 import { renderPageShell } from '../../components/common/pageShell.js';
 import { getGeneralPreferenceAuthoringPolicy } from '../../components/common/preferenceAuthoringPolicy.js';
 import { renderSolutionPanel } from '../../components/solutions/solutionPanel.js';
+import { renderSolutionNavigation } from '../../components/solutions/solutionNavigation.js';
 import { renderSolveStatus, updateSolveStatus } from '../../components/solutions/solveStatus.js';
 import { renderValidationPanel } from '../../components/solutions/validationPanel.js';
 import { CONSTRAINT_KINDS, createConstraint } from '../../core/model/constraints.js';
 import { createId } from '../../core/model/ids.js';
 import { createContainer, createGroup, createItem } from '../../core/model/nodes.js';
-import { createEmptyProject, VIEW_HINTS } from '../../core/model/project.js';
+import { createEmptyProject, isProject, VIEW_HINTS } from '../../core/model/project.js';
 import { PREFERENCE_KINDS, createPreference } from '../../core/model/preferences.js';
 import { createContainmentRelation, createEntityRef } from '../../core/model/relations.js';
 import { normalizeProject } from '../../core/normalize/normalizeProject.js';
@@ -28,11 +29,16 @@ import { exportSchoolConfigurationWorkbook, previewSchoolWorkbookFile } from './
 import { validateSchoolProject } from './validateSchoolProject.js';
 import { confirmProjectReplacement } from '../../app/dataSafety.js';
 import { bindPageDraftAutosave, persistPageDraft } from '../../storage/localDrafts.js';
-import { bindWorkflowTabs, isWorkflowTab, renderWorkflowPanel, renderWorkflowTabs } from '../../components/common/workflowTabs.js';
+import { bindWorkflowTabs, isWorkflowTab, renderWorkflowPanel, renderWorkflowTabs, WORKFLOW_TABS_WITH_DISPLAY } from '../../components/common/workflowTabs.js';
 import { buildWorkflowSolveOptions, createWorkflowSolveDraft, renderAdvancedDiagnostics, renderSolveConfiguration, renderWorkbookSetup, solveOptionIssues } from '../../components/common/workflowSetup.js';
 import { validateSolveOptions } from '../../solver/solveOptions.js';
 import { parseBulkLabels } from '../../components/common/bulkEntry.js';
 import { renderFieldLabel } from '../../components/common/fieldHelp.js';
+import { bindJsonCopyButtons, renderJsonBlock } from '../../components/common/jsonBlock.js';
+import { downloadJsonConfiguration, readJsonConfigurationFile, renderJsonConfigurationSetup } from '../../components/common/jsonConfiguration.js';
+import { migrateProjectModel } from '../../storage/modelVersioning.js';
+import { renderSchoolSolutionDisplay } from './schoolSolutionDisplay.js';
+import { assignTeachersToSchoolResult } from './teacherAssignment.js';
 
 const REPLACE_SCHOOL_MESSAGE = 'This will replace your current non-empty school scenario. Continue?';
 
@@ -106,7 +112,7 @@ function ensureSchoolProject(state) {
   }
   state.schoolPage.solveExecution ??= createSolveExecutionState();
   state.schoolPage.workbookImport ??= { status: 'idle', error: '', preview: null };
-  if (!isWorkflowTab(state.schoolPage.activeWorkflowTab)) state.schoolPage.activeWorkflowTab = 'setup';
+  if (!isWorkflowTab(state.schoolPage.activeWorkflowTab, WORKFLOW_TABS_WITH_DISPLAY)) state.schoolPage.activeWorkflowTab = 'setup';
 }
 
 function escapeHtml(value) {
@@ -172,7 +178,7 @@ function renderSchoolDataTools(project, editor) {
 
 function getAssignedStudentIds(solution, containerId) {
   return (solution?.assignments ?? [])
-    .filter((assignment) => assignment.containerRef?.id === containerId)
+    .filter((assignment) => assignment.containerRef?.id === containerId && assignment.metadata?.schoolRole !== 'teacher')
     .map((assignment) => assignment.itemRef?.id)
     .filter(Boolean);
 }
@@ -386,6 +392,7 @@ function renderTeachersPanel(project, editor) {
     const linkedClassLabels = classes
       .filter((classroom) => getContainerTeacherIds(classroom).includes(teacher.id))
       .map((classroom) => classroom.label);
+    const classPreferences = teacher.metadata?.classPreferences ?? {};
 
     return `
             <article class="entity-card school-entity-card">
@@ -415,6 +422,13 @@ function renderTeachersPanel(project, editor) {
                         <span>${escapeHtml(level.label)}</span>
                       </label>
                     `).join('')}
+                  </dd>
+                </div>
+                <div class="entity-meta-item full-width">
+                  <dt>Class preferences</dt>
+                  <dd class="school-teacher-preference-grid">
+                    <p class="muted-text full-width">Fixed class links are hard. Otherwise Prefer and Prefer not affect teacher matching, Neutral has no direct score, and Unavailable is a hard exclusion. Teacher/student relationship preferences are also considered after student placement.</p>
+                    ${classes.length === 0 ? '<span class="muted-text">Create classes first.</span>' : classes.map((classroom) => `<label><span>${escapeHtml(classroom.label)}</span><select data-action="teacher-class-preference" data-teacher-id="${escapeHtml(teacher.id)}" data-class-id="${escapeHtml(classroom.id)}"><option value="neutral"${(classPreferences[classroom.id] ?? 'neutral') === 'neutral' ? ' selected' : ''}>Neutral</option><option value="prefer"${classPreferences[classroom.id] === 'prefer' ? ' selected' : ''}>Prefer</option><option value="preferNot"${classPreferences[classroom.id] === 'preferNot' ? ' selected' : ''}>Prefer not</option><option value="unavailable"${classPreferences[classroom.id] === 'unavailable' ? ' selected' : ''}>Unavailable</option></select></label>`).join('')}
                   </dd>
                 </div>
               </div>
@@ -764,6 +778,7 @@ function renderSchoolSolutionPanelOptions(project, normalizedProject) {
     solutionPrefixLabel: 'Placement',
     capacityLabel: 'Capacity',
     displayProject: project,
+    getAssignmentCount: (assignments) => assignments.filter((assignment) => assignment.metadata?.schoolRole !== 'teacher').length,
     searchHintVocabulary: {
       'use-first-mode': 'Find the first class placement',
       'tighten-eligibility-bounds': 'Tighten class eligibility and capacities',
@@ -783,13 +798,22 @@ function renderSchoolSolutionPanelOptions(project, normalizedProject) {
           .map((levelId) => findNodeLabel(getLevels(project), levelId)),
       )];
       const normalizedSourceContainer = normalizedProject?.containers?.find((entry) => entry.id === container.id) ?? container;
+      const studentAssignments = assignments.filter((assignment) => assignment.metadata?.schoolRole !== 'teacher');
+      const teacherAssignments = assignments.filter((assignment) => assignment.metadata?.schoolRole === 'teacher');
+      const studentList = studentAssignments.length
+        ? studentAssignments.map((assignment) => `<li>${escapeHtml(findNodeLabel(getStudents(project), assignment.itemRef?.id))}</li>`).join('')
+        : '<li class="muted-text">No assigned students</li>';
+      const assignedTeacherList = teacherAssignments.length
+        ? teacherAssignments.map((assignment) => `<li>${escapeHtml(findNodeLabel(getTeachers(project), assignment.itemRef?.id))}</li>`).join('')
+        : '<li class="muted-text">No assigned teacher</li>';
 
       return `
         <div class="entity-meta-item"><dt>Capacity</dt><dd>${escapeHtml(normalizedSourceContainer.metadata?.minCapacity ?? normalizedSourceContainer.minCapacity ?? 0)} → ${escapeHtml(normalizedSourceContainer.metadata?.maxCapacity ?? normalizedSourceContainer.maxCapacity ?? '∞')}</dd></div>
         <div class="entity-meta-item"><dt>Accepted levels</dt><dd>${renderMembershipList(acceptedLevelLabels, 'All levels are allowed')}</dd></div>
-        <div class="entity-meta-item"><dt>Linked teachers</dt><dd>${renderMembershipList(teacherLabels, 'No teacher linked')}</dd></div>
+        <div class="entity-meta-item"><dt>Fixed teacher links</dt><dd>${renderMembershipList(teacherLabels, 'No fixed teacher link')}</dd></div>
+        <div class="entity-meta-item"><dt>Assigned teacher</dt><dd><ul class="solution-item-list">${assignedTeacherList}</ul></dd></div>
         <div class="entity-meta-item"><dt>Levels present in this class</dt><dd>${renderMembershipList(assignedLevels, 'No assigned student level yet')}</dd></div>
-        <div class="entity-meta-item"><dt>Assigned students</dt><dd><ul class="solution-item-list">${defaultItemList}</ul></dd></div>
+        <div class="entity-meta-item"><dt>Assigned students</dt><dd><ul class="solution-item-list">${studentList}</ul></dd></div>
       `;
     },
   };
@@ -826,7 +850,7 @@ function renderNormalizationSummary(normalizedProject) {
       </dl>
       <details class="details-panel top-gap">
         <summary>View normalized project JSON</summary>
-        <pre class="json-block">${escapeHtml(JSON.stringify(normalizedProject, null, 2))}</pre>
+        ${renderJsonBlock(normalizedProject, 'normalized school project JSON')}
       </details>
     </section>
   `;
@@ -909,6 +933,7 @@ function runSchoolSolveFlow(state, root) {
     model: normalizedProject,
     options: optionsValidation.options,
     onResult(solverResult) {
+      solverResult = assignTeachersToSchoolResult(state.schoolPage.project, solverResult);
       state.schoolPage.lastSolverResult = {
         ...solverResult,
         warnings: [...(adapterValidation.warnings ?? []), ...(solverResult.warnings ?? [])],
@@ -935,7 +960,7 @@ function renderProjectDebug(project) {
       <p class="muted-text">This school page still writes directly into the shared generic project shape so it can later plug into the common validate → normalize → solve flow.</p>
       <details class="details-panel">
         <summary>View project JSON</summary>
-        <pre class="json-block">${escapeHtml(JSON.stringify(project, null, 2))}</pre>
+        ${renderJsonBlock(project, 'school project JSON')}
       </details>
     </section>
   `;
@@ -1407,6 +1432,21 @@ function bindActions(root, state) {
       return;
     }
 
+    if (action === 'teacher-class-preference') {
+      element.addEventListener('change', (event) => {
+        const teacher = getItems(state.schoolPage.project).find((item) => item.id === event.target.dataset.teacherId);
+        if (!teacher) return;
+        teacher.metadata = teacher.metadata ?? {};
+        teacher.metadata.classPreferences = { ...(teacher.metadata.classPreferences ?? {}) };
+        if (event.target.value === 'neutral') delete teacher.metadata.classPreferences[event.target.dataset.classId];
+        else teacher.metadata.classPreferences[event.target.dataset.classId] = event.target.value;
+        clearSchoolMessage(state);
+        resetSchoolDerivedState(state);
+        renderSchoolPage(root, state);
+      });
+      return;
+    }
+
     if (action === 'toggle-school-command-bar') {
       element.addEventListener('click', () => {
         state.schoolPage.commandBarExpanded = !state.schoolPage.commandBarExpanded;
@@ -1438,6 +1478,7 @@ function bindActions(root, state) {
           : state.schoolPage.lastSolverResult?.status === 'unsat'
             ? 'No valid class distribution was found with the current rules and capacities. 🧠'
             : 'School solve could not complete successfully.';
+        renderSchoolPage(root, state);
       });
       return;
     }
@@ -1462,6 +1503,35 @@ function bindActions(root, state) {
         }
 
         event.target.value = '';
+        renderSchoolPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'import-school-json') {
+      element.addEventListener('change', async (event) => {
+        const [file] = Array.from(event.target.files ?? []);
+        if (!file) return;
+        try {
+          const imported = migrateProjectModel(await readJsonConfigurationFile(file));
+          if (!isProject(imported) || imported.viewHint !== VIEW_HINTS.SCHOOL) throw new Error('The file does not contain a School project.');
+          if (!confirmProjectReplacement(state.schoolPage.project, 'Replace the current School configuration with this JSON file?')) return;
+          state.schoolPage.project = imported;
+          resetSchoolDerivedState(state);
+          state.schoolPage.message = `JSON configuration imported from ${file.name}. Review it before solving.`;
+        } catch (error) {
+          state.schoolPage.message = error instanceof Error ? `JSON import failed: ${error.message}` : 'JSON import failed.';
+        }
+        event.target.value = '';
+        renderSchoolPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'export-school-json') {
+      element.addEventListener('click', () => {
+        downloadJsonConfiguration(state.schoolPage.project, 'school');
+        state.schoolPage.message = 'School JSON configuration downloaded.';
         renderSchoolPage(root, state);
       });
       return;
@@ -1596,12 +1666,14 @@ export function renderSchoolPage(root, state) {
       <label class="full-width">${renderFieldLabel('Description', 'Optional planning notes, assumptions, or context for this scenario.')}<textarea name="schoolDescription" rows="3">${escapeHtml(state.schoolPage.project.description)}</textarea></label>
     </div></section>
     ${renderSolveConfiguration(state.schoolPage.editor, 'school')}
+    ${renderJsonConfigurationSetup({ prefix: 'school', domainLabel: 'School' })}
     ${renderWorkbookSetup(state.schoolPage.workbookImport, 'school', 'school scenario')}`;
   const dataContent = `${renderSchoolDataTools(state.schoolPage.project, state.schoolPage.editor)}${renderCreateCards(state.schoolPage.project, state.schoolPage.editor)}
     <section class="workspace-columns two-up">${renderStudentsPanel(state.schoolPage.project, state.schoolPage.editor)}${renderTeachersPanel(state.schoolPage.project, state.schoolPage.editor)}</section>
     <section class="workspace-columns two-up">${renderLevelsPanel(state.schoolPage.project, state.schoolPage.editor)}${renderClassesPanel(state.schoolPage.project, state.schoolPage.editor)}</section>`;
   const reviewContent = `${renderSchoolCommandBar(state.schoolPage.lastSolverResult, state.schoolPage.commandBarExpanded !== false)}${renderSolveStatus(state.schoolPage.solveExecution)}${renderValidationPanel(state.schoolPage.lastValidation, { hasComputedSolution: Boolean(state.schoolPage.lastSolverResult), expanded: state.schoolPage.validationPanelExpanded })}${renderAdvancedDiagnostics(state.schoolPage.project, state.schoolPage.lastNormalizedProject)}`;
   const resultsContent = `${renderSolutionPanel(state.schoolPage.lastNormalizedProject ?? state.schoolPage.project, state.schoolPage.lastSolverResult, state.schoolPage.editor.activeSolutionIndex, renderSchoolSolutionPanelOptions(state.schoolPage.project, state.schoolPage.lastNormalizedProject))}${state.schoolPage.lastSolverResult?.solutions?.length ? '<div class="button-row top-gap"><button type="button" data-action="export-school-solution">Export selected solved class distribution</button></div>' : ''}`;
+  const displayContent = `${renderSolutionNavigation(state.schoolPage.editor.activeSolutionIndex, state.schoolPage.lastSolverResult?.solutions?.length ?? 0)}${renderSchoolSolutionDisplay({ project: state.schoolPage.project, normalizedProject: state.schoolPage.lastNormalizedProject, result: state.schoolPage.lastSolverResult, activeSolutionIndex: state.schoolPage.editor.activeSolutionIndex })}`;
 
   root.innerHTML = renderPageShell({
     activeRoute: '/school',
@@ -1611,17 +1683,19 @@ export function renderSchoolPage(root, state) {
     body: `
       ${state.schoolPage.message ? `<section class="command-bar-feedback" role="status" aria-live="polite">${escapeHtml(state.schoolPage.message)}</section>` : ''}
       ${renderSummary(state.schoolPage.project)}
-      ${renderWorkflowTabs(activeTab)}
+      ${renderWorkflowTabs(activeTab, WORKFLOW_TABS_WITH_DISPLAY)}
       ${renderWorkflowPanel('setup', activeTab, setupContent)}
       ${renderWorkflowPanel('data', activeTab, dataContent)}
       ${renderWorkflowPanel('rules', activeTab, renderRulePanels(state.schoolPage.project, state.schoolPage.editor, preferencePolicy))}
       ${renderWorkflowPanel('review', activeTab, reviewContent)}
       ${renderWorkflowPanel('results', activeTab, resultsContent)}
+      ${renderWorkflowPanel('display', activeTab, displayContent)}
     `,
   });
 
   bindInputs(root, state);
   bindActions(root, state);
   bindEnterToCreate(root, state);
+  bindJsonCopyButtons(root);
   bindPageDraftAutosave(root, state.draftStorage, 'school', () => state.schoolPage.project, state.schoolPage.persistence);
 }

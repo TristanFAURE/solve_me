@@ -17,6 +17,7 @@ This feature includes:
 - handling of truncated or partial result sets
 - shared presentation behavior across generic and specialized pages
 - support for domain-facing solved-result exports such as readable spreadsheets when a specialized page requires them
+- a domain-oriented Display tab after Results for School and Wedding; Results remains the analytical solver status, score, diagnostics, and assignment-card view
 
 ## Out of scope
 
@@ -26,7 +27,9 @@ This feature does not define:
 - advanced diffing between all solutions
 - animated visual layouts
 - full unsat explanation tooling
-- domain-specific custom graphics beyond data the shared layer can expose
+- editable domain-specific floor-plan tools or exact physical geometry
+
+School classroom desk positions and Wedding table-only perimeter positions are presentation-only. Wedding position-mode displays use the selected solution's actual seat assignments. Wedding round, square, and rectangle geometry is schematic and does not alter generic ring adjacency semantics.
 
 ## User stories
 
@@ -96,6 +99,8 @@ If optimization or preference scoring is active, the UI must display:
 - overall score or penalty value
 - indication of how score direction is interpreted if needed
 - summary of satisfied and violated soft preferences when available
+
+The JavaScript solver includes weighted general relationship preferences in `assignmentScores`: same/different container preferences work in container and position modes, while adjacent/non-adjacent preferences use configured position topology. A weight of zero has no ranking effect; larger weights increase relative influence but never relax hard constraints.
 
 If the solve mode is hard-only, the UI should not pretend there is a score unless the adapter returns one for another reason.
 

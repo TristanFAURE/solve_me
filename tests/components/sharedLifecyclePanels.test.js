@@ -60,6 +60,16 @@ function buildResult(status, solutions = []) {
 }
 
 describe('shared validation lifecycle panels', () => {
+  it.each([
+    ['Generic', renderGenericPage],
+    ['Event Staffing', renderEventStaffingPage],
+  ])('does not add the specialized Display tab to %s', (_name, renderPage) => {
+    const root = createRoot();
+    renderPage(root, createAppState({ storage: null }));
+    expect(root.innerHTML).not.toContain('data-workflow-tab="display"');
+    expect(root.innerHTML).not.toContain('workflow-panel-display');
+  });
+
   it('renders an accessible phase and time-budget progress bar while solving', () => {
     const html = renderSolveStatus({
       status: 'solving',
@@ -214,6 +224,19 @@ describe('shared validation lifecycle panels', () => {
     expect(root.innerHTML).toContain('class="field-tooltip"');
     expect(root.innerHTML).toContain('data-tooltip=');
     expect(root.innerHTML).toContain('tabindex="0" role="note"');
+  });
+
+  it.each([
+    ['Generic', renderGenericPage],
+    ['School', renderSchoolPage],
+    ['Wedding', renderWeddingPage],
+    ['Event Staffing', renderEventStaffingPage],
+  ])('provides JSON configuration import/export on %s', (_name, renderPage) => {
+    const root = createRoot();
+    renderPage(root, createAppState({ storage: null }));
+    expect(root.innerHTML).toContain('JSON configuration');
+    expect(root.innerHTML).toContain('Export JSON configuration');
+    expect(root.innerHTML).toContain('Import JSON configuration');
   });
 
   it('explains Event Staffing fields across setup, data, and rules', () => {

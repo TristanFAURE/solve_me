@@ -20,8 +20,10 @@ import {
 import { validateEventStaffingProject } from '../../src/pages/eventStaffing/validateEventStaffingProject.js';
 import { renderGenericPage } from '../../src/pages/generic/index.js';
 import { renderSchoolPage } from '../../src/pages/school/index.js';
+import { renderSchoolSolutionDisplay } from '../../src/pages/school/schoolSolutionDisplay.js';
 import { validateSchoolProject } from '../../src/pages/school/validateSchoolProject.js';
 import { renderWeddingPage } from '../../src/pages/wedding/index.js';
+import { renderWeddingSolutionDisplay } from '../../src/pages/wedding/weddingSolutionDisplay.js';
 import { validateWeddingProject } from '../../src/pages/wedding/validateWeddingProject.js';
 import { FirstSolverAdapter } from '../../src/solver/adapters/firstSolverAdapter.js';
 import { exportProject, importProject } from '../../src/storage/importExport.js';
@@ -104,6 +106,7 @@ function buildSchoolProject() {
       createItem({ id: 'alice', label: 'Alice', metadata: { schoolRole: 'student' } }),
       createItem({ id: 'bob', label: 'Bob', metadata: { schoolRole: 'student' } }),
       createItem({ id: 'teacher-a', label: 'Teacher A', metadata: { schoolRole: 'teacher' } }),
+      createItem({ id: 'teacher-b', label: 'Teacher B', metadata: { schoolRole: 'teacher' } }),
     ],
     groups: [
       createGroup({ id: 'level-a', label: 'Level A' }),
@@ -120,12 +123,14 @@ function buildSchoolProject() {
         id: 'class-b',
         label: 'Class B',
         maxCapacity: 1,
-        metadata: { acceptedLevelIds: ['level-b'], teacherIds: [] },
+        metadata: { acceptedLevelIds: ['level-b'], teacherIds: ['teacher-b'] },
       }),
     ],
     containments: [
       createContainmentRelation(groupRef('level-a'), itemRef('alice')),
       createContainmentRelation(groupRef('level-b'), itemRef('bob')),
+      createContainmentRelation(groupRef('level-a'), itemRef('teacher-a')),
+      createContainmentRelation(groupRef('level-b'), itemRef('teacher-b')),
     ],
   });
 }
@@ -261,6 +266,19 @@ describe('cross-domain compatibility gate', () => {
       expect(assignments.get('alice').containerRef.id).toBe('class-a');
       expect(assignments.get('bob').containerRef.id).toBe('class-b');
     });
+    const normalizedSnapshot = structuredClone(state.schoolPage.lastNormalizedProject);
+    const resultSnapshot = structuredClone(state.schoolPage.lastSolverResult);
+    const display = renderSchoolSolutionDisplay({
+      project,
+      normalizedProject: state.schoolPage.lastNormalizedProject,
+      result: state.schoolPage.lastSolverResult,
+      activeSolutionIndex: 0,
+    });
+    expect(display).toContain('Alice');
+    expect(display).toContain('Bob');
+    expect(display).toContain('Teacher A');
+    expect(state.schoolPage.lastNormalizedProject).toEqual(normalizedSnapshot);
+    expect(state.schoolPage.lastSolverResult).toEqual(resultSnapshot);
     expectSafeSolvedPage(root);
   });
 
@@ -282,6 +300,14 @@ describe('cross-domain compatibility gate', () => {
       expect(assignments.get('guest-a').containerRef.id).toBe(assignments.get('guest-b').containerRef.id);
       expect(assignments.get('guest-c').containerRef.id).not.toBe(assignments.get('guest-a').containerRef.id);
     });
+    const tableDisplay = renderWeddingSolutionDisplay({
+      project,
+      normalizedProject: state.weddingPage.lastNormalizedProject,
+      result: state.weddingPage.lastSolverResult,
+      activeSolutionIndex: 0,
+    });
+    ['Guest A', 'Guest B', 'Guest C'].forEach((guest) => expect(tableDisplay).toContain(guest));
+    expect(tableDisplay).toContain('positions around the table are illustrative');
     expectSafeSolvedPage(root);
   });
 
@@ -308,6 +334,17 @@ describe('cross-domain compatibility gate', () => {
       expect(normalized.derived.adjacencyMap.get(a).has(b)).toBe(true);
       expect(normalized.derived.adjacencyMap.get(a).has(c)).toBe(false);
     });
+    const normalizedSnapshot = structuredClone(normalized);
+    const resultSnapshot = structuredClone(state.weddingPage.lastSolverResult);
+    const seatDisplay = renderWeddingSolutionDisplay({
+      project,
+      normalizedProject: normalized,
+      result: state.weddingPage.lastSolverResult,
+      activeSolutionIndex: 0,
+    });
+    ['Seat 1', 'Seat 2', 'Seat 3', 'Guest A', 'Guest B', 'Guest C'].forEach((label) => expect(seatDisplay).toContain(label));
+    expect(normalized).toEqual(normalizedSnapshot);
+    expect(state.weddingPage.lastSolverResult).toEqual(resultSnapshot);
     expectSafeSolvedPage(root);
   });
 

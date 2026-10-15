@@ -8,6 +8,7 @@ import {
   isSchoolStudent,
   isSchoolTeacher,
 } from '../../core/transform/domainMappings.js';
+import { assignTeachersToSchoolSolution } from './teacherAssignment.js';
 
 function createIssue(level, code, message, path) {
   return { level, code, message, path };
@@ -71,6 +72,31 @@ export function validateSchoolProject(project) {
     errors.push(createIssue('error', 'school-capacity-too-small', `The total class capacity (${totalMaxCapacity}) is smaller than the number of students (${students.length}). Some students would have nowhere to go.`, 'classes'));
   }
 
+  if (teachers.length > 0 && teachers.length < classes.length) {
+    errors.push(createIssue('error', 'school-not-enough-teachers', `Exactly one teacher is required for each class, but there are ${teachers.length} teachers for ${classes.length} classes.`, 'teachers'));
+  }
+  const linkedClassesByTeacherId = new Map();
+  classes.forEach((classroom, index) => {
+    const teacherIds = classroom.metadata?.teacherIds ?? [];
+    if (teacherIds.length > 1) {
+      errors.push(createIssue('error', 'school-class-multiple-fixed-teachers', `Class "${classroom.label}" has more than one fixed teacher link. Exactly one teacher is allowed.`, `classes[${index}]`));
+    }
+    teacherIds.forEach((teacherId) => {
+      const linked = linkedClassesByTeacherId.get(teacherId) ?? [];
+      linked.push(classroom.id);
+      linkedClassesByTeacherId.set(teacherId, linked);
+    });
+  });
+  linkedClassesByTeacherId.forEach((classIds, teacherId) => {
+    if (classIds.length > 1) {
+      const teacher = teachers.find((entry) => entry.id === teacherId);
+      errors.push(createIssue('error', 'school-teacher-fixed-to-multiple-classes', `Teacher "${teacher?.label ?? teacherId}" is fixed to more than one class.`, 'classes'));
+    }
+  });
+  if (teachers.length > 0 && errors.length === 0 && !assignTeachersToSchoolSolution(project, { assignments: [] })) {
+    errors.push(createIssue('error', 'school-teacher-assignment-impossible', 'Teachers cannot be matched one-per-class with the current fixed links, level compatibility, and class availability.', 'teachers'));
+  }
+
   const constraints = Array.isArray(project?.constraints) ? project.constraints : [];
   constraints.forEach((constraint, index) => {
     const leftItem = findItemById(project, constraint.leftRef?.id);
@@ -85,9 +111,7 @@ export function validateSchoolProject(project) {
         const teacherClassIds = getTeacherAssociatedContainerIds(project, leftItem.id);
         const compatibleClassIds = findCompatibleClassIdsForStudent(project, rightItem.id);
         const feasibleClassIds = compatibleClassIds.filter((id) => teacherClassIds.includes(id));
-        if (teacherClassIds.length === 0) {
-          errors.push(createIssue('error', 'school-teacher-rule-without-class', `Teacher "${leftItem.label}" must be linked to at least one class before using a must-be-together rule with student "${rightItem.label}".`, `rules[${index}]`));
-        } else if (feasibleClassIds.length === 0) {
+        if (teacherClassIds.length > 0 && feasibleClassIds.length === 0) {
           errors.push(createIssue('error', 'school-impossible-teacher-student-rule', `Student "${rightItem.label}" cannot be placed with teacher "${leftItem.label}" because none of that teacher's classes accepts the student's level.`, `rules[${index}]`));
         }
       }
@@ -96,9 +120,7 @@ export function validateSchoolProject(project) {
         const teacherClassIds = getTeacherAssociatedContainerIds(project, rightItem.id);
         const compatibleClassIds = findCompatibleClassIdsForStudent(project, leftItem.id);
         const feasibleClassIds = compatibleClassIds.filter((id) => teacherClassIds.includes(id));
-        if (teacherClassIds.length === 0) {
-          errors.push(createIssue('error', 'school-teacher-rule-without-class', `Teacher "${rightItem.label}" must be linked to at least one class before using a must-be-together rule with student "${leftItem.label}".`, `rules[${index}]`));
-        } else if (feasibleClassIds.length === 0) {
+        if (teacherClassIds.length > 0 && feasibleClassIds.length === 0) {
           errors.push(createIssue('error', 'school-impossible-teacher-student-rule', `Student "${leftItem.label}" cannot be placed with teacher "${rightItem.label}" because none of that teacher's classes accepts the student's level.`, `rules[${index}]`));
         }
       }
@@ -126,7 +148,7 @@ export function validateSchoolProject(project) {
   teachers.forEach((teacher, index) => {
     const linkedClassIds = getTeacherAssociatedContainerIds(project, teacher.id);
     if (linkedClassIds.length === 0) {
-      warnings.push(createIssue('warning', 'school-teacher-without-class', `Teacher "${teacher.label}" is not linked to any class yet, so teacher-based rules may not influence solving.`, `teachers[${index}]`));
+      warnings.push(createIssue('warning', 'school-teacher-without-class', `Teacher "${teacher.label}" has no fixed class link and will be assigned by compatibility and preferences.`, `teachers[${index}]`));
     }
   });
 

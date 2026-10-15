@@ -46,6 +46,7 @@ describe('solver support modules', () => {
       forbiddenAssignments: true,
       softAssignmentScores: true,
       softItemCountTargets: true,
+      softPreferences: true,
       optimization: true,
       weightedPreferences: true,
       scoreDetails: true,

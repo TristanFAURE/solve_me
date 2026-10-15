@@ -412,6 +412,35 @@ body {
   font-size: 12px;
 }
 
+.json-block-wrap {
+  position: relative;
+}
+
+.json-copy-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  margin: 0;
+  padding: 6px 9px;
+  border: 1px solid #94a3b8;
+  border-radius: 7px;
+  background: #fff;
+  color: #334155;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.json-copy-button:hover {
+  background: #e2e8f0;
+}
+
+.json-block-wrap .json-block {
+  padding-top: 44px;
+}
+
 .form-grid {
   display: grid;
   gap: 12px;
@@ -1702,5 +1731,330 @@ textarea {
   .validation-panel-summary {
     flex-direction: column;
     align-items: stretch;
+  }
+}
+
+.school-display,
+.wedding-display {
+  display: grid;
+  gap: 16px;
+}
+
+.school-display-board,
+.wedding-table-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 18px;
+}
+
+.wedding-table-board {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.school-classroom {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #bae6fd;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fff 0%, #f0f9ff 100%);
+  box-shadow: 0 8px 24px rgba(14, 116, 144, 0.08);
+}
+
+.school-classroom-header,
+.school-teaching-zone {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.school-classroom-header h3,
+.wedding-table-card h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.school-classroom-summary {
+  min-width: 0;
+  margin: 14px 0;
+}
+
+.school-display-label-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.school-teaching-zone {
+  align-items: stretch;
+  padding: 14px;
+  border-radius: 12px;
+  background: #e0f2fe;
+}
+
+.school-board {
+  display: grid;
+  flex: 1 1 55%;
+  place-content: center;
+  min-height: 92px;
+  padding: 14px;
+  border: 6px solid #92400e;
+  border-radius: 8px;
+  background: #164e63;
+  color: #fff;
+  text-align: center;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.16);
+}
+
+.school-board strong,
+.school-board span {
+  overflow-wrap: anywhere;
+}
+
+.school-board span {
+  margin-top: 5px;
+  color: #bae6fd;
+  font-size: 12px;
+}
+
+.school-teacher-list {
+  display: grid;
+  flex: 1 1 40%;
+  gap: 8px;
+  align-content: center;
+}
+
+.school-teacher-preference-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.school-teacher-preference-grid label {
+  display: grid;
+  gap: 5px;
+}
+
+.school-teacher-preference-grid select {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 7px 8px;
+  background: #fff;
+  font: inherit;
+}
+
+.school-teacher-chip,
+.school-student-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.school-teacher-chip {
+  padding: 9px 10px;
+  border: 1px solid #7dd3fc;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.school-desk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.school-desk {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-bottom: 5px solid #92400e;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.school-desk ul {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.school-student-chip small {
+  display: block;
+  margin-top: 2px;
+  color: #64748b;
+}
+
+.school-display-note,
+.wedding-display-note {
+  margin: 12px 0 0;
+  color: #475569;
+  font-size: 13px;
+}
+
+.wedding-table-card {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #fdba74;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #fffaf5 0%, #fff7ed 100%);
+  box-shadow: 0 10px 26px rgba(194, 65, 12, 0.09);
+}
+
+.wedding-table-diagram-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.wedding-table-diagram {
+  position: relative;
+  width: 100%;
+  min-width: 600px;
+  height: 430px;
+  margin: 12px auto 0;
+}
+
+.wedding-table-surface {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-content: center;
+  width: 48%;
+  height: 42%;
+  padding: 18px;
+  border: 4px solid #d97706;
+  background: #fffbeb;
+  color: #7c2d12;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 8px 20px rgba(146, 64, 14, 0.12);
+}
+
+.wedding-table-surface strong,
+.wedding-table-surface span {
+  overflow-wrap: anywhere;
+}
+
+.wedding-table-surface span {
+  margin-top: 5px;
+  font-size: 13px;
+}
+
+.wedding-table-surface.wedding-table-round {
+  border-radius: 50%;
+}
+
+.wedding-table-surface.wedding-table-square {
+  width: 42%;
+  height: 58%;
+  border-radius: 12px;
+}
+
+.wedding-table-surface.wedding-table-rectangle {
+  width: 62%;
+  height: 38%;
+  border-radius: 14px;
+}
+
+.wedding-position-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wedding-position-chip {
+  position: absolute;
+  top: calc(var(--seat-y) * 1%);
+  left: calc(var(--seat-x) * 1%);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 142px;
+  min-height: 48px;
+  padding: 7px 9px;
+  border: 1px solid #fb923c;
+  border-radius: 12px;
+  background: #fff;
+  color: #431407;
+  overflow-wrap: anywhere;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 4px 12px rgba(194, 65, 12, 0.1);
+}
+
+.wedding-position-chip small {
+  display: block;
+  margin-top: 2px;
+  color: #9a3412;
+}
+
+.wedding-seat-guests {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.wedding-seat-guests > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.wedding-empty-position {
+  border-style: dashed;
+  background: #fffaf5;
+  color: #78716c;
+}
+
+.wedding-table-compact .wedding-position-chip {
+  width: 112px;
+  min-height: 42px;
+  padding: 6px 7px;
+  font-size: 12px;
+}
+
+.wedding-table-empty-message {
+  position: absolute;
+  right: 0;
+  bottom: 12px;
+  left: 0;
+  color: #78716c;
+  text-align: center;
+}
+
+.wedding-unresolved-assignments li {
+  margin: 6px 0;
+}
+
+@media (max-width: 720px) {
+  .school-display-board,
+  .wedding-table-board {
+    grid-template-columns: 1fr;
+  }
+
+  .school-classroom,
+  .wedding-table-card {
+    padding: 13px;
+  }
+
+  .school-classroom-header,
+  .school-teaching-zone {
+    flex-direction: column;
+  }
+
+  .school-board,
+  .school-teacher-list {
+    width: 100%;
+  }
+
+  .wedding-table-diagram {
+    min-width: 560px;
   }
 }

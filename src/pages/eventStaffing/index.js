@@ -22,6 +22,9 @@ import { bindPageDraftAutosave, persistPageDraft } from '../../storage/localDraf
 import { bindWorkflowTabs, isWorkflowTab, renderWorkflowPanel as renderTabPanel, renderWorkflowTabs } from '../../components/common/workflowTabs.js';
 import { getDayGroupPreferenceMap, getDayPreferenceMap, getEffectiveAssignmentPreference, getSlotDayKey, migrateEventStaffingProject, moveSlotDayPreferences, getPreferenceMap, normalizePreferenceState, PREFERENCE_STATES } from './migration.js';
 import { renderFieldLabel } from '../../components/common/fieldHelp.js';
+import { bindJsonCopyButtons, renderJsonBlock } from '../../components/common/jsonBlock.js';
+import { downloadJsonConfiguration, readJsonConfigurationFile, renderJsonConfigurationSetup } from '../../components/common/jsonConfiguration.js';
+import { confirmProjectReplacement } from '../../app/dataSafety.js';
 import { movePreferenceMatrixDay, movePreferenceMatrixPerson, renderPreferenceMatrix, setDayAvailability, setDayGroupPreference, setSlotPreference } from './preferenceMatrix.js';
 import { addAssignmentRule, addCooldownRule, renderRuleEditors } from './ruleEditors.js';
 import {
@@ -481,7 +484,7 @@ export function renderStaffingScheduleView(domainProject, solverResult, activeSo
       </div>
       <details class="details-panel top-gap">
         <summary>View raw staffing solver result JSON</summary>
-        <pre class="json-block">${escapeHtml(JSON.stringify(solverResult, null, 2))}</pre>
+        ${renderJsonBlock(solverResult, 'staffing solver result JSON')}
       </details>
     </section>
   `;
@@ -489,9 +492,8 @@ export function renderStaffingScheduleView(domainProject, solverResult, activeSo
 
 export function getVisibleAdministratorRepairDates(domainProject, validationErrors = []) {
   const blockingEventIds = new Set(validationErrors
-    .map((issue) => String(issue.path ?? ''))
-    .filter((path) => path.startsWith('events.'))
-    .map((path) => path.slice('events.'.length)));
+    .map((issue) => issue.eventId ?? (String(issue.path ?? '').startsWith('events.') ? String(issue.path).slice('events.'.length) : null))
+    .filter(Boolean));
   const allDates = getAdministratorRepairDates(domainProject);
   const blockingDayKeys = new Set((domainProject.events ?? [])
     .filter((event) => blockingEventIds.has(event.id))
@@ -530,6 +532,7 @@ export function getAdministratorRepairSelection(domainProject, normalizedProject
     domainProject,
     normalizedProject,
     dateKey,
+    repairState.validationErrors ?? [],
   ));
   const candidateIds = new Set(candidates.map((candidate) => candidate.id));
   const selectedIds = dates.flatMap(({ dateKey }) => getAdministratorRepairSelectedIds(repairState, dateKey))
@@ -553,14 +556,19 @@ export function renderAdministratorRepairPanel(domainProject, normalizedProject,
   const dateKey = dates.some((date) => date.dateKey === repairState.dateKey)
     ? repairState.dateKey
     : (dates[0]?.dateKey ?? '');
-  const candidates = buildAdministratorRepairCandidates(domainProject, normalizedProject, dateKey);
+  const candidates = buildAdministratorRepairCandidates(domainProject, normalizedProject, dateKey, validationErrors);
   const selected = new Set(getAdministratorRepairSelectedIds(repairState, dateKey));
   const allSelected = getAdministratorRepairSelection(domainProject, normalizedProject, dates, repairState).selectedIds;
+  const dateEventIds = new Set((domainProject.events ?? []).filter((event) => getSlotDayKey(event) === dateKey).map((event) => event.id));
+  const dateIssues = validationErrors.filter((issue) => {
+    const eventId = issue.eventId ?? (String(issue.path ?? '').startsWith('events.') ? String(issue.path).slice('events.'.length) : null);
+    return dateEventIds.has(eventId);
+  });
   return `
     <section class="panel administrator-repair-panel">
       <p class="eyebrow">${solverResult?.status === 'unsat' ? 'Unsatisfiable hard model' : 'Repairable hard-constraint conflict'}</p>
       <h2>Temporary administrator repair</h2>
-      <p>Select narrowly scoped person restrictions on each blocking date. The repair solve uses selections from all dates, not only the date currently shown. The original project rules are unchanged; exceptions apply only to this repair solve. Coverage min/max and cooldown/rest rules always remain hard and are never available here. Relaxed prohibitions receive a strong penalty. Each selected workload-limit exception permits at most one extra assignment and is explicitly reported when used; the equity objective still controls how work is distributed.</p>
+      <p>Select narrowly scoped person restrictions on each blocking date. When validation identifies a slot or category shortage, only restrictions intersecting that exact conflict are listed; unrelated workload or category maxima are hidden. The repair solve uses selections from all dates, not only the date currently shown. The original project rules are unchanged; exceptions apply only to this repair solve. Coverage min/max and cooldown/rest rules always remain hard and are never available here.</p>
       <div class="event-staffing-inline-actions">
         <button type="button" class="navigation-arrow" data-event-staffing-action="previous-repair-date"${dates.findIndex((date) => date.dateKey === dateKey) <= 0 ? ' disabled' : ''} aria-label="Previous blocking date"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m12.5 4-6 6 6 6" /></svg></button>
         <label>${filteredToBlockingDates ? 'Blocking date' : 'Date to inspect'}
@@ -570,6 +578,7 @@ export function renderAdministratorRepairPanel(domainProject, normalizedProject,
         </label>
         <button type="button" class="navigation-arrow" data-event-staffing-action="next-repair-date"${dates.findIndex((date) => date.dateKey === dateKey) >= dates.length - 1 ? ' disabled' : ''} aria-label="Next blocking date"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m7.5 4 6 6-6 6" /></svg></button>
       </div>
+      ${dateIssues.length ? `<h3 class="top-gap">Identified conflicts</h3><ul class="issue-list compact-issue-list">${dateIssues.map((issue) => `<li class="issue-list-item error"><strong>${escapeHtml(issue.code)}</strong><div>${escapeHtml(issue.message)}</div></li>`).join('')}</ul><h3>Relaxable constraints involved</h3>` : ''}
       <div class="event-staffing-inline-actions top-gap">
         <button type="button" class="command-bar-button" data-event-staffing-action="select-all-repair-candidates"${candidates.length ? '' : ' disabled'}>Select all</button>
         <button type="button" class="command-bar-button" data-event-staffing-action="clear-repair-candidates"${selected.size ? '' : ' disabled'}>Clear all</button>
@@ -644,7 +653,7 @@ function renderTransformedProjectSummary(project) {
       </dl>
       <details class="details-panel top-gap">
         <summary>View transformed project JSON</summary>
-        <pre class="json-block">${escapeHtml(JSON.stringify(project, null, 2))}</pre>
+        ${renderJsonBlock(project, 'transformed staffing project JSON')}
       </details>
     </section>
   `;
@@ -732,6 +741,7 @@ function renderSetupPanel(domainProject, state) {
         <label class="checkbox-chip"><input type="checkbox" name="staffingDiversityEnabled"${options.diversity.enabled ? ' checked' : ''} />${renderFieldLabel('Diverse alternatives', 'Require returned schedules to differ by at least the configured number of assignments.')}</label>
       </div>
     </section>
+    ${renderJsonConfigurationSetup({ prefix: 'event-staffing', domainLabel: 'Event Staffing' })}
     <section class="panel">
       <h2>Configuration workbook</h2>
       <p class="muted-text">Export the complete editable setup at any time. Import previews either a full configuration replacement or a compatible preferences-only merge.</p>
@@ -1460,6 +1470,33 @@ function bindInteractions(root, state) {
   root.querySelector('[data-event-staffing-action="export-configuration-workbook"]')?.addEventListener('click', () => {
     exportEventStaffingConfigurationWorkbook(domainProject);
   });
+  root.querySelector('[data-action="export-event-staffing-json"]')?.addEventListener('click', () => {
+    downloadJsonConfiguration(domainProject, 'event-staffing');
+    state.eventStaffingPage.message = 'Event Staffing JSON configuration downloaded.';
+    rerender();
+  });
+  root.querySelector('[data-action="import-event-staffing-json"]')?.addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const raw = await readJsonConfigurationFile(file);
+      if (!Array.isArray(raw.events) || !Array.isArray(raw.groupTypes) || !Array.isArray(raw.requirements) || !Array.isArray(raw.people)) {
+        throw new Error('The file does not contain an Event Staffing project.');
+      }
+      const imported = migrateEventStaffingProject(raw);
+      if (!confirmProjectReplacement(domainProject, 'Replace the current Event Staffing configuration with this JSON file?')) return;
+      state.eventStaffingPage.domainProject = imported;
+      state.eventStaffingPage.editor.selectedEventId = '';
+      state.eventStaffingPage.editor.selectedEventIds = [];
+      state.eventStaffingPage.editor.lastSyncedSelectedEventId = '';
+      state.eventStaffingPage.message = `JSON configuration imported from ${file.name}. Review it before solving.`;
+      refreshValidation(state);
+    } catch (error) {
+      state.eventStaffingPage.message = error instanceof Error ? `JSON import failed: ${error.message}` : 'JSON import failed.';
+    }
+    event.target.value = '';
+    rerender();
+  });
   root.querySelector('[name="eventStaffingWorkbookFile"]')?.addEventListener('change', async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -2130,7 +2167,7 @@ function bindInteractions(root, state) {
     ? editor.administratorRepair.dateKey
     : (currentRepairDates[0]?.dateKey ?? '');
   const currentRepairCandidates = state.eventStaffingPage.lastNormalizedProject
-    ? buildAdministratorRepairCandidates(domainProject, state.eventStaffingPage.lastNormalizedProject, currentRepairDateKey)
+    ? buildAdministratorRepairCandidates(domainProject, state.eventStaffingPage.lastNormalizedProject, currentRepairDateKey, state.eventStaffingPage.lastValidation?.errors ?? [])
     : [];
   root.querySelectorAll('[data-repair-candidate-id]').forEach((checkbox) => {
     checkbox.addEventListener('change', () => {
@@ -2188,7 +2225,7 @@ function bindInteractions(root, state) {
         domainProject,
         state.eventStaffingPage.lastNormalizedProject,
         currentRepairDates,
-        editor.administratorRepair,
+        { ...editor.administratorRepair, validationErrors: state.eventStaffingPage.lastValidation?.errors ?? [] },
       );
       const { candidates, selectedIds } = repairSelection;
       if (selectedIds.length === 0) return;
@@ -2430,5 +2467,6 @@ export function renderEventStaffingPage(root, state) {
   });
 
   bindInteractions(root, state);
+  bindJsonCopyButtons(root);
   bindPageDraftAutosave(root, state.draftStorage, 'event-staffing', () => state.eventStaffingPage.domainProject, state.eventStaffingPage.persistence);
 }

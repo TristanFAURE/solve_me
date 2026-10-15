@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { createAppState } from '../../src/app/state.js';
 import { renderPageShell } from '../../src/components/common/pageShell.js';
 import { renderFieldLabel } from '../../src/components/common/fieldHelp.js';
-import { renderWorkflowPanel, renderWorkflowTabs } from '../../src/components/common/workflowTabs.js';
+import { renderJsonBlock } from '../../src/components/common/jsonBlock.js';
+import { readJsonConfigurationFile, renderJsonConfigurationSetup } from '../../src/components/common/jsonConfiguration.js';
+import { isWorkflowTab, renderWorkflowPanel, renderWorkflowTabs, WORKFLOW_TABS, WORKFLOW_TABS_WITH_DISPLAY } from '../../src/components/common/workflowTabs.js';
 import { renderValidationPanel } from '../../src/components/solutions/validationPanel.js';
 import { createContainer, createItem } from '../../src/core/model/nodes.js';
 import { buildGenericSolveOptions, renderGenericPage } from '../../src/pages/generic/index.js';
@@ -35,6 +37,30 @@ describe('workflow foundation', () => {
     expect(html).toContain('aria-label="Time limit help:');
   });
 
+  it('renders escaped JSON with a copy control', () => {
+    const html = renderJsonBlock({ label: '<unsafe>' }, 'test JSON');
+    expect(html).toContain('data-copy-json');
+    expect(html).toContain('aria-label="Copy test JSON"');
+    expect(html).toContain('&lt;unsafe&gt;');
+    expect(html).not.toContain('<unsafe>');
+  });
+
+  it('renders shared JSON configuration controls', () => {
+    const html = renderJsonConfigurationSetup({ prefix: 'school', domainLabel: 'School' });
+    expect(html).toContain('Export JSON configuration');
+    expect(html).toContain('data-action="export-school-json"');
+    expect(html).toContain('data-action="import-school-json"');
+    expect(html).toContain('accept="application/json,.json"');
+  });
+
+  it('bounds and validates imported JSON configuration files', async () => {
+    const valid = { name: 'project.json', size: 20, text: async () => '{"title":"Safe"}' };
+    await expect(readJsonConfigurationFile(valid)).resolves.toEqual({ title: 'Safe' });
+    await expect(readJsonConfigurationFile({ ...valid, name: 'project.txt' })).rejects.toThrow(/\.json/i);
+    await expect(readJsonConfigurationFile({ ...valid, text: async () => '{"password":"hidden"}' })).rejects.toThrow(/sensitive field/i);
+    await expect(readJsonConfigurationFile({ ...valid, size: (2 * 1024 * 1024) + 1 })).rejects.toThrow(/2 MB/i);
+  });
+
   it('renders accessible workflow tabs and panels', () => {
     const tabs = renderWorkflowTabs('rules');
     const panel = renderWorkflowPanel('rules', 'rules', '<p>Rules</p>');
@@ -44,6 +70,13 @@ describe('workflow foundation', () => {
     expect(tabs).toContain('aria-selected="true"');
     expect(panel).toContain('role="tabpanel"');
     expect(panel).not.toContain(' hidden');
+  });
+
+  it('keeps Display specialized to the six-step workflow', () => {
+    expect(WORKFLOW_TABS.map(({ id }) => id)).toEqual(['setup', 'data', 'rules', 'review', 'results']);
+    expect(WORKFLOW_TABS_WITH_DISPLAY.map(({ id }) => id)).toEqual(['setup', 'data', 'rules', 'review', 'results', 'display']);
+    expect(isWorkflowTab('display')).toBe(false);
+    expect(isWorkflowTab('display', WORKFLOW_TABS_WITH_DISPLAY)).toBe(true);
   });
 
   it('marks the active shell route', () => {

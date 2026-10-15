@@ -1,13 +1,14 @@
 import { renderPageShell } from '../../components/common/pageShell.js';
 import { getGeneralPreferenceAuthoringPolicy } from '../../components/common/preferenceAuthoringPolicy.js';
 import { renderSolutionPanel } from '../../components/solutions/solutionPanel.js';
+import { renderSolutionNavigation } from '../../components/solutions/solutionNavigation.js';
 import { renderSolveStatus, updateSolveStatus } from '../../components/solutions/solveStatus.js';
 import { renderValidationPanel } from '../../components/solutions/validationPanel.js';
 import { ASSIGNMENT_MODES } from '../../core/model/assignmentModes.js';
 import { CONSTRAINT_KINDS, createConstraint } from '../../core/model/constraints.js';
 import { createId } from '../../core/model/ids.js';
 import { createContainer, createGroup, createItem, createPosition } from '../../core/model/nodes.js';
-import { createEmptyProject, VIEW_HINTS } from '../../core/model/project.js';
+import { createEmptyProject, isProject, VIEW_HINTS } from '../../core/model/project.js';
 import { PREFERENCE_KINDS, createPreference } from '../../core/model/preferences.js';
 import { createContainmentRelation, createEntityRef } from '../../core/model/relations.js';
 import { normalizeProject } from '../../core/normalize/normalizeProject.js';
@@ -36,11 +37,15 @@ import { exportWeddingSolutionWorkbook } from './exportWeddingSolution.js';
 import { exportWeddingConfigurationWorkbook, previewWeddingWorkbookFile } from './workbooks.js';
 import { confirmProjectReplacement } from '../../app/dataSafety.js';
 import { bindPageDraftAutosave, persistPageDraft } from '../../storage/localDrafts.js';
-import { bindWorkflowTabs, isWorkflowTab, renderWorkflowPanel, renderWorkflowTabs } from '../../components/common/workflowTabs.js';
+import { bindWorkflowTabs, isWorkflowTab, renderWorkflowPanel, renderWorkflowTabs, WORKFLOW_TABS_WITH_DISPLAY } from '../../components/common/workflowTabs.js';
 import { buildWorkflowSolveOptions, createWorkflowSolveDraft, renderAdvancedDiagnostics, renderSolveConfiguration, renderWorkbookSetup, solveOptionIssues } from '../../components/common/workflowSetup.js';
 import { validateSolveOptions } from '../../solver/solveOptions.js';
 import { parseBulkLabels } from '../../components/common/bulkEntry.js';
 import { renderFieldLabel } from '../../components/common/fieldHelp.js';
+import { bindJsonCopyButtons } from '../../components/common/jsonBlock.js';
+import { downloadJsonConfiguration, readJsonConfigurationFile, renderJsonConfigurationSetup } from '../../components/common/jsonConfiguration.js';
+import { migrateProjectModel } from '../../storage/modelVersioning.js';
+import { renderWeddingSolutionDisplay } from './weddingSolutionDisplay.js';
 
 const REPLACE_WEDDING_MESSAGE = 'This will replace your current non-empty wedding plan. Continue?';
 
@@ -112,7 +117,7 @@ function ensureWeddingProject(state) {
   }
   state.weddingPage.solveExecution ??= createSolveExecutionState();
   state.weddingPage.workbookImport ??= { status: 'idle', error: '', preview: null };
-  if (!isWorkflowTab(state.weddingPage.activeWorkflowTab)) state.weddingPage.activeWorkflowTab = 'setup';
+  if (!isWorkflowTab(state.weddingPage.activeWorkflowTab, WORKFLOW_TABS_WITH_DISPLAY)) state.weddingPage.activeWorkflowTab = 'setup';
 }
 
 function escapeHtml(value) {
@@ -1020,6 +1025,7 @@ function renderRulesPanel(project, editor, preferencePolicy) {
         </div>
         <div class="wedding-rule-form-stack">
           ${preferencePolicy.message ? `<p class="muted-text">${escapeHtml(preferencePolicy.message)}</p>` : ''}
+          <p class="muted-text">Preferences affect ranking, never validity. A weight of 0 has no effect; 1 is a light preference; 10 can outweigh several lower-weight preferences. Hard rules above always win.</p>
           <div class="form-grid compact-form-grid">
             <label>
               <span>Preference</span>
@@ -1043,7 +1049,7 @@ function renderRulesPanel(project, editor, preferencePolicy) {
               </div>`}
             </label>
             <label>
-              <span>Soft / hard strength</span>
+              ${renderFieldLabel('Preference weight', 'Relative ranking influence. For example, 0 has no effect, 1 is a light preference, and 10 is ten times stronger than weight 1. Hard rules are never relaxed by a high weight.')}
               <input type="number" min="0" step="1" name="draftPreferenceWeight" value="${escapeHtml(editor.draftPreferenceWeight)}"${preferencePolicy.disabled ? ' disabled' : ''} />
             </label>
           </div>
@@ -1053,7 +1059,7 @@ function renderRulesPanel(project, editor, preferencePolicy) {
         </div>
         <div class="table-wrap audit-table-wrap top-gap">
           <table class="data-table">
-            <caption>Unsupported preferences retained for audit and removal</caption>
+            <caption>Configured seating preferences</caption>
             <thead>
               <tr><th>Preference</th><th>Left</th><th>Right</th><th>Weight</th><th>Actions</th></tr>
             </thead>
@@ -1819,6 +1825,7 @@ function bindActions(root, state) {
           : state.weddingPage.lastSolverResult?.status === 'unsat'
             ? 'No valid seating plan was found with the current rules and capacities. 🧠'
             : 'Wedding solve could not complete successfully.';
+        renderWeddingPage(root, state);
       });
       return;
     }
@@ -1843,6 +1850,35 @@ function bindActions(root, state) {
         }
 
         event.target.value = '';
+        renderWeddingPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'import-wedding-json') {
+      element.addEventListener('change', async (event) => {
+        const [file] = Array.from(event.target.files ?? []);
+        if (!file) return;
+        try {
+          const imported = migrateProjectModel(await readJsonConfigurationFile(file));
+          if (!isProject(imported) || imported.viewHint !== VIEW_HINTS.WEDDING) throw new Error('The file does not contain a Wedding project.');
+          if (!confirmProjectReplacement(state.weddingPage.project, 'Replace the current Wedding configuration with this JSON file?')) return;
+          state.weddingPage.project = imported;
+          resetWeddingDerivedState(state);
+          state.weddingPage.message = `JSON configuration imported from ${file.name}. Review it before solving.`;
+        } catch (error) {
+          state.weddingPage.message = error instanceof Error ? `JSON import failed: ${error.message}` : 'JSON import failed.';
+        }
+        event.target.value = '';
+        renderWeddingPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'export-wedding-json') {
+      element.addEventListener('click', () => {
+        downloadJsonConfiguration(state.weddingPage.project, 'wedding');
+        state.weddingPage.message = 'Wedding JSON configuration downloaded.';
         renderWeddingPage(root, state);
       });
       return;
@@ -1982,10 +2018,11 @@ export function renderWeddingPage(root, state) {
   persistPageDraft(state.draftStorage, 'wedding', state.weddingPage.project, state.weddingPage.persistence);
   const preferencePolicy = getGeneralPreferenceAuthoringPolicy(new FirstSolverAdapter().getCapabilities());
   const activeTab = state.weddingPage.activeWorkflowTab;
-  const setupContent = `${renderMetadataPanel(state.weddingPage.project)}${renderSolveConfiguration(state.weddingPage.editor, 'wedding')}${renderWorkbookSetup(state.weddingPage.workbookImport, 'wedding', 'wedding plan')}`;
+  const setupContent = `${renderMetadataPanel(state.weddingPage.project)}${renderSolveConfiguration(state.weddingPage.editor, 'wedding')}${renderJsonConfigurationSetup({ prefix: 'wedding', domainLabel: 'Wedding' })}${renderWorkbookSetup(state.weddingPage.workbookImport, 'wedding', 'wedding plan')}`;
   const dataContent = `${renderWeddingDataTools(state.weddingPage.project, state.weddingPage.editor)}${renderCreateCards(state.weddingPage.project, state.weddingPage.editor)}<section class="workspace-columns two-up">${renderGuestsPanel(state.weddingPage.project, state.weddingPage.editor)}${renderGroupsPanel(state.weddingPage.project, state.weddingPage.editor)}</section>${renderTablesPanel(state.weddingPage.project, state.weddingPage.editor)}<details class="card advanced-diagnostics"><summary>Advanced seat topology by table</summary>${renderSeatsPanel(state.weddingPage.project, state.weddingPage.editor)}</details>`;
   const reviewContent = `${renderCommandBar(state.weddingPage.lastSolverResult, state.weddingPage.commandBarExpanded !== false)}${renderSolveStatus(state.weddingPage.solveExecution)}${renderValidationPanel(state.weddingPage.lastValidation, { hasComputedSolution: Boolean(state.weddingPage.lastSolverResult), expanded: state.weddingPage.validationPanelExpanded })}${renderAdvancedDiagnostics(state.weddingPage.project, state.weddingPage.lastNormalizedProject)}`;
   const resultsContent = `${renderSolutionPanel(state.weddingPage.lastNormalizedProject ?? state.weddingPage.project, state.weddingPage.lastSolverResult, state.weddingPage.editor.activeSolutionIndex, renderWeddingSolutionPanelOptions())}${state.weddingPage.lastSolverResult?.solutions?.length ? '<div class="button-row top-gap"><button type="button" data-action="export-wedding-solution">Export selected solved seating plan</button></div>' : ''}`;
+  const displayContent = `${renderSolutionNavigation(state.weddingPage.editor.activeSolutionIndex, state.weddingPage.lastSolverResult?.solutions?.length ?? 0)}${renderWeddingSolutionDisplay({ project: state.weddingPage.project, normalizedProject: state.weddingPage.lastNormalizedProject, result: state.weddingPage.lastSolverResult, activeSolutionIndex: state.weddingPage.editor.activeSolutionIndex })}`;
 
   root.innerHTML = renderPageShell({
     activeRoute: '/wedding',
@@ -1995,17 +2032,19 @@ export function renderWeddingPage(root, state) {
     body: `
       ${state.weddingPage.message ? `<section class="command-bar-feedback" role="status" aria-live="polite">${escapeHtml(state.weddingPage.message)}</section>` : ''}
       ${renderSummary(state.weddingPage.project)}
-      ${renderWorkflowTabs(activeTab)}
+      ${renderWorkflowTabs(activeTab, WORKFLOW_TABS_WITH_DISPLAY)}
       ${renderWorkflowPanel('setup', activeTab, setupContent)}
       ${renderWorkflowPanel('data', activeTab, dataContent)}
       ${renderWorkflowPanel('rules', activeTab, renderRulesPanel(state.weddingPage.project, state.weddingPage.editor, preferencePolicy))}
       ${renderWorkflowPanel('review', activeTab, reviewContent)}
       ${renderWorkflowPanel('results', activeTab, resultsContent)}
+      ${renderWorkflowPanel('display', activeTab, displayContent)}
     `,
   });
 
   bindInputs(root, state);
   bindActions(root, state);
   bindEnterToCreate(root, state);
+  bindJsonCopyButtons(root);
   bindPageDraftAutosave(root, state.draftStorage, 'wedding', () => state.weddingPage.project, state.weddingPage.persistence);
 }

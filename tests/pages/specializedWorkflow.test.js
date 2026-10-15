@@ -35,6 +35,9 @@ describe('specialized shared workflows', () => {
     expect(root.innerHTML).toContain('aria-label="Project workflow"');
     expect(root.innerHTML).toContain('data-workflow-tab="setup"');
     expect(root.innerHTML).toContain('data-workflow-tab="results"');
+    expect(root.innerHTML).toMatch(/data-workflow-tab="results"[\s\S]*data-workflow-tab="display"/);
+    expect(root.innerHTML).toContain('id="workflow-panel-display"');
+    expect(root.innerHTML).toContain('aria-labelledby="workflow-tab-display"');
     expect(root.innerHTML).toContain('Advanced diagnostics');
     expect(root.innerHTML).toContain('value="5000"');
   });
@@ -57,6 +60,10 @@ describe('specialized shared workflows', () => {
     root.button.click();
     expect(state.schoolPage.lastSolverResult.status).toBe('solved');
     expect(state.schoolPage.activeWorkflowTab).toBe('results');
+    state.schoolPage.activeWorkflowTab = 'display';
+    renderSchoolPage(root, state);
+    expect(root.innerHTML).toContain('school-classroom');
+    expect(root.innerHTML).toContain('Alice');
   });
 
   it('routes invalid Wedding solves to Review and successful solves to Results', () => {
@@ -74,5 +81,21 @@ describe('specialized shared workflows', () => {
     root.button.click();
     expect(state.weddingPage.lastSolverResult.status).toBe('solved');
     expect(state.weddingPage.activeWorkflowTab).toBe('results');
+    state.weddingPage.activeWorkflowTab = 'display';
+    renderWeddingPage(root, state);
+    expect(root.innerHTML).toContain('wedding-table-card');
+    expect(root.innerHTML).toContain('Alex');
+  });
+
+  it.each([
+    ['school', 'schoolPage', renderSchoolPage, 'Run the solver to generate a classroom display.'],
+    ['wedding', 'weddingPage', renderWeddingPage, 'Run the solver to generate a visual seating display.'],
+  ])('accepts Display as the active %s workflow tab', (_name, stateKey, renderPage, message) => {
+    const state = createAppState({ storage: null });
+    state[stateKey].activeWorkflowTab = 'display';
+    const root = createRoot();
+    renderPage(root, state);
+    expect(root.innerHTML).toContain('id="workflow-panel-display" class="workflow-panel" role="tabpanel"');
+    expect(root.innerHTML).toContain(message);
   });
 });

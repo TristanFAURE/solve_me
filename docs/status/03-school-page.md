@@ -54,11 +54,14 @@ This lets the current generic container-mode solver enforce school eligibility h
 - assigned student levels summarized on solved class cards
 - Excel export of solved results
 - Excel import of teacher-facing workbooks
-- shared Setup, Data, Rules, Review, and Results workflow
+- specialized Setup, Data, Rules, Review, Results, and Display workflow
+- classroom-style solved display with linked teachers, student desks, represented levels, empty classes, and synchronized solution navigation
+- one teacher per class when teachers are configured, with fixed class links, level compatibility, per-class availability/preferences, and teacher/student relationships
 - bulk student entry and explicit validation lifecycle
 - Web Worker solving with ranked result controls and interruption handling
 - versioned local autosave and draft recovery
 - full-fidelity configuration workbook export/import with replacement preview
+- validated full-configuration JSON export/import in Setup
 - regression fixes for preference creation and aggregate capacity when a class is unlimited
 
 ## Workbook import/export baseline
@@ -99,15 +102,17 @@ Current coverage includes:
 ## Known limitations and risks
 
 - teacher-linked soft preferences are still not optimized by the solver
-- teachers are not yet part of full assignment solving
+- teacher assignment is a School-domain matching stage merged into each returned student solution; teachers remain separate from student capacity
 - school-specific validation is still page-local rather than extracted into a broader domain-validation layer
 - spreadsheet import/export increases bundle size because of `xlsx`
 - local drafts may contain student data in browser storage and should only be used in an appropriate browser profile
+- Display desk positions are illustrative and do not model physical classroom seats or geometry
 - the existing `xlsx` release has unresolved upstream advisories despite file-size and ZIP preflight controls
 
 ## Primary files
 
 - `src/pages/school/index.js`
+- `src/pages/school/schoolSolutionDisplay.js`
 - `src/pages/school/validateSchoolProject.js`
 - `src/pages/school/exportSchoolSolution.js`
 - `src/pages/school/importSchoolWorkbook.js`

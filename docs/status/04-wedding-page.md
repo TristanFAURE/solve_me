@@ -32,10 +32,14 @@ Implemented features include:
 - single-group `Keep this group together` authoring in both hard-rule and preference sections
 - seats panel moved to the end of the page for better authoring flow
 - denser seat-card presentation for larger weddings
-- shared Setup, Data, Rules, Review, and Results workflow
+- specialized Setup, Data, Rules, Review, Results, and Display workflow
+- schematic solved displays for round, square, and rectangle tables with synchronized solution navigation
+- authoritative seat placement in seat-aware mode and explicitly illustrative perimeter placement in table-only mode
+- weighted same-table, different-table, adjacent, and non-adjacent preference optimization in the JavaScript solver
 - bulk guest entry, explicit validation lifecycle, and ranked Web Worker solving
 - versioned local autosave and draft recovery
 - full-fidelity configuration workbook export/import with replacement preview
+- validated full-configuration JSON export/import in Setup
 - one-edge topology generation for two-seat tables
 - cascading normal table deletion so generated seats cannot become orphaned
 
@@ -86,6 +90,7 @@ Current coverage includes:
 ## Known limitations and risks
 
 - generated `round`, `square`, and `rectangle` shapes currently share the same perimeter-ring adjacency semantics
+- Display geometry remains schematic and does not change that generic perimeter-ring adjacency or provide an editable floor plan
 - the dedicated `close gap` convenience action has not been implemented yet
 - wedding-specific solution presentation may still need refinement after more seat-aware testing
 - large seating plans may stress the current backtracking solver
@@ -97,6 +102,8 @@ Current coverage includes:
 
 - `src/pages/wedding/index.js`
 - `src/pages/wedding/tableTopology.js`
+- `src/pages/wedding/weddingSolutionDisplay.js`
+- `src/pages/wedding/tableDisplayGeometry.js`
 - `src/pages/wedding/validateWeddingProject.js`
 - `tests/pages/weddingValidation.test.js`
 - `docs/02-feature-wedding-table-plan.md`

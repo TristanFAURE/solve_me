@@ -70,6 +70,19 @@ describe('Event Staffing administrator repair', () => {
       .toEqual(candidates.map(({ id }) => id));
   });
 
+  it('shows only constraints involved in identified slot/category conflicts', () => {
+    const domain = project();
+    const model = normalized(domain);
+    const validationErrors = validateEventStaffingProject(domain).errors;
+    const candidates = buildAdministratorRepairCandidates(domain, model, '2026-10-15', validationErrors);
+
+    expect(candidates.length).toBeGreaterThan(0);
+    expect(candidates.every((candidate) => candidate.kind === 'forbidden')).toBe(true);
+    expect(candidates.every((candidate) => candidate.destinationIds.includes('event:S1::group:A'))).toBe(true);
+    expect(candidates.map((candidate) => candidate.type)).not.toContain('total-workload-maximum');
+    expect(candidates.map((candidate) => candidate.type)).not.toContain('category-workload-maximum');
+  });
+
   it('supports select all, clear, and individual selection as pure operations', () => {
     const candidates = [{ id: 'a' }, { id: 'b' }];
     expect(selectAllRepairCandidates(candidates)).toEqual(['a', 'b']);

@@ -1,5 +1,6 @@
 import { renderContainerAssignmentView } from './containerAssignmentView.js';
 import { renderSolutionNavigation } from './solutionNavigation.js';
+import { renderJsonBlock } from '../common/jsonBlock.js';
 import { assignmentDistance } from '../../solver/solutionRanking.js';
 
 function escapeHtml(value) {
@@ -130,11 +131,11 @@ export function renderSolutionPanel(project, result, activeSolutionIndex = 0, op
     ${warnings.length > 0 ? `<ul class="issue-list compact-issue-list top-gap">${warnings.map((warning) => `<li class="issue-list-item warning"><div>${escapeHtml(warning)}</div></li>`).join('')}</ul>` : `<p class="muted-text">${escapeHtml(noWarningsMessage)}</p>`}
     ${renderSearchHints(result, options.searchHintVocabulary)}
     ${solutionSummary}
-    ${activeSolution?.scoreDetails ? `<details class="details-panel top-gap"><summary>Score details</summary><pre class="json-block">${escapeHtml(JSON.stringify(activeSolution.scoreDetails, null, 2))}</pre></details>` : ''}
+    ${activeSolution?.scoreDetails ? `<details class="details-panel top-gap"><summary>Score details</summary>${renderJsonBlock(activeSolution.scoreDetails, 'score details JSON')}</details>` : ''}
     </div>
     <details class="details-panel advanced-diagnostics">
       <summary>Advanced diagnostics: ${escapeHtml(rawJsonSummaryLabel)}</summary>
-      <pre class="json-block">${escapeHtml(JSON.stringify(result, null, 2))}</pre>
+      ${renderJsonBlock(result, 'solver result JSON')}
     </details>
   `;
 

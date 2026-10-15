@@ -48,7 +48,7 @@ It must work for the generic page and all domain-specific pages because they all
 
 - The application must allow exporting the current project to a JSON file.
 - The exported file must contain all information necessary to restore the project state.
-- The exported file must use the normalized model rather than page-specific view state.
+- The exported file must use the complete persisted configuration for the active use case rather than transient editor, validation, progress, or solver-result state.
 - The exported file must include schema or format version metadata.
 - The exported file should include human-readable labels when available.
 
@@ -59,6 +59,8 @@ It must work for the generic page and all domain-specific pages because they all
 - If import succeeds, the application must rebuild the normalized project state.
 - If import fails, the current state must remain unchanged.
 - The import flow should provide useful error messages when validation fails.
+- Generic, School, Wedding, and Event Staffing expose the same JSON configuration card in Setup while retaining their existing workbook workflows.
+- JSON uploads are limited to 2 MB and nesting depth 64, require an object root, reject dangerous prototype keys and sensitive credential-like fields, and replace non-empty work only after confirmation.
 
 ### Local draft persistence
 

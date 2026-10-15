@@ -77,6 +77,9 @@ export function renderContainerAssignmentView(project, solution, index, totalSol
   const displayProject = options.displayProject ?? project;
   const viewConfig = buildViewConfig({ ...options, project: displayProject });
   const containerCards = grouped.map(({ container, assignments }) => {
+    const displayedAssignmentCount = typeof options.getAssignmentCount === 'function'
+      ? options.getAssignmentCount(assignments, container)
+      : assignments.length;
     const defaultItemList = assignments.length === 0
       ? `<li class="muted-text">${escapeHtml(viewConfig.labels.emptyAssignments)}</li>`
       : assignments
@@ -97,7 +100,7 @@ export function renderContainerAssignmentView(project, solution, index, totalSol
             <p class="entity-kind">${escapeHtml(viewConfig.labels.containerKind)}</p>
             <h3>${escapeHtml(container.label)}</h3>
           </div>
-          <span class="panel-count">${assignments.length}</span>
+          <span class="panel-count">${escapeHtml(displayedAssignmentCount)}</span>
         </div>
         <p class="entity-id">${escapeHtml(container.id)}</p>
         <div class="entity-meta-grid">

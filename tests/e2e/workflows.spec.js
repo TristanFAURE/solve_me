@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test';
 
 const pages = [
-  { route: '/generic', heading: /Generic Constraint Page/ },
-  { route: '/school', heading: 'School Class Creation' },
-  { route: '/wedding', heading: 'Wedding Table Plan' },
-  { route: '/event-staffing', heading: 'Event Staffing' },
+  { route: '/generic', heading: /Generic Constraint Page/, hasDisplay: false },
+  { route: '/school', heading: 'School Class Creation', hasDisplay: true },
+  { route: '/wedding', heading: 'Wedding Table Plan', hasDisplay: true },
+  { route: '/event-staffing', heading: 'Event Staffing', hasDisplay: false },
 ];
 
 const viewports = [
@@ -18,6 +18,26 @@ const workflowSteps = ['Setup', 'Data', 'Rules', 'Review', 'Results'];
 
 async function openRoute(page, route) {
   await page.goto(`.#${route}`);
+}
+
+async function seedDraft(page, pageId, project) {
+  await page.addInitScript(({ id, data }) => {
+    localStorage.setItem(`constraint-management:draft:v1:${id}`, JSON.stringify({ version: 1, page: id, data }));
+  }, { id: pageId, data: project });
+}
+
+function specializedProject(viewHint, assignmentMode = 'container') {
+  return {
+    modelVersion: 2,
+    title: `${viewHint} display fixture`,
+    description: '',
+    viewHint,
+    assignmentMode,
+    assignmentMultiplicity: 'single',
+    items: [], groups: [], containers: [], positions: [], containments: [], topologies: [],
+    constraints: [], preferences: [], fixedAssignments: [], forbiddenAssignments: [],
+    assignmentExclusions: [], assignmentCountUpperBounds: [], softAssignmentScores: [], softItemCountTargets: [],
+  };
 }
 
 async function expectNoDocumentOverflow(page) {
@@ -37,7 +57,7 @@ for (const appPage of pages) {
       await expect(page.getByRole('heading', { level: 1, name: appPage.heading })).toBeVisible();
       await expect(page.getByRole('tablist', { name: 'Workflow steps' })).toBeVisible();
 
-      for (const step of workflowSteps) {
+      for (const step of appPage.hasDisplay ? [...workflowSteps, 'Display'] : workflowSteps) {
         const tab = page.getByRole('tab', { name: step, exact: true });
         await tab.click();
         await expect(tab).toHaveAttribute('aria-selected', 'true');
@@ -53,6 +73,7 @@ for (const appPage of pages) {
     const setup = page.getByRole('tab', { name: 'Setup', exact: true });
     const data = page.getByRole('tab', { name: 'Data', exact: true });
     const results = page.getByRole('tab', { name: 'Results', exact: true });
+    const endTab = appPage.hasDisplay ? page.getByRole('tab', { name: 'Display', exact: true }) : results;
 
     await setup.focus();
     await page.keyboard.press('ArrowRight');
@@ -60,8 +81,15 @@ for (const appPage of pages) {
     await expect(data).toHaveAttribute('aria-selected', 'true');
 
     await page.keyboard.press('End');
-    await expect(results).toBeFocused();
-    await expect(results).toHaveAttribute('aria-selected', 'true');
+    await expect(endTab).toBeFocused();
+    await expect(endTab).toHaveAttribute('aria-selected', 'true');
+
+    if (appPage.hasDisplay) {
+      await page.keyboard.press('ArrowLeft');
+      await expect(results).toBeFocused();
+      await page.keyboard.press('ArrowRight');
+      await expect(endTab).toBeFocused();
+    }
 
     await page.keyboard.press('Home');
     await expect(setup).toBeFocused();
@@ -161,3 +189,80 @@ test('Event Staffing completes a deterministic HiGHS WASM solve in a Worker', as
     .locator('xpath=..');
   await expect(personView.getByRole('cell', { name: 'Alex', exact: true })).toBeVisible();
 }, 60_000);
+
+test('School solves into a classroom Display with synchronized alternatives', async ({ page }) => {
+  const project = specializedProject('school');
+  project.items = [
+    { id: 'student-alice', kind: 'item', label: 'Alice', metadata: { schoolRole: 'student' } },
+    { id: 'teacher-morgan', kind: 'item', label: 'Teacher Morgan', metadata: { schoolRole: 'teacher' } },
+    { id: 'teacher-taylor', kind: 'item', label: 'Teacher Taylor', metadata: { schoolRole: 'teacher' } },
+  ];
+  project.groups = [{ id: 'level-one', kind: 'group', label: 'Level One', metadata: {} }];
+  project.containers = [
+    { id: 'class-blue', kind: 'container', label: 'Blue Class', metadata: { minCapacity: 0, maxCapacity: 1, acceptedLevelIds: ['level-one'], teacherIds: ['teacher-morgan'] } },
+    { id: 'class-gold', kind: 'container', label: 'Gold Class', metadata: { minCapacity: 0, maxCapacity: 1, acceptedLevelIds: ['level-one'], teacherIds: [] } },
+  ];
+  project.containments = [
+    { kind: 'contains', from: { kind: 'group', id: 'level-one' }, to: { kind: 'item', id: 'student-alice' }, metadata: {} },
+    { kind: 'contains', from: { kind: 'group', id: 'level-one' }, to: { kind: 'item', id: 'teacher-morgan' }, metadata: {} },
+    { kind: 'contains', from: { kind: 'group', id: 'level-one' }, to: { kind: 'item', id: 'teacher-taylor' }, metadata: {} },
+  ];
+  await seedDraft(page, 'school', project);
+  await openRoute(page, '/school');
+  await page.locator('select[name="solveMode"]').selectOption('first');
+  await page.getByRole('tab', { name: 'Review' }).click();
+  await page.getByRole('tabpanel', { name: 'Review' }).locator('[data-action="solve-school"]').click();
+  await expect(page.getByRole('tab', { name: 'Results' })).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
+  await page.getByRole('tab', { name: 'Display' }).click();
+  await expect(page.locator('.school-classroom')).toHaveCount(2);
+  const displayPanel = page.getByRole('tabpanel', { name: 'Display' });
+  await expect(displayPanel.getByText('Teacher Morgan', { exact: true })).toBeVisible();
+  await expect(displayPanel.getByText('Alice', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Desk positions are illustrative/)).toBeVisible();
+  await expectNoDocumentOverflow(page);
+});
+
+test('Wedding Display distinguishes shapes and table-only positioning', async ({ page }) => {
+  const project = specializedProject('wedding');
+  project.items = [{ id: 'guest-alex', kind: 'item', label: 'Guest Alex', metadata: {} }];
+  project.containers = [
+    { id: 'round-table', kind: 'container', label: 'Round Table', metadata: { minCapacity: 0, maxCapacity: 1, shape: 'round' } },
+    { id: 'square-table', kind: 'container', label: 'Square Table', metadata: { minCapacity: 0, maxCapacity: 1, shape: 'square' } },
+  ];
+  await seedDraft(page, 'wedding', project);
+  await openRoute(page, '/wedding');
+  await page.locator('select[name="solveMode"]').selectOption('first');
+  await page.getByRole('tab', { name: 'Review' }).click();
+  await page.getByRole('tabpanel', { name: 'Review' }).locator('[data-action="solve-wedding"]').click();
+  await expect(page.getByRole('tab', { name: 'Results' })).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
+  await page.getByRole('tab', { name: 'Display' }).click();
+  await expect(page.locator('.wedding-table-card.wedding-table-round')).toBeVisible();
+  await expect(page.locator('.wedding-table-card.wedding-table-square')).toBeVisible();
+  await expect(page.getByRole('tabpanel', { name: 'Display' }).getByText('Guest Alex', { exact: true })).toBeVisible();
+  await expect(page.getByText(/positions around the table are illustrative/).first()).toBeVisible();
+  await expectNoDocumentOverflow(page);
+});
+
+test('Wedding seat-aware Display shows configured seat labels', async ({ page }) => {
+  const project = specializedProject('wedding', 'position');
+  project.items = [{ id: 'guest-sam', kind: 'item', label: 'Guest Sam', metadata: {} }];
+  project.containers = [{ id: 'rectangle-table', kind: 'container', label: 'Rectangle Table', metadata: { minCapacity: 0, maxCapacity: 2, shape: 'rectangle' } }];
+  project.positions = [
+    { id: 'seat-one', kind: 'position', label: 'Seat One', metadata: { generated: true, seatIndex: 0 } },
+    { id: 'seat-two', kind: 'position', label: 'Seat Two', metadata: { generated: true, seatIndex: 1 } },
+  ];
+  project.containments = project.positions.map((seat) => ({ kind: 'contains', from: { kind: 'container', id: 'rectangle-table' }, to: { kind: 'position', id: seat.id }, metadata: {} }));
+  await seedDraft(page, 'wedding', project);
+  await openRoute(page, '/wedding');
+  await page.locator('select[name="solveMode"]').selectOption('first');
+  await page.getByRole('tab', { name: 'Review' }).click();
+  await page.getByRole('tabpanel', { name: 'Review' }).locator('[data-action="solve-wedding"]').click();
+  await expect(page.getByRole('tab', { name: 'Results' })).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
+  await page.getByRole('tab', { name: 'Display' }).click();
+  const displayPanel = page.getByRole('tabpanel', { name: 'Display' });
+  await expect(page.locator('.wedding-table-card.wedding-table-rectangle')).toBeVisible();
+  await expect(displayPanel.getByText('Seat One', { exact: true })).toBeVisible();
+  await expect(displayPanel.getByText('Seat Two', { exact: true })).toBeVisible();
+  await expect(displayPanel.getByText('Guest Sam', { exact: true })).toBeVisible();
+  await expect(displayPanel.getByText(/Seat positions reflect the selected solution/)).toBeVisible();
+});

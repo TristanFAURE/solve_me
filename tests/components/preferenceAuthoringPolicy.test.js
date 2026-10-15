@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { createAppState } from '../../src/app/state.js';
-import { UNSUPPORTED_GENERAL_PREFERENCES_COPY } from '../../src/components/common/preferenceAuthoringPolicy.js';
 import { createItem } from '../../src/core/model/nodes.js';
 import { createPreference, PREFERENCE_KINDS } from '../../src/core/model/preferences.js';
 import { createEntityRef } from '../../src/core/model/relations.js';
@@ -16,12 +15,12 @@ function createRoot() {
   };
 }
 
-describe('unsupported general preference authoring', () => {
+describe('general preference authoring', () => {
   it.each([
     ['Generic', renderGenericPage],
     ['School', renderSchoolPage],
     ['Wedding', renderWeddingPage],
-  ])('shows truthful disabled copy in %s while preserving existing entries', (_name, renderPage) => {
+  ])('enables supported preferences in %s while preserving existing entries', (_name, renderPage) => {
     const state = createAppState();
     const pageKey = renderPage === renderGenericPage
       ? 'genericPage'
@@ -41,8 +40,8 @@ describe('unsupported general preference authoring', () => {
 
     renderPage(root, state);
 
-    expect(root.innerHTML).toContain(UNSUPPORTED_GENERAL_PREFERENCES_COPY);
-    expect(root.innerHTML).toMatch(/data-action="add(?:-school|-wedding)?-preference" disabled/);
+    expect(root.innerHTML).not.toContain('does not support general relation preferences');
+    expect(root.innerHTML).not.toMatch(/data-action="add(?:-school|-wedding)?-preference" disabled/);
     expect(root.innerHTML).toContain('remove-');
     expect(project.preferences).toHaveLength(1);
   });

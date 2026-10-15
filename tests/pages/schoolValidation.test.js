@@ -90,7 +90,7 @@ describe('school validation', () => {
     expect(validation.errors.some((issue) => issue.code === 'school-capacity-too-small')).toBe(true);
   });
 
-  it('does not author a general preference unsupported by the active solver', () => {
+  it('authors a weighted general preference supported by the active solver', () => {
     const project = buildSchoolProject();
     const state = {
       schoolPage: {
@@ -107,6 +107,7 @@ describe('school validation', () => {
     };
 
     expect(() => addSchoolPreference(state)).not.toThrow();
-    expect(project.preferences).toEqual([]);
+    expect(project.preferences).toHaveLength(1);
+    expect(project.preferences[0]).toMatchObject({ kind: 'preferShareContainer', weight: 4 });
   });
 });

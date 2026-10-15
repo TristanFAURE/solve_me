@@ -38,7 +38,31 @@ export function getAdministratorRepairDates(domainProject) {
   return [...dates].map(([dateKey, label]) => ({ dateKey, label }));
 }
 
-export function buildAdministratorRepairCandidates(domainProject, normalizedProject, dateKey) {
+function repairIssueScope(domainProject, dateKey, validationErrors) {
+  const eventById = new Map((domainProject.events ?? []).map((event) => [event.id, event]));
+  const destinationIds = new Set();
+  let scoped = false;
+  (validationErrors ?? []).forEach((issue) => {
+    const eventId = issue.eventId ?? (String(issue.path ?? '').startsWith('events.') ? String(issue.path).slice('events.'.length) : null);
+    const event = eventById.get(eventId);
+    if (!event || getSlotDayKey(event) !== dateKey) return;
+    if (issue.code === 'event-staffing-insufficient-group-coverage'
+      || issue.code === 'event-staffing-forced-forbidden-conflict'
+      || issue.code === 'event-staffing-forced-unavailable-conflict') {
+      if (issue.groupTypeId) destinationIds.add(createEventStaffingDestinationId(eventId, issue.groupTypeId));
+      scoped = true;
+    }
+    if (issue.code === 'event-staffing-insufficient-slot-coverage') {
+      (domainProject.requirements ?? [])
+        .filter((requirement) => requirement.eventId === eventId && requirement.min > 0)
+        .forEach((requirement) => destinationIds.add(createEventStaffingDestinationId(eventId, requirement.groupTypeId)));
+      scoped = true;
+    }
+  });
+  return { scoped, destinationIds };
+}
+
+export function buildAdministratorRepairCandidates(domainProject, normalizedProject, dateKey, validationErrors = []) {
   const events = dateEvents(domainProject, dateKey);
   const people = domainProject.people ?? [];
   const groupTypes = domainProject.groupTypes ?? [];
@@ -168,7 +192,12 @@ export function buildAdministratorRepairCandidates(domainProject, normalizedProj
     });
   });
 
-  return candidates
+  const issueScope = repairIssueScope(domainProject, dateKey, validationErrors);
+  const relevantCandidates = issueScope.scoped
+    ? candidates.filter((candidate) => candidate.kind === 'forbidden'
+      && candidate.destinationIds.some((destinationId) => issueScope.destinationIds.has(destinationId)))
+    : candidates;
+  return relevantCandidates
     .map((candidate) => ({ ...candidate, dateKey }))
     .sort((left, right) => left.id.localeCompare(right.id));
 }

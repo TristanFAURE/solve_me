@@ -18,7 +18,7 @@ function getStudentAssignmentsByClassId(solution) {
   const assignmentsByClassId = new Map();
 
   for (const assignment of getSolutionAssignments(solution)) {
-    if (assignment?.itemRef?.kind !== 'item' || assignment?.containerRef?.kind !== 'container') {
+    if (assignment?.itemRef?.kind !== 'item' || assignment?.containerRef?.kind !== 'container' || assignment?.metadata?.schoolRole === 'teacher') {
       continue;
     }
 
@@ -58,7 +58,11 @@ function buildClassesSheetRows(project, solution, classrooms, levelLabelById, te
     const studentIds = assignmentsByClassId.get(classroom.id) ?? [];
     const studentLabels = studentIds.map((studentId) => studentLabelById.get(studentId) || studentId);
     const acceptedLevelLabels = classroom.acceptedLevelIds.map((levelId) => levelLabelById.get(levelId) || levelId);
-    const teacherLabels = classroom.teacherIds.map((teacherId) => teacherLabelById.get(teacherId) || teacherId);
+    const assignedTeacherIds = getSolutionAssignments(solution)
+      .filter((assignment) => assignment?.containerRef?.id === classroom.id && assignment?.metadata?.schoolRole === 'teacher')
+      .map((assignment) => assignment.itemRef.id);
+    const teacherLabels = (assignedTeacherIds.length ? assignedTeacherIds : classroom.teacherIds)
+      .map((teacherId) => teacherLabelById.get(teacherId) || teacherId);
 
     rows.push({
       Class: classroom.label,
@@ -71,6 +75,17 @@ function buildClassesSheetRows(project, solution, classrooms, levelLabelById, te
   }
 
   return rows;
+}
+
+function buildTeachersSheetRows(project, solution, classLabelById) {
+  const { teachers } = buildSchoolParticipantIndex(project);
+  const assignmentByTeacherId = new Map(getSolutionAssignments(solution)
+    .filter((assignment) => assignment?.metadata?.schoolRole === 'teacher')
+    .map((assignment) => [assignment.itemRef.id, assignment.containerRef.id]));
+  return teachers.map((teacher) => {
+    const classId = assignmentByTeacherId.get(teacher.id);
+    return { Teacher: teacher.label, Class: classId ? (classLabelById.get(classId) ?? classId) : '' };
+  });
 }
 
 function buildStudentsSheetRows(project, solution, levelLabelById, classLabelById) {
@@ -114,10 +129,12 @@ export function exportSchoolSolutionWorkbook(project, solverResult, solutionInde
   const summarySheet = XLSX.utils.aoa_to_sheet(neutralizeMatrix(buildSummaryRows(project, solverResult, clampedSolutionIndex, classrooms, students)));
   const classesSheet = XLSX.utils.json_to_sheet(neutralizeRows(buildClassesSheetRows(project, solution, classrooms, levelLabelById, teacherLabelById, studentLabelById)));
   const studentsSheet = XLSX.utils.json_to_sheet(neutralizeRows(buildStudentsSheetRows(project, solution, levelLabelById, classLabelById)));
+  const teachersSheet = XLSX.utils.json_to_sheet(neutralizeRows(buildTeachersSheetRows(project, solution, classLabelById)));
 
   XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
   XLSX.utils.book_append_sheet(workbook, classesSheet, 'Classes');
   XLSX.utils.book_append_sheet(workbook, studentsSheet, 'Students');
+  XLSX.utils.book_append_sheet(workbook, teachersSheet, 'Teachers');
 
   const safeTitle = String(project?.title || 'school-solution')
     .trim()

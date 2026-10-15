@@ -247,7 +247,7 @@ export function validateEventStaffingProject(domainProject = {}) {
   const forcedKeys = new Set(forcedAssignments.map((entry) => `${entry.personId}::${entry.eventId}::${entry.groupTypeId}`));
   forbiddenAssignments.forEach((entry, index) => {
     if (forcedKeys.has(`${entry.personId}::${entry.eventId}::${entry.groupTypeId}`)) {
-      errors.push({ level: 'error', code: 'event-staffing-forced-forbidden-conflict', message: 'The same person, slot, and category cannot be both forced and forbidden.', path: `forbiddenAssignments[${index}]` });
+      errors.push({ level: 'error', code: 'event-staffing-forced-forbidden-conflict', message: 'The same person, slot, and category cannot be both forced and forbidden.', path: `forbiddenAssignments[${index}]`, eventId: entry.eventId, groupTypeId: entry.groupTypeId, personId: entry.personId });
     }
   });
   const forcedPersonSlotKeys = new Set();
@@ -312,7 +312,7 @@ export function validateEventStaffingProject(domainProject = {}) {
       if (assignment.personId === preference.personId
         && slot
         && getEffectiveAssignmentPreference(preference, slot, assignment.groupTypeId) === PREFERENCE_STATES.UNAVAILABLE) {
-        errors.push({ level: 'error', code: 'event-staffing-forced-unavailable-conflict', message: `Person "${preference.personId}" is both forced and unavailable for ${slot.date || getSlotDayKey(slot)} / ${slot.slotLabel ?? slot.label ?? slot.id}.`, path: `preferences[${index}]` });
+        errors.push({ level: 'error', code: 'event-staffing-forced-unavailable-conflict', message: `Person "${preference.personId}" is both forced and unavailable for ${slot.date || getSlotDayKey(slot)} / ${slot.slotLabel ?? slot.label ?? slot.id}.`, path: `preferences[${index}]`, eventId: slot.id, groupTypeId: assignment.groupTypeId, personId: preference.personId });
       }
     });
   });
@@ -346,14 +346,14 @@ export function validateEventStaffingProject(domainProject = {}) {
       canWorkGroup(person, requirement)
     ))).length;
     if (totalMinimum > availablePeople) {
-      errors.push({ level: 'error', code: 'event-staffing-insufficient-slot-coverage', message: `Slot "${slot.slotLabel}" requires at least ${totalMinimum} people but only ${availablePeople} are available in the roster.`, path: `events.${slot.id}` });
+      errors.push({ level: 'error', code: 'event-staffing-insufficient-slot-coverage', message: `Slot "${slot.slotLabel}" requires at least ${totalMinimum} people but only ${availablePeople} are available in the roster.`, path: `events.${slot.id}`, eventId: slot.id });
     }
     slotRequirements.forEach((requirement) => {
       const availableForGroup = people.filter((person) => (
         canWorkGroup(person, requirement)
       )).length;
       if (requirement.min > availableForGroup) {
-        errors.push({ level: 'error', code: 'event-staffing-insufficient-group-coverage', message: `Slot "${slot.slotLabel}" requires ${requirement.min} person(s) for group "${requirement.groupTypeId}" but only ${availableForGroup} are available.`, path: `events.${slot.id}` });
+        errors.push({ level: 'error', code: 'event-staffing-insufficient-group-coverage', message: `Slot "${slot.slotLabel}" requires ${requirement.min} person(s) for group "${requirement.groupTypeId}" but only ${availableForGroup} are available.`, path: `events.${slot.id}`, eventId: slot.id, groupTypeId: requirement.groupTypeId });
       }
     });
     if (totalMinimum === 0) warnings.push({ level: 'warning', code: 'event-staffing-zero-minimum-coverage', message: `Slot "${slot.slotLabel}" has no required minimum coverage.`, path: `events.${slot.id}` });
