@@ -4,6 +4,7 @@ import {
   buildSchoolParticipantIndex,
   getContainedGroupIdsForItem,
 } from '../../core/transform/domainMappings.js';
+import { neutralizeMatrix, neutralizeRows } from '../../workbooks/safety.js';
 
 function getSolutionAssignments(solution) {
   return Array.isArray(solution?.assignments) ? solution.assignments : [];
@@ -110,9 +111,9 @@ export function exportSchoolSolutionWorkbook(project, solverResult, solutionInde
 
   const workbook = XLSX.utils.book_new();
 
-  const summarySheet = XLSX.utils.aoa_to_sheet(buildSummaryRows(project, solverResult, clampedSolutionIndex, classrooms, students));
-  const classesSheet = XLSX.utils.json_to_sheet(buildClassesSheetRows(project, solution, classrooms, levelLabelById, teacherLabelById, studentLabelById));
-  const studentsSheet = XLSX.utils.json_to_sheet(buildStudentsSheetRows(project, solution, levelLabelById, classLabelById));
+  const summarySheet = XLSX.utils.aoa_to_sheet(neutralizeMatrix(buildSummaryRows(project, solverResult, clampedSolutionIndex, classrooms, students)));
+  const classesSheet = XLSX.utils.json_to_sheet(neutralizeRows(buildClassesSheetRows(project, solution, classrooms, levelLabelById, teacherLabelById, studentLabelById)));
+  const studentsSheet = XLSX.utils.json_to_sheet(neutralizeRows(buildStudentsSheetRows(project, solution, levelLabelById, classLabelById)));
 
   XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
   XLSX.utils.book_append_sheet(workbook, classesSheet, 'Classes');

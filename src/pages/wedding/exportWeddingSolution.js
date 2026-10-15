@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { getContainedGroupIdsForItem } from '../../core/transform/domainMappings.js';
+import { neutralizeMatrix, neutralizeRows } from '../../workbooks/safety.js';
 
 function getSolutionAssignments(solution) {
   return Array.isArray(solution?.assignments) ? solution.assignments : [];
@@ -188,11 +189,11 @@ export function exportWeddingSolutionWorkbook(project, solverResult, solutionInd
 
   const workbook = XLSX.utils.book_new();
 
-  const summarySheet = XLSX.utils.aoa_to_sheet(buildSummaryRows(project, solverResult, clampedSolutionIndex, guests, groups, tables, positions.length > 0));
-  const seatingSheet = XLSX.utils.json_to_sheet(buildSeatingSheetRows(project, solution, guestLabelById, groupLabelById, tableLabelById, seatLabelById));
-  const guestsSheet = XLSX.utils.json_to_sheet(buildGuestsSheetRows(project, solution, groupLabelById, tableLabelById, seatLabelById));
-  const groupsSheet = XLSX.utils.json_to_sheet(buildGroupsSheetRows(project));
-  const tablesSheet = XLSX.utils.json_to_sheet(buildTablesSheetRows(project));
+  const summarySheet = XLSX.utils.aoa_to_sheet(neutralizeMatrix(buildSummaryRows(project, solverResult, clampedSolutionIndex, guests, groups, tables, positions.length > 0)));
+  const seatingSheet = XLSX.utils.json_to_sheet(neutralizeRows(buildSeatingSheetRows(project, solution, guestLabelById, groupLabelById, tableLabelById, seatLabelById)));
+  const guestsSheet = XLSX.utils.json_to_sheet(neutralizeRows(buildGuestsSheetRows(project, solution, groupLabelById, tableLabelById, seatLabelById)));
+  const groupsSheet = XLSX.utils.json_to_sheet(neutralizeRows(buildGroupsSheetRows(project)));
+  const tablesSheet = XLSX.utils.json_to_sheet(neutralizeRows(buildTablesSheetRows(project)));
 
   XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
   XLSX.utils.book_append_sheet(workbook, seatingSheet, 'Seating');

@@ -15,7 +15,21 @@ import { transformEventStaffingProject } from '../../core/transform/eventStaffin
 import { normalizeProject } from '../../core/normalize/normalizeProject.js';
 import { validateProject } from '../../core/validate/validateProject.js';
 import { FirstSolverAdapter } from '../../solver/adapters/firstSolverAdapter.js';
-import { renderSolutionPanel } from '../../components/solutions/solutionPanel.js';
+import { renderSearchHints, renderSolutionPanel } from '../../components/solutions/solutionPanel.js';
+import { renderSolveStatus } from '../../components/solutions/solveStatus.js';
+import { cancelSolveExecution, createSolveExecutionState, discardSolveExecution, startSolveExecution } from '../../solver/solveExecution.js';
+import { bindPageDraftAutosave, persistPageDraft } from '../../storage/localDrafts.js';
+import { bindWorkflowTabs, isWorkflowTab, renderWorkflowPanel as renderTabPanel, renderWorkflowTabs } from '../../components/common/workflowTabs.js';
+import { migrateEventStaffingProject, getPreferenceMap, normalizePreferenceState, PREFERENCE_STATES } from './migration.js';
+import { renderPreferenceMatrix, setSlotPreference } from './preferenceMatrix.js';
+import { addAssignmentRule, addCooldownRule, renderRuleEditors } from './ruleEditors.js';
+import {
+  applyEventStaffingPreferencePreview,
+  exportEventStaffingConfigurationWorkbook,
+  exportEventStaffingSolutionWorkbook,
+  getEventStaffingReplacementFromPreview,
+  previewEventStaffingWorkbookFile,
+} from './workbooks.js';
 
 function getGroupTypeLabelMap(domainProject) {
   return new Map(domainProject.groupTypes.map((groupType) => [groupType.id, groupType.label]));
@@ -66,7 +80,7 @@ function parseContainerAssignmentId(containerId) {
 }
 
 function buildScheduleSummary(domainProject, solverResult, activeSolutionIndex = 0) {
-  if (!solverResult || solverResult.status !== 'solved' || (solverResult.solutions?.length ?? 0) === 0) {
+  if (!solverResult || !['solved', 'partial', 'timeout', 'cancelled'].includes(solverResult.status) || (solverResult.solutions?.length ?? 0) === 0) {
     return null;
   }
 
@@ -231,6 +245,15 @@ export function renderStaffingScheduleView(domainProject, solverResult, activeSo
     }).join('');
 
   const warnings = solverResult.warnings ?? [];
+  const selectedSolution = solverResult.solutions[scheduleSummary.clampedSolutionIndex];
+  const previousSolution = scheduleSummary.clampedSolutionIndex > 0 ? solverResult.solutions[scheduleSummary.clampedSolutionIndex - 1] : null;
+  const assignmentKey = (assignment) => `${assignment.itemRef?.id ?? ''}::${assignment.containerRef?.id ?? ''}`;
+  const changedAssignments = previousSolution
+    ? new Set([
+      ...selectedSolution.assignments.map(assignmentKey).filter((key) => !new Set(previousSolution.assignments.map(assignmentKey)).has(key)),
+      ...previousSolution.assignments.map(assignmentKey).filter((key) => !new Set(selectedSolution.assignments.map(assignmentKey)).has(key)),
+    ]).size
+    : 0;
   const solutionOptions = Array.from({ length: scheduleSummary.solutionCount }, (_, solutionIndex) => buildSolutionOptionSummary(
     domainProject,
     solverResult,
@@ -247,6 +270,14 @@ export function renderStaffingScheduleView(domainProject, solverResult, activeSo
         <div><dt>Showing</dt><dd>Solution ${escapeHtml(String(scheduleSummary.clampedSolutionIndex + 1))}</dd></div>
         <div><dt>Warnings</dt><dd>${escapeHtml(String(warnings.length))}</dd></div>
         <div><dt>Runtime</dt><dd>${escapeHtml(String(solverResult.runtimeMs))} ms</dd></div>
+        <div><dt>Score</dt><dd>${escapeHtml(String(selectedSolution.score ?? 'Not scored'))}</dd></div>
+        <div><dt>Preference contribution</dt><dd>${escapeHtml(String(selectedSolution.scoreDetails?.assignmentScores ?? '—'))}</dd></div>
+        <div><dt>Target contribution</dt><dd>${escapeHtml(String(selectedSolution.scoreDetails?.itemCountTargets ?? '—'))}</dd></div>
+        <div><dt>Equity contribution</dt><dd>${escapeHtml(String(selectedSolution.scoreDetails?.equity ?? '—'))}</dd></div>
+        <div><dt>Search complete</dt><dd>${solverResult.searchComplete ? 'Yes' : 'No'}</dd></div>
+        <div><dt>Optimality proven</dt><dd>${solverResult.optimalityProven ? 'Yes' : 'No'}</dd></div>
+        <div><dt>Timeout reached</dt><dd>${solverResult.timeoutReached ? 'Yes' : 'No'}</dd></div>
+        <div><dt>Changed assignments</dt><dd>${escapeHtml(String(changedAssignments))}${previousSolution ? ' vs previous solution' : ''}</dd></div>
       </dl>
       ${(solverResult.solutions?.length ?? 0) > 1 ? `
         <section class="workspace-panel top-gap">
@@ -265,6 +296,12 @@ export function renderStaffingScheduleView(domainProject, solverResult, activeSo
         </section>
       ` : ''}
       ${warnings.length > 0 ? `<ul class="issue-list compact-issue-list top-gap">${warnings.map((warning) => `<li class="issue-list-item warning"><div>${escapeHtml(warning)}</div></li>`).join('')}</ul>` : '<p class="muted-text top-gap">No solver warnings for the staffing solve.</p>'}
+      ${renderSearchHints(solverResult, {
+    'use-first-mode': 'Find the first staffing schedule',
+    'tighten-eligibility-bounds': 'Tighten person eligibility and staffing bounds',
+    'add-fixed-assignments': 'Fix known person-event assignments',
+    'split-problem': 'Split independent event periods',
+  })}
       <div class="workspace-layout top-gap">
         <section class="workspace-panel">
           <h3>Event-centric view</h3>
@@ -306,7 +343,7 @@ function describeDeleteImpact(domainProject, eventIdsToDelete) {
   const forcedCount = domainProject.forcedAssignments.filter((assignment) => idsToDelete.has(assignment.eventId)).length;
   const forbiddenCount = domainProject.forbiddenAssignments.filter((assignment) => idsToDelete.has(assignment.eventId)).length;
   const preferenceCount = domainProject.preferences.reduce(
-    (total, preference) => total + Object.keys(preference.eventPreferences ?? {}).filter((eventId) => idsToDelete.has(eventId)).length,
+    (total, preference) => total + Object.keys(getPreferenceMap(preference)).filter((eventId) => idsToDelete.has(eventId)).length,
     0,
   );
 
@@ -366,7 +403,7 @@ function renderTransformedProjectSummary(project) {
   `;
 }
 
-function renderWorkflowPanel(state) {
+function renderReviewPanel(state) {
   const solverAdapter = new FirstSolverAdapter();
   const capabilities = solverAdapter.getCapabilities();
   const genericValidation = state.eventStaffingPage.lastGenericValidation;
@@ -405,6 +442,7 @@ function renderWorkflowPanel(state) {
         </div>
       ` : ''}
     </section>
+    ${renderSolveStatus(state.eventStaffingPage.solveExecution, 'data-event-staffing-action="cancel-solve"')}
 
     ${renderValidationPanel(state.eventStaffingPage.lastValidation, {
     expanded: state.eventStaffingPage.validationPanelExpanded,
@@ -418,12 +456,39 @@ function renderWorkflowPanel(state) {
 
     ${renderTransformedProjectSummary(normalizedProject)}
 
-    ${renderStaffingScheduleView(
-    state.eventStaffingPage.domainProject,
-    state.eventStaffingPage.lastSolverResult,
-    state.eventStaffingPage.activeSolutionIndex ?? 0,
-  )}
   `;
+}
+
+function renderSetupPanel(domainProject, state) {
+  const options = state.eventStaffingPage.solveOptions;
+  const workbookImport = state.eventStaffingPage.workbookImport;
+  const report = workbookImport?.preview?.report;
+  return `
+    <section class="panel">
+      <h2>Event Staffing setup</h2>
+      <label>Project title<input type="text" name="eventStaffingTitle" value="${escapeHtml(domainProject.title)}" /></label>
+      <h3>Solver configuration</h3>
+      <div class="form-grid four-columns compact-form-grid">
+        <label>Timeout (ms)<input type="number" min="1" name="staffingTimeLimitMs" value="${escapeHtml(options.timeLimitMs)}" /></label>
+        <label>Maximum solutions<input type="number" min="1" max="1000" name="staffingMaxSolutions" value="${escapeHtml(options.maxSolutions)}" /></label>
+        <label>Equity weight<input type="number" name="staffingEquityWeight" value="${escapeHtml(options.scoreWeights.equity)}" /></label>
+        <label>Preference weight<input type="number" name="staffingPreferenceWeight" value="${escapeHtml(options.scoreWeights.preferences)}" /></label>
+        <label>Target weight<input type="number" name="staffingTargetWeight" value="${escapeHtml(options.scoreWeights.targets)}" /></label>
+        <label>Minimum changed assignments<input type="number" min="0" name="staffingDiversityDistance" value="${escapeHtml(options.diversity.minimumAssignmentDistance)}" /></label>
+        <label><span>Diverse alternatives</span><input type="checkbox" name="staffingDiversityEnabled"${options.diversity.enabled ? ' checked' : ''} /></label>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>Configuration workbook</h2>
+      <p class="muted-text">Export the complete editable setup at any time. Import previews either a full configuration replacement or a compatible preferences-only merge.</p>
+      <div class="event-staffing-inline-actions">
+        <button type="button" data-event-staffing-action="export-configuration-workbook">Export configuration workbook</button>
+        <label>Preview workbook<input type="file" name="eventStaffingWorkbookFile" accept=".xlsx" /></label>
+      </div>
+      ${workbookImport?.status === 'busy' ? '<p role="status">Reading workbook…</p>' : ''}
+      ${workbookImport?.error ? `<p role="alert" class="command-bar-feedback-error">${escapeHtml(workbookImport.error)}</p>` : ''}
+      ${report ? `${workbookImport.preview.kind === 'configuration' ? '<p><strong>Complete Event Staffing configuration found.</strong> Replacing it changes slots, categories, requirements, people, rules, preferences, and limits, and clears solved results.</p>' : '<p><strong>Preferences-only workbook found.</strong> Applying it does not replace other setup.</p>'}<dl class="summary-grid compact-summary-grid"><div><dt>Matched rows</dt><dd>${report.matchedRows}</dd></div><div><dt>Unknown rows</dt><dd>${report.unknownRows}</dd></div><div><dt>Duplicate rows</dt><dd>${report.duplicateRows}</dd></div><div><dt>Ambiguous rows</dt><dd>${report.ambiguousRows}</dd></div><div><dt>Invalid rows</dt><dd>${report.invalidRows}</dd></div><div><dt>Invalid cells</dt><dd>${report.invalidCells}</dd></div><div><dt>Unknown slot mappings</dt><dd>${report.unknownSlotMappings}</dd></div><div><dt>Preference cells</dt><dd>${report.preferenceCells}</dd></div></dl>${report.issues.length ? `<ul class="issue-list">${report.issues.map((issue) => `<li>${escapeHtml(issue)}</li>`).join('')}</ul>` : ''}<div class="event-staffing-inline-actions">${workbookImport.preview.kind === 'configuration' ? '<button type="button" data-event-staffing-action="replace-configuration-preview">Replace full configuration</button>' : ''}<button type="button" data-event-staffing-action="apply-preference-preview"${workbookImport.preview.canApply ? '' : ' disabled'}>Apply preferences only</button></div>` : ''}
+    </section>`;
 }
 
 function renderBody(domainProject, state) {
@@ -433,15 +498,10 @@ function renderBody(domainProject, state) {
 
   syncSelectedEventDrafts(editor, selection.selectedEvent, selection.selectedRequirements);
 
-  const validation = state.eventStaffingPage.lastValidation ?? validateEventStaffingProject(domainProject);
-  state.eventStaffingPage.lastValidation = validation;
-
-  return `
-    ${renderWorkflowPanel(state)}
-
-    <section class="panel">
+  const activeTab = state.eventStaffingPage.activeWorkflowTab;
+  const dataContent = `<section class="panel">
       <h2>📅 Events</h2>
-      <p>Use the event browser for focused editing, bulk requirement actions, and schedule generation.</p>
+      <p>Use dates to group independently staffed slots. Each slot can carry several category coverage requirements.</p>
       <div class="workspace-layout">
         ${renderEventBrowser(domainProject, browserState, selection, editor)}
         ${renderSelectedEventEditor(
@@ -452,9 +512,14 @@ function renderBody(domainProject, state) {
     selection.groupTypeLabelsById,
   )}
       </div>
-    </section>
-
-    ${renderSupportSections(domainProject, selection.groupTypeLabelsById, editor)}
+    </section>${renderSupportSections(domainProject, selection.groupTypeLabelsById, editor)}`;
+  return `
+    ${renderWorkflowTabs(activeTab)}
+    ${renderTabPanel('setup', activeTab, renderSetupPanel(domainProject, state))}
+    ${renderTabPanel('data', activeTab, dataContent)}
+    ${renderTabPanel('rules', activeTab, `${renderPreferenceMatrix(domainProject)}${renderRuleEditors(domainProject, editor)}`)}
+    ${renderTabPanel('review', activeTab, renderReviewPanel(state))}
+    ${renderTabPanel('results', activeTab, `${renderStaffingScheduleView(domainProject, state.eventStaffingPage.lastSolverResult, state.eventStaffingPage.activeSolutionIndex ?? 0)}${state.eventStaffingPage.lastSolverResult?.solutions?.length ? '<button type="button" data-event-staffing-action="export-solution-workbook">Export selected schedule workbook</button>' : ''}`)}
   `;
 }
 
@@ -484,6 +549,8 @@ export function insertEventNearSelection(domainProject, editor, selectedEvent) {
   normalizedEvents.splice(insertIndex, 0, {
     id: createEventId(label, editor.draftInsertedEventDate, existingIds),
     label,
+    slotLabel: label,
+    dateKey: String(editor.draftInsertedEventDate ?? '').trim() || `undated:${slugifyLabel(label) || 'slot'}`,
     date: String(editor.draftInsertedEventDate ?? '').trim(),
     orderIndex: insertIndex,
   });
@@ -715,9 +782,10 @@ function sanitizePersonEventPreferences(eventPreferences = {}) {
   const sanitized = {};
 
   Object.entries(eventPreferences ?? {}).forEach(([eventId, value]) => {
-    if (value === 'Y' || value === 'N') {
-      sanitized[eventId] = value;
-    }
+    const state = normalizePreferenceState(value);
+    if (state === PREFERENCE_STATES.PREFER) sanitized[eventId] = 'Y';
+    if (state === PREFERENCE_STATES.PREFER_NOT) sanitized[eventId] = 'N';
+    if (state === PREFERENCE_STATES.UNAVAILABLE) sanitized[eventId] = 'U';
   });
 
   return sanitized;
@@ -726,6 +794,7 @@ function sanitizePersonEventPreferences(eventPreferences = {}) {
 function resetPersonEditor(editor) {
   editor.draftPersonName = '';
   editor.draftPersonId = '';
+  editor.draftPersonEmail = '';
   editor.draftPersonMaxAssignments = '';
   editor.draftPersonTargetAssignments = '';
   editor.draftPersonMaxAssignmentsPerGroupTypeRows = [];
@@ -745,6 +814,7 @@ export function beginEditPerson(domainProject, editor, personIndex) {
   editor.editingPersonIndex = personIndex;
   editor.draftPersonName = person.name ?? '';
   editor.draftPersonId = person.id ?? '';
+  editor.draftPersonEmail = person.email ?? '';
   editor.draftPersonMaxAssignments = person.maxAssignments ?? '';
   editor.draftPersonTargetAssignments = person.targetAssignments ?? '';
   editor.draftPersonMaxAssignmentsPerGroupTypeRows = Object.entries(person.maxAssignmentsPerGroupType ?? {})
@@ -756,7 +826,7 @@ export function beginEditPerson(domainProject, editor, personIndex) {
   const existingPreferenceEntry = Array.isArray(domainProject.preferences)
     ? domainProject.preferences.find((preference) => preference.personId === person.id)
     : null;
-  editor.draftPersonEventPreferences = { ...(existingPreferenceEntry?.eventPreferences ?? {}) };
+  editor.draftPersonEventPreferences = { ...getPreferenceMap(existingPreferenceEntry) };
 
   return `Editing person "${person.name}".`;
 }
@@ -854,6 +924,7 @@ export function addPerson(domainProject, editor) {
   const nextPerson = {
     id,
     name,
+    email: String(editor.draftPersonEmail ?? '').trim(),
     maxAssignments: parseOptionalNonNegativeInteger(editor.draftPersonMaxAssignments),
     targetAssignments: parseOptionalNonNegativeInteger(editor.draftPersonTargetAssignments),
     maxAssignmentsPerGroupType: maxByGroupResult.value,
@@ -942,6 +1013,8 @@ export function generateEventsFromDateRange(domainProject, editor) {
     generatedEvents.push({
       id: createEventId(label, dateText, existingIds),
       label,
+      slotLabel: label,
+      dateKey: dateText,
       date: dateText,
       orderIndex: domainProject.events.length + generatedEvents.length,
     });
@@ -1003,8 +1076,11 @@ export function deleteEvents(domainProject, eventIdsToDelete, editor) {
   domainProject.forbiddenAssignments = domainProject.forbiddenAssignments.filter((assignment) => !idsToDelete.has(assignment.eventId));
   domainProject.preferences = domainProject.preferences.map((preference) => ({
     ...preference,
-    eventPreferences: Object.fromEntries(
-      Object.entries(preference.eventPreferences ?? {}).filter(([eventId]) => !idsToDelete.has(eventId)),
+    eventPreferences: preference.eventPreferences ? Object.fromEntries(
+      Object.entries(preference.eventPreferences).filter(([eventId]) => !idsToDelete.has(eventId)),
+    ) : preference.eventPreferences,
+    slotPreferences: Object.fromEntries(
+      Object.entries(getPreferenceMap(preference)).filter(([eventId]) => !idsToDelete.has(eventId)),
     ),
   }));
 
@@ -1018,6 +1094,7 @@ export function deleteEvents(domainProject, eventIdsToDelete, editor) {
 }
 
 function clearWorkflowOutputs(state) {
+  discardSolveExecution(state.eventStaffingPage.solveExecution);
   state.eventStaffingPage.lastTransformedProject = null;
   state.eventStaffingPage.lastNormalizedProject = null;
   state.eventStaffingPage.lastGenericValidation = null;
@@ -1026,7 +1103,8 @@ function clearWorkflowOutputs(state) {
 }
 
 function refreshValidation(state) {
-  state.eventStaffingPage.lastValidation = validateEventStaffingProject(state.eventStaffingPage.domainProject);
+  state.eventStaffingPage.lastValidation = null;
+  state.eventStaffingPage.validationPanelExpanded = false;
   clearWorkflowOutputs(state);
 }
 
@@ -1050,6 +1128,85 @@ function bindInteractions(root, state) {
   const domainProject = state.eventStaffingPage.domainProject;
   const browserState = getEventBrowserState(state);
   const selection = selectVisibleEvent(domainProject, browserState);
+
+  bindWorkflowTabs(root, (tabId) => {
+    if (!isWorkflowTab(tabId)) return;
+    state.eventStaffingPage.activeWorkflowTab = tabId;
+    rerender();
+  });
+
+  const bindValue = (name, target, parser = (value) => value) => {
+    root.querySelector(`[name="${name}"]`)?.addEventListener('input', (event) => { target(parser(event.target.value, event.target)); });
+  };
+  bindValue('eventStaffingTitle', (value) => { domainProject.title = value; });
+  bindValue('staffingTimeLimitMs', (value) => { state.eventStaffingPage.solveOptions.timeLimitMs = parseNonNegativeInteger(value, 5000); });
+  bindValue('staffingMaxSolutions', (value) => { state.eventStaffingPage.solveOptions.maxSolutions = parseNonNegativeInteger(value, 10); });
+  bindValue('staffingEquityWeight', (value) => { state.eventStaffingPage.solveOptions.scoreWeights.equity = Number.parseInt(value, 10) || 0; });
+  bindValue('staffingPreferenceWeight', (value) => { state.eventStaffingPage.solveOptions.scoreWeights.preferences = Number.parseInt(value, 10) || 0; });
+  bindValue('staffingTargetWeight', (value) => { state.eventStaffingPage.solveOptions.scoreWeights.targets = Number.parseInt(value, 10) || 0; });
+  bindValue('staffingDiversityDistance', (value) => { state.eventStaffingPage.solveOptions.diversity.minimumAssignmentDistance = parseNonNegativeInteger(value, 2); });
+  root.querySelector('[name="staffingDiversityEnabled"]')?.addEventListener('change', (event) => {
+    state.eventStaffingPage.solveOptions.diversity.enabled = event.target.checked;
+  });
+
+  root.querySelector('[data-event-staffing-action="export-configuration-workbook"]')?.addEventListener('click', () => {
+    exportEventStaffingConfigurationWorkbook(domainProject);
+  });
+  root.querySelector('[name="eventStaffingWorkbookFile"]')?.addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    state.eventStaffingPage.workbookImport = { status: 'busy', error: '', preview: null };
+    rerender();
+    try {
+      const preview = await previewEventStaffingWorkbookFile(file, domainProject);
+      state.eventStaffingPage.workbookImport = { status: 'preview', error: '', preview };
+    } catch (error) {
+      state.eventStaffingPage.workbookImport = { status: 'error', error: error instanceof Error ? error.message : 'The workbook could not be read.', preview: null };
+    }
+    rerender();
+  });
+  root.querySelector('[data-event-staffing-action="replace-configuration-preview"]')?.addEventListener('click', () => {
+    const confirmFn = globalThis.confirm;
+    const confirmed = typeof confirmFn === 'function' && confirmFn.call(globalThis, 'Replace the full Event Staffing configuration? All current slots, categories, requirements, people, preferences, cooldowns, forced/forbidden assignments, limits, and solved results will be replaced.');
+    if (!confirmed) return;
+    try {
+      state.eventStaffingPage.domainProject = getEventStaffingReplacementFromPreview(state.eventStaffingPage.workbookImport.preview);
+      state.eventStaffingPage.editor.selectedEventId = '';
+      state.eventStaffingPage.editor.selectedEventIds = [];
+      state.eventStaffingPage.editor.lastSyncedSelectedEventId = '';
+      state.eventStaffingPage.workbookImport = { status: 'idle', error: '', preview: null };
+      state.eventStaffingPage.message = 'Replaced the full Event Staffing configuration. Review and validate it before solving.';
+      refreshValidation(state);
+    } catch (error) {
+      state.eventStaffingPage.workbookImport.error = error instanceof Error ? error.message : 'The configuration could not be replaced.';
+    }
+    rerender();
+  });
+  root.querySelector('[data-event-staffing-action="apply-preference-preview"]')?.addEventListener('click', () => {
+    try {
+      const count = applyEventStaffingPreferencePreview(domainProject, state.eventStaffingPage.workbookImport.preview);
+      state.eventStaffingPage.message = `Applied ${count} preference cell(s).`;
+      state.eventStaffingPage.workbookImport = { status: 'idle', error: '', preview: null };
+      refreshValidation(state);
+    } catch (error) {
+      state.eventStaffingPage.workbookImport.error = error instanceof Error ? error.message : 'Preferences could not be applied.';
+    }
+    rerender();
+  });
+  root.querySelector('[data-event-staffing-action="export-solution-workbook"]')?.addEventListener('click', () => {
+    exportEventStaffingSolutionWorkbook(domainProject, state.eventStaffingPage.lastSolverResult, state.eventStaffingPage.activeSolutionIndex);
+  });
+
+  root.querySelectorAll('[data-slot-preference]').forEach((select) => {
+    select.addEventListener('change', () => {
+      setSlotPreference(domainProject, select.dataset.personId, select.dataset.slotId, select.value);
+      refreshValidation(state);
+    });
+  });
+
+  root.querySelector('.validation-panel-details')?.addEventListener('toggle', (event) => {
+    state.eventStaffingPage.validationPanelExpanded = event.target.open;
+  });
 
   const searchInput = root.querySelector('input[name="eventSearchText"]');
   if (searchInput) {
@@ -1114,7 +1271,9 @@ function bindInteractions(root, state) {
       }
 
       selectedEvent.label = String(editor.draftSelectedEventLabel ?? '').trim() || selectedEvent.label;
+      selectedEvent.slotLabel = selectedEvent.label;
       selectedEvent.date = String(editor.draftSelectedEventDate ?? '').trim();
+      selectedEvent.dateKey = selectedEvent.date || selectedEvent.dateKey || `undated:${selectedEvent.id}`;
       selectedEvent.orderIndex = parseNonNegativeInteger(editor.draftSelectedEventOrderIndex, selectedEvent.orderIndex);
       domainProject.events = normalizeEventOrderIndexes(domainProject.events);
       editor.lastSyncedSelectedEventId = '';
@@ -1262,6 +1421,11 @@ function bindInteractions(root, state) {
     draftPersonIdInput.addEventListener('input', (event) => {
       editor.draftPersonId = event.target.value;
     });
+  }
+
+  const draftPersonEmailInput = root.querySelector('input[name="draftPersonEmail"]');
+  if (draftPersonEmailInput) {
+    draftPersonEmailInput.addEventListener('input', (event) => { editor.draftPersonEmail = event.target.value; });
   }
 
   const draftPersonMaxAssignmentsInput = root.querySelector('input[name="draftPersonMaxAssignments"]');
@@ -1527,6 +1691,7 @@ function bindInteractions(root, state) {
     validateDomainProjectButton.addEventListener('click', () => {
       state.eventStaffingPage.lastValidation = validateEventStaffingProject(domainProject);
       clearWorkflowOutputs(state);
+      state.eventStaffingPage.validationPanelExpanded = !state.eventStaffingPage.lastValidation.valid;
       state.eventStaffingPage.message = state.eventStaffingPage.lastValidation.valid
         ? 'The staffing-domain project is valid.'
         : 'The staffing-domain project has validation errors.';
@@ -1545,6 +1710,7 @@ function bindInteractions(root, state) {
       state.eventStaffingPage.lastGenericValidation = workflow.genericValidation;
       state.eventStaffingPage.lastSolverResult = null;
       state.eventStaffingPage.activeSolutionIndex = 0;
+      state.eventStaffingPage.validationPanelExpanded = !workflow.domainValidation.valid;
       state.eventStaffingPage.message = workflow.message;
       rerender();
     });
@@ -1559,6 +1725,7 @@ function bindInteractions(root, state) {
       state.eventStaffingPage.lastTransformedProject = workflow.transformedProject;
       state.eventStaffingPage.lastNormalizedProject = workflow.normalizedProject;
       state.eventStaffingPage.lastGenericValidation = workflow.genericValidation;
+      state.eventStaffingPage.validationPanelExpanded = !workflow.domainValidation.valid;
 
       if (!workflow.genericValidation?.valid || !workflow.normalizedProject) {
         state.eventStaffingPage.lastSolverResult = null;
@@ -1567,13 +1734,30 @@ function bindInteractions(root, state) {
         return;
       }
 
-      state.eventStaffingPage.lastSolverResult = adapter.solve(workflow.normalizedProject);
       state.eventStaffingPage.activeSolutionIndex = 0;
-      state.eventStaffingPage.message = state.eventStaffingPage.lastSolverResult.status === 'solved'
-        ? `Solved staffing plan with ${state.eventStaffingPage.lastSolverResult.solutions.length} solution(s).`
-        : 'The staffing project ran through the solver but no valid plan was found.';
+      startSolveExecution({
+        execution: state.eventStaffingPage.solveExecution,
+        model: workflow.normalizedProject,
+        options: {
+          ...state.eventStaffingPage.solveOptions,
+          equityEligibleItemIds: domainProject.people.map((person) => person.id),
+        },
+        onResult(solverResult) {
+          state.eventStaffingPage.lastSolverResult = solverResult;
+          state.eventStaffingPage.message = solverResult.status === 'solved'
+            ? `Solved staffing plan with ${solverResult.solutions.length} solution(s).`
+            : 'The staffing solve stopped without a complete result.';
+          state.eventStaffingPage.activeWorkflowTab = 'results';
+        },
+        onChange: rerender,
+      });
       rerender();
     });
+  }
+
+  const cancelSolveButton = root.querySelector('[data-event-staffing-action="cancel-solve"]');
+  if (cancelSolveButton) {
+    cancelSolveButton.addEventListener('click', () => cancelSolveExecution(state.eventStaffingPage.solveExecution));
   }
 
   const previousSolutionButton = root.querySelector('[data-event-staffing-action="show-previous-solution"]');
@@ -1717,13 +1901,42 @@ function bindInteractions(root, state) {
       }
     });
   }
+
+  ['draftAssignmentKind', 'draftAssignmentPersonId', 'draftAssignmentSlotId', 'draftAssignmentGroupTypeId', 'draftCooldownTriggerGroupTypeId', 'draftCooldownBlockedGroupTypeId', 'draftCooldownCount'].forEach((name) => {
+    root.querySelector(`[name="${name}"]`)?.addEventListener('change', (event) => { editor[name] = event.target.value; });
+  });
+  root.querySelector('[data-event-staffing-action="add-assignment-rule"]')?.addEventListener('click', () => {
+    state.eventStaffingPage.message = addAssignmentRule(domainProject, editor);
+    refreshValidation(state);
+    rerender();
+  });
+  root.querySelectorAll('[data-remove-assignment-rule]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const collection = button.dataset.removeAssignmentRule === 'forced' ? domainProject.forcedAssignments : domainProject.forbiddenAssignments;
+      collection.splice(Number.parseInt(button.dataset.ruleIndex, 10), 1);
+      refreshValidation(state);
+      rerender();
+    });
+  });
+  root.querySelector('[data-event-staffing-action="add-cooldown-rule"]')?.addEventListener('click', () => {
+    state.eventStaffingPage.message = addCooldownRule(domainProject, editor);
+    refreshValidation(state);
+    rerender();
+  });
+  root.querySelectorAll('[data-remove-cooldown-rule]').forEach((button) => {
+    button.addEventListener('click', () => {
+      domainProject.cooldownRules.splice(Number.parseInt(button.dataset.ruleIndex, 10), 1);
+      refreshValidation(state);
+      rerender();
+    });
+  });
 }
 
 export function renderEventStaffingPage(root, state) {
   state.eventStaffingPage = state.eventStaffingPage ?? {};
   state.eventStaffingPage.editor = state.eventStaffingPage.editor ?? {};
 
-  const domainProject = state.eventStaffingPage.domainProject ?? createMockDomainProject();
+  const domainProject = migrateEventStaffingProject(state.eventStaffingPage.domainProject ?? createMockDomainProject());
   state.eventStaffingPage.domainProject = domainProject;
   state.eventStaffingPage.editor.lastSyncedSelectedEventId = typeof state.eventStaffingPage.editor.lastSyncedSelectedEventId === 'string'
     ? state.eventStaffingPage.editor.lastSyncedSelectedEventId
@@ -1733,13 +1946,19 @@ export function renderEventStaffingPage(root, state) {
   state.eventStaffingPage.activeSolutionIndex = Number.isInteger(state.eventStaffingPage.activeSolutionIndex)
     ? state.eventStaffingPage.activeSolutionIndex
     : 0;
-  state.eventStaffingPage.lastValidation = state.eventStaffingPage.lastValidation ?? validateEventStaffingProject(domainProject);
-
+  state.eventStaffingPage.solveExecution ??= createSolveExecutionState();
+  state.eventStaffingPage.activeWorkflowTab = isWorkflowTab(state.eventStaffingPage.activeWorkflowTab) ? state.eventStaffingPage.activeWorkflowTab : 'setup';
+  state.eventStaffingPage.solveOptions ??= { mode: 'topK', maxSolutions: 10, timeLimitMs: 5000, includeScoreDetails: true, scoreWeights: { equity: 100, preferences: 10, targets: 20 }, diversity: { enabled: true, minimumAssignmentDistance: 2 } };
+  state.eventStaffingPage.workbookImport ??= { status: 'idle', error: '', preview: null };
+  persistPageDraft(state.draftStorage, 'event-staffing', domainProject, state.eventStaffingPage.persistence);
   root.innerHTML = renderPageShell({
-    title: 'Event staffing planner',
-    description: 'Planner-facing editor for ordered events, reusable group types, staffing bounds, event generation, transform validation, and solving.',
+    activeRoute: '/event-staffing',
+    title: 'Event Staffing',
+    description: 'Plan date-grouped slots, category coverage, people, preferences, rules, and ranked schedules.',
+    persistence: state.eventStaffingPage.persistence,
     body: renderBody(domainProject, state),
   });
 
   bindInteractions(root, state);
+  bindPageDraftAutosave(root, state.draftStorage, 'event-staffing', () => state.eventStaffingPage.domainProject, state.eventStaffingPage.persistence);
 }

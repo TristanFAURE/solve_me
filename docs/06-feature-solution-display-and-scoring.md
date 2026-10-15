@@ -98,6 +98,32 @@ If optimization or preference scoring is active, the UI must display:
 
 If the solve mode is hard-only, the UI should not pretend there is a score unless the adapter returns one for another reason.
 
+### Ranked and diverse alternatives
+
+The next shared result UI must support ranked top-K alternatives.
+
+For each solution, display:
+
+- rank
+- total numeric score
+- objective contribution breakdown
+- workload equity contribution when active
+- preference and target contributions when active
+- differences from the currently selected comparison solution
+- whether the solution is part of a proven complete ranking or a best-so-far result
+
+When diversity is enabled, the UI should explain that alternatives are selected to differ meaningfully. It should also state when the configured minimum assignment distance could not be satisfied.
+
+The result summary must distinguish:
+
+- search completed
+- optimality proven
+- result list truncated by configured limit
+- interrupted with usable best-so-far results
+- timeout reached
+
+Raw numeric score alone is insufficient. Users must be able to understand why one solution ranks above another.
+
 ### Preference violation display
 
 When available, the UI should display:

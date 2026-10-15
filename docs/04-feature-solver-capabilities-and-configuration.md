@@ -180,6 +180,44 @@ The configuration feature must support the following generic modes.
 - available only when the solver supports optimization
 - returned solutions should include score or penalty metadata when available
 
+## Approved ranked-solution configuration
+
+The next implementation phase refines the generic modes to `first`, `topK`, and `optimize` and adds explicit scoring and diversity options.
+
+Planned configuration shape:
+
+```js
+{
+  mode: "first" | "topK" | "optimize",
+  maxSolutions: 10,
+  timeLimitMs: 5000,
+  includeScoreDetails: true,
+  scoreWeights: {
+    equity: 100,
+    preferences: 10,
+    targets: 20
+  },
+  diversity: {
+    enabled: true,
+    minimumAssignmentDistance: 4
+  }
+}
+```
+
+The initial optimization strategy is a configurable weighted numeric score. Staffing should initially assign the dominant default weight to workload equity while retaining configurable preference and target weights.
+
+`topK` means ranked alternatives, with duplicate removal and optional minimum assignment distance. It does not mean that the solver may return arbitrary valid solutions and label them as best.
+
+Configuration validation must additionally ensure:
+
+- all weights are finite integers within an implementation-defined safe range
+- the diversity distance is a non-negative integer
+- diversity is used only with a multi-solution mode
+- requested objective terms are supported by the selected adapter
+- optimality is not promised when timeout or interruption prevents proof
+
+The full objective, diversity, worker, and implementation roadmap is defined in `docs/11-feature-ranked-solutions-and-shared-workflow.md`.
+
 ## Configuration validation
 
 The application must validate the solver configuration before solve.
@@ -202,6 +240,21 @@ The solver result should expose metadata that the UI can display.
 
 - status: solved, unsat, timeout, error, partial
 - number of solutions returned
+
+### Ranked-solution metadata
+
+The next result contract should also expose:
+
+- score and objective breakdown for each solution
+- `searchComplete`
+- `optimalityProven`
+- `truncatedByLimit`
+- `interrupted`
+- `timeoutReached`
+- explored and pruned node counts when available
+- warnings when requested diversity or objectives could not be applied
+
+The solver must not report `unsat` without completing the relevant search, and must not report a proven optimum without a valid objective bound.
 - whether results were truncated
 - runtime duration if available
 - warnings generated during execution

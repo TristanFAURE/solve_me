@@ -432,30 +432,53 @@ The architecture should support:
 - graceful failure and partial results when supported by the solver
 
 Transforms that expand domain rules into generic incompatibilities or scoped count constraints must be designed carefully because they can increase normalized model size significantly.
-+
-+## Solver evolution strategy
-+
-+The solver architecture should evolve by extending the existing solver contract and normalized constraint families rather than by introducing a separate public solver API for each new domain.
-+
-+Guiding rules:
-+
-+- preserve the existing public adapter entry points
-+- preserve backward compatibility for existing generic, school, and wedding flows
-+- keep domain-specific semantics in transform layers whenever possible
-+- add new generic constraint families only when a feature cannot be represented cleanly through preprocessing alone
-+
-+This is especially important for scheduling-oriented domains such as the event staffing planner, where some semantics can be compiled away in transforms while others require richer generic solver support.
-+
-+### Scheduling-oriented constraints and the generic architecture
-+
-+For scheduling-style domains built on ordered events and reusable categories:
-+
-+- event order itself should remain domain-level information
-+- transforms may convert ordered-event cooldown rules into generic incompatibility constraints
-+- transforms may convert one-assignment-per-event semantics into generic exclusivity constraints
-+- the solver may still need generic support for assignment-count upper bounds and soft optimization objectives
-+
-+This preserves the generic core while allowing the current solver path to grow incrementally.
+
+## Solver evolution strategy
+
+The solver architecture should evolve by extending the existing solver contract and normalized constraint families rather than by introducing a separate public solver API for each new domain.
+
+Guiding rules:
+
+- preserve the existing public adapter entry points
+- preserve backward compatibility for existing generic, school, and wedding flows
+- keep domain-specific semantics in transform layers whenever possible
+- add new generic constraint families only when a feature cannot be represented cleanly through preprocessing alone
+
+This is especially important for scheduling-oriented domains such as the event staffing planner, where some semantics can be compiled away in transforms while others require richer generic solver support.
+
+### Scheduling-oriented constraints and the generic architecture
+
+For scheduling-style domains built on ordered slots and reusable categories:
+
+- date grouping and slot order remain domain-level information
+- transforms may convert slot spacing or cooldown rules into generic incompatibility constraints
+- transforms may convert one-assignment-per-slot semantics into generic exclusivity constraints
+- transforms may convert hard unavailability into forbidden assignments
+- the solver may still need generic support for assignment-count bounds and soft optimization objectives
+
+This preserves the generic core while allowing the current solver path to grow incrementally.
+
+### Objective terms
+
+Ranked multi-solution solving should use generic objective terms rather than domain-specific scoring branches.
+
+Each supported term should define:
+
+- a stable identifier
+- a configurable integer weight
+- completed-solution evaluation
+- an optimistic bound when used for pruning
+- explanation data for the result UI
+
+Initial terms should cover assignment preferences, count-target deviation, and workload equity. Domain transforms may produce these terms, but the generic solver owns their evaluation and ranking semantics.
+
+### Browser execution boundary
+
+The first performance isolation step should be a Web Worker. The worker keeps the static-hosting model while allowing progress, cancellation, and timeout behavior without blocking the interface.
+
+WebAssembly remains an optional future solver adapter. It should be evaluated only after representative browser benchmarks demonstrate a need, and it must preserve the same adapter and result contracts.
+
+The complete approved direction is specified in `docs/11-feature-ranked-solutions-and-shared-workflow.md`.
 
 ## Proposed folder structure
 

@@ -1,4 +1,13 @@
-import { createEmptyProject, VIEW_HINTS } from '../core/model/project.js';
+import { createEmptyProject, isProject, VIEW_HINTS } from '../core/model/project.js';
+import { createMockDomainProject } from '../pages/eventStaffing/mockDomainProject.js';
+import {
+  getBrowserDraftStorage,
+  LEGACY_GENERIC_DRAFT_KEY,
+  recoverPageDraft,
+} from '../storage/localDrafts.js';
+import { migrateProjectModel } from '../storage/modelVersioning.js';
+import { createSolveExecutionState } from '../solver/solveExecution.js';
+import { migrateEventStaffingProject } from '../pages/eventStaffing/migration.js';
 
 function createGenericPageEditorState() {
   return {
@@ -53,6 +62,13 @@ function createSchoolPageEditorState() {
     draftPreferenceRightId: '',
     draftPreferenceWeight: '1',
     activeSolutionIndex: 0,
+    solveMode: 'topK',
+    solveMaxSolutions: '10',
+    solveTimeLimitMs: '5000',
+    solveIncludeScoreDetails: true,
+    dataSearch: '',
+    bulkStudentLabels: '',
+    bulkStudentLevelId: '',
   };
 }
 
@@ -79,6 +95,13 @@ function createWeddingPageEditorState() {
     draftPreferenceRightId: '',
     draftPreferenceWeight: '1',
     activeSolutionIndex: 0,
+    solveMode: 'topK',
+    solveMaxSolutions: '10',
+    solveTimeLimitMs: '5000',
+    solveIncludeScoreDetails: true,
+    dataSearch: '',
+    bulkGuestLabels: '',
+    bulkGuestGroupId: '',
   };
 }
 
@@ -113,6 +136,7 @@ function createEventStaffingPageEditorState() {
     draftGroupTypeId: '',
     draftPersonName: '',
     draftPersonId: '',
+    draftPersonEmail: '',
     draftPersonMaxAssignments: '',
     draftPersonTargetAssignments: '',
     draftPersonMaxAssignmentsPerGroupTypeRows: [],
@@ -120,52 +144,146 @@ function createEventStaffingPageEditorState() {
     draftPersonAllowedGroupTypeIds: [],
     draftPersonForbiddenGroupTypeIds: [],
     editingPersonIndex: null,
+    draftAssignmentKind: 'forced',
+    draftAssignmentPersonId: '',
+    draftAssignmentSlotId: '',
+    draftAssignmentGroupTypeId: '',
+    draftCooldownTriggerGroupTypeId: 'ANY',
+    draftCooldownBlockedGroupTypeId: 'ANY',
+    draftCooldownCount: '1',
     draftGlobalMaxAssignmentsPerPerson: '',
     draftGlobalMaxAssignmentsPerGroupType: '',
     draftGlobalTargetAssignmentsPerGroupType: '',
   };
 }
 
-export function createAppState() {
-  return {
+function isEventStaffingDraft(value) {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && typeof value.title === 'string'
+    && Array.isArray(value.events)
+    && Array.isArray(value.groupTypes)
+    && Array.isArray(value.requirements)
+    && Array.isArray(value.people)
+    && value.globalLimits
+    && typeof value.globalLimits === 'object'
+    && Array.isArray(value.cooldownRules)
+    && Array.isArray(value.forcedAssignments)
+    && Array.isArray(value.forbiddenAssignments)
+    && Array.isArray(value.preferences)
+  );
+}
+
+function resolveStorage(options) {
+  if (options && typeof options.getItem === 'function') {
+    return options;
+  }
+  if (options && Object.hasOwn(options, 'storage')) {
+    return options.storage;
+  }
+  return getBrowserDraftStorage();
+}
+
+export function createAppState(options = {}) {
+  const draftStorage = resolveStorage(options);
+  const generic = recoverPageDraft({
+    storage: draftStorage,
+    pageId: 'generic',
+    fallback: createEmptyProject({ viewHint: VIEW_HINTS.GENERIC }),
+    validate: isProject,
+    migrate: migrateProjectModel,
+    legacyKey: LEGACY_GENERIC_DRAFT_KEY,
+  });
+  const school = recoverPageDraft({
+    storage: draftStorage,
+    pageId: 'school',
+    fallback: createEmptyProject({ viewHint: VIEW_HINTS.SCHOOL, title: 'School scenario' }),
+    validate: isProject,
+    migrate: migrateProjectModel,
+  });
+  const wedding = recoverPageDraft({
+    storage: draftStorage,
+    pageId: 'wedding',
+    fallback: createEmptyProject({ viewHint: VIEW_HINTS.WEDDING, title: 'Wedding plan' }),
+    validate: isProject,
+    migrate: migrateProjectModel,
+  });
+  const eventStaffing = recoverPageDraft({
+    storage: draftStorage,
+    pageId: 'event-staffing',
+    fallback: createMockDomainProject(),
+    validate: isEventStaffingDraft,
+    migrate: migrateEventStaffingProject,
+  });
+
+  const state = {
     currentView: 'generic',
     solverAdapterId: 'firstSolverAdapter',
     genericPage: {
-      project: createEmptyProject({ viewHint: VIEW_HINTS.GENERIC }),
+      project: generic.data,
+      persistence: generic.persistence,
       editor: createGenericPageEditorState(),
       lastValidation: null,
       lastNormalizedProject: null,
       lastSolverResult: null,
       validationPanelExpanded: false,
+      activeWorkflowTab: 'setup',
+      solveExecution: createSolveExecutionState(),
     },
     schoolPage: {
-      project: createEmptyProject({ viewHint: VIEW_HINTS.SCHOOL, title: 'School scenario' }),
+      project: school.data,
+      persistence: school.persistence,
       editor: createSchoolPageEditorState(),
       message: '',
       lastValidation: null,
       lastNormalizedProject: null,
       lastSolverResult: null,
       validationPanelExpanded: false,
+      activeWorkflowTab: 'setup',
+      workbookImport: { status: 'idle', error: '', preview: null },
+      solveExecution: createSolveExecutionState(),
     },
     weddingPage: {
-      project: createEmptyProject({ viewHint: VIEW_HINTS.WEDDING, title: 'Wedding plan' }),
+      project: wedding.data,
+      persistence: wedding.persistence,
       editor: createWeddingPageEditorState(),
       message: '',
       lastValidation: null,
       lastNormalizedProject: null,
       lastSolverResult: null,
       validationPanelExpanded: false,
+      activeWorkflowTab: 'setup',
+      workbookImport: { status: 'idle', error: '', preview: null },
+      solveExecution: createSolveExecutionState(),
     },
     eventStaffingPage: {
-      domainProject: null,
+      domainProject: eventStaffing.data,
+      persistence: eventStaffing.persistence,
       editor: createEventStaffingPageEditorState(),
       message: '',
       lastValidation: null,
+      lastGenericValidation: null,
       lastTransformedProject: null,
       lastNormalizedProject: null,
       lastSolverResult: null,
+      activeSolutionIndex: 0,
+      activeWorkflowTab: 'setup',
+      solveOptions: {
+        mode: 'topK',
+        maxSolutions: 10,
+        timeLimitMs: 5000,
+        includeScoreDetails: true,
+        scoreWeights: { equity: 100, preferences: 10, targets: 20 },
+        diversity: { enabled: true, minimumAssignmentDistance: 2 },
+      },
+      workbookImport: { status: 'idle', error: '', preview: null },
       validationPanelExpanded: false,
       workflowCommandBarExpanded: true,
+      solveExecution: createSolveExecutionState(),
     },
   };
+
+  Object.defineProperty(state, 'draftStorage', { value: draftStorage });
+  return state;
 }

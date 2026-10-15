@@ -3,11 +3,11 @@ export class SolverAdapter {
     throw new Error('getCapabilities() not implemented');
   }
 
-  validateModel() {
+  validateModel(model, options) {
     throw new Error('validateModel() not implemented');
   }
 
-  solve() {
+  solve(model, options, runtimeHooks) {
     throw new Error('solve() not implemented');
   }
 }

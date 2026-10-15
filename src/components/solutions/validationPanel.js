@@ -28,13 +28,32 @@ function renderIssueList(issues, emptyMessage, className) {
 }
 
 export function renderValidationPanel(validation, options = {}) {
+  if (validation === null || validation === undefined) {
+    return `
+      <section class="card validation-panel-card" role="status" aria-live="polite">
+        <div class="validation-panel-summary">
+          <div>
+            <p class="eyebrow">Validation</p>
+            <h2>Validation results</h2>
+          </div>
+          <div class="validation-panel-pills">
+            <span class="section-count-pill">Not validated yet</span>
+          </div>
+        </div>
+        <div class="validation-panel-content">
+          <p class="muted-text">Run validation to check the current project.</p>
+        </div>
+      </section>
+    `;
+  }
+
   const errors = validation?.errors ?? [];
   const warnings = validation?.warnings ?? [];
   const hasComputedSolution = Boolean(options.hasComputedSolution);
   const expanded = options.expanded ?? hasComputedSolution;
 
   return `
-    <section class="card validation-panel-card">
+    <section class="card validation-panel-card" role="${errors.length > 0 ? 'alert' : 'status'}" aria-live="polite">
       <details class="validation-panel-details" ${expanded ? 'open' : ''}>
         <summary class="validation-panel-summary">
           <div>

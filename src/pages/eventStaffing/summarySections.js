@@ -1,4 +1,5 @@
 import { escapeHtml, formatGroupTypeList } from './utils.js';
+import { getPreferenceMap, PREFERENCE_STATES } from './migration.js';
 
 function renderGroupTypeOptions(domainProject, selectedIds = [], inputName = 'groupTypeSelection') {
   return domainProject.groupTypes.map((groupType) => `
@@ -74,7 +75,7 @@ function summarizePerGroupMap(valuesByGroupTypeId, groupTypeLabelsById) {
 }
 
 export function renderPeopleRows(domainProject, groupTypeLabelsById) {
-  const preferencesByPersonId = new Map(domainProject.preferences.map((entry) => [entry.personId, entry.eventPreferences ?? {}]));
+  const preferencesByPersonId = new Map(domainProject.preferences.map((entry) => [entry.personId, getPreferenceMap(entry)]));
 
   return domainProject.people.map((person, index) => {
     const allowed = Array.isArray(person.allowedGroupTypeIds) && person.allowedGroupTypeIds.length > 0
@@ -92,6 +93,7 @@ export function renderPeopleRows(domainProject, groupTypeLabelsById) {
     return `
       <tr>
         <td>${escapeHtml(person.name)}</td>
+        <td>${escapeHtml(person.email ?? '—')}</td>
         <td>${escapeHtml(String(person.maxAssignments ?? '—'))}</td>
         <td>${escapeHtml(String(person.targetAssignments ?? '—'))}</td>
         <td>${escapeHtml(perGroupMaxSummary)}</td>
@@ -139,9 +141,10 @@ export function renderSupportSections(domainProject, groupTypeLabelsById, editor
     : [];
   const isEditingPerson = editor.editingPersonIndex !== null && editor.editingPersonIndex !== undefined;
   const preferenceChoices = [
-    { value: '', label: 'Neutral' },
-    { value: 'Y', label: 'Prefer' },
-    { value: 'N', label: 'Prefer not' },
+    { value: PREFERENCE_STATES.NEUTRAL, label: 'Neutral' },
+    { value: PREFERENCE_STATES.PREFER, label: 'Prefer' },
+    { value: PREFERENCE_STATES.PREFER_NOT, label: 'Prefer not' },
+    { value: PREFERENCE_STATES.UNAVAILABLE, label: 'Unavailable' },
   ];
   return `
     <section class="panel">
@@ -218,6 +221,10 @@ export function renderSupportSections(domainProject, groupTypeLabelsById, editor
                 <input type="text" name="draftPersonId" value="${escapeHtml(editor.draftPersonId ?? '')}" placeholder="alex-martin" ${isEditingPerson ? 'disabled' : ''} />
               </label>
               <label>
+                Email (optional, unique)
+                <input type="email" name="draftPersonEmail" value="${escapeHtml(editor.draftPersonEmail ?? '')}" placeholder="alex@example.org" />
+              </label>
+              <label>
                 Hard max assignments
                 <input type="number" name="draftPersonMaxAssignments" value="${escapeHtml(editor.draftPersonMaxAssignments ?? '')}" min="0" step="1" placeholder="Use global" />
               </label>
@@ -267,13 +274,13 @@ export function renderSupportSections(domainProject, groupTypeLabelsById, editor
                   <p class="muted-text top-gap">Forbidden groups always win if a group appears in both lists.</p>
                 </section>
                 <section>
-                  <h3>Event preferences</h3>
+                   <h3>Slot preferences</h3><span class="muted-text">Event preferences from legacy projects are migrated automatically.</span>
                   ${domainProject.events.length > 0
       ? `
                     <div class="table-wrap top-gap event-staffing-scroll-box event-staffing-preferences-scroll-box">
                       <table class="data-table">
                         <thead>
-                          <tr><th>Event</th><th>Date</th><th>Preference</th></tr>
+                           <tr><th>Slot</th><th>Date</th><th>Preference</th></tr>
                         </thead>
                         <tbody>
                           ${domainProject.events
@@ -281,11 +288,11 @@ export function renderSupportSections(domainProject, groupTypeLabelsById, editor
         .sort((left, right) => left.orderIndex - right.orderIndex)
         .map((event) => `
                               <tr>
-                                <td><strong>${escapeHtml(event.label)}</strong></td>
+                                <td><strong>${escapeHtml(event.slotLabel ?? event.label)}</strong></td>
                                 <td>${escapeHtml(event.date || '—')}</td>
                                 <td>
                                   <select name="draftPersonEventPreference" data-event-id="${escapeHtml(event.id)}">
-                                    ${preferenceChoices.map((choice) => `<option value="${escapeHtml(choice.value)}"${(editor.draftPersonEventPreferences?.[event.id] ?? '') === choice.value ? ' selected' : ''}>${escapeHtml(choice.label)}</option>`).join('')}
+                                    ${preferenceChoices.map((choice) => `<option value="${escapeHtml(choice.value)}"${(editor.draftPersonEventPreferences?.[event.id] ?? PREFERENCE_STATES.NEUTRAL) === choice.value ? ' selected' : ''}>${escapeHtml(choice.label)}</option>`).join('')}
                                   </select>
                                 </td>
                               </tr>
@@ -295,7 +302,7 @@ export function renderSupportSections(domainProject, groupTypeLabelsById, editor
                     </div>
                   `
       : '<p class="muted-text">Add events to set per-person prefer / prefer-not choices.</p>'}
-                  <p class="muted-text top-gap">These values map to Y = prefer, N = prefer not, and empty = neutral.</p>
+                  <p class="muted-text top-gap">Unavailable is hard; the other states are soft and score at most once per slot.</p>
                 </section>
               </div>
             </details>
@@ -315,7 +322,7 @@ export function renderSupportSections(domainProject, groupTypeLabelsById, editor
             <div class="table-wrap event-staffing-scroll-box">
               <table class="data-table">
                 <thead>
-                  <tr><th>Person</th><th>Max assignments</th><th>Soft target</th><th>Per-group max</th><th>Per-group target</th><th>Allowed groups</th><th>Forbidden groups</th><th>Imported preferences</th><th>Action</th></tr>
+                   <tr><th>Person</th><th>Email</th><th>Max assignments</th><th>Soft target</th><th>Per-group max</th><th>Per-group target</th><th>Allowed groups</th><th>Forbidden groups</th><th>Imported preferences</th><th>Action</th></tr>
                 </thead>
                 <tbody>${renderPeopleRows(domainProject, groupTypeLabelsById)}</tbody>
               </table>

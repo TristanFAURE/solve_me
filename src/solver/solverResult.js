@@ -3,17 +3,27 @@ export function createSolverResult({
   solutions = [],
   warnings = [],
   runtimeMs = 0,
+  searchComplete = false,
+  optimalityProven = false,
   truncatedByLimit = false,
   interrupted = false,
   timeoutReached = false,
+  cancelled = false,
+  exploredNodes = 0,
+  prunedNodes = 0,
 } = {}) {
   return {
     status,
     solutions,
     warnings,
     runtimeMs,
+    searchComplete,
+    optimalityProven,
     truncatedByLimit,
     interrupted,
     timeoutReached,
+    cancelled,
+    exploredNodes,
+    prunedNodes,
   };
 }

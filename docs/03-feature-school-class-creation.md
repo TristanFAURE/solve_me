@@ -20,6 +20,7 @@ This feature includes:
 - solver execution for class assignment
 - display of one or more valid class distributions through the shared solution display layer
 - spreadsheet export of solved class distributions in a format that teachers or school staff can read easily
+- spreadsheet export of the complete editable school configuration before solving
 - spreadsheet import of school-authored `.xlsx` workbooks using the same teacher-facing sheet vocabulary as the export baseline
 - reopening imported projects in the school page when the saved project metadata indicates the school view
 
@@ -48,6 +49,7 @@ This feature does not define:
 - As a user, I want to run the solver and inspect valid class assignments.
 - As a user, I want to export a class distribution in a spreadsheet that teachers or school staff can read and use directly.
 - As a user, I want to import a school workbook prepared with the same sheet structure so I can start from an Excel file instead of retyping students and classes.
+- As a user, I want to export and later replace the complete school configuration, including rules, preferences, metadata, and assignment arrays, without loss.
 - As a user, I want to understand when the model is invalid or no valid class assignment exists.
 
 ## Relationship to the generic model
@@ -549,7 +551,10 @@ The page should allow users to enter that scenario entirely with school wording 
 - The transform layer has an explicit documented mapping for student items, teacher items, level groups, class containers, accepted levels, and teacher-class associations.
 - The MVP solve flow treats teachers as class-linked actors and students as the directly assigned participants.
 - The page can invoke the solver and display one or more valid class assignments.
-- The page can export a solved class distribution to a readable `.xlsx` workbook suitable for teachers or school staff.
+- The page can export a full configuration workbook before solving. Its readable Students, Teachers, Levels, Classes, Rules, and Preferences sheets accompany a versioned `_Configuration` envelope that preserves the complete project.
+- Readable workbook examples use one student or teacher per row, put technical IDs last, and describe rules as `First participant`, `Rule`, `Second participant`; these sheets are convenient views and legacy templates, while the web UI is recommended for edits.
+- Full configuration import is validated and migrated before a replacement confirmation; cancellation or failure leaves the active scenario unchanged. Legacy teacher-facing workbooks continue through the existing importer.
+- The selected solved class distribution remains a separate, clearly named `.xlsx` export suitable for teachers or school staff.
 - The page can import a school workbook when it contains at least a `Students` sheet with a required `Student` column.
 - The page uses shared generic import/export behavior for canonical JSON persistence and adds school-specific workbook import/export only for teacher-facing spreadsheet workflows.
 - The page does not expose adjacency or seat-based features in the MVP.

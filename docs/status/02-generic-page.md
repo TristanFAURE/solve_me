@@ -22,6 +22,10 @@ Implemented capabilities include:
 - validate -> normalize -> solve wiring
 - shared solution display integration
 - storage actions for save/load/import/export
+- shared Setup, Data, Rules, Review, and Results tabs
+- solve-mode, score-weight, diversity, result-limit, and timeout controls
+- Web Worker solving with progress, cancellation, partial results, and search hints
+- versioned autosave and local draft recovery
 
 ## UX details
 
@@ -70,14 +74,16 @@ The generic page now uses shared solution components for:
 - previous/next solution navigation
 - position label display when position-mode solutions include a `positionRef`
 - domain-configurable panel copy so shared result components can use generic, school, or wedding wording without leaking wedding-specific labels into other pages
+- ranked solution comparison, score details, completeness, optimality, and diversity diagnostics
 
 ## Known limitations
 
 - generic editor state still uses direct in-memory mutation and re-rendering
 - lower sections are still somewhat debug/audit oriented
 - some newer solver-facing authoring inputs currently use id-list text entry for destination sets rather than richer multi-select widgets
-- soft preferences, soft assignment scores, and soft item count targets are stored and shown but not optimized by the current first solver adapter
+- general relation preferences are stored but not optimized; assignment scores and item count targets are optimized
 - larger scenarios may eventually need stronger UI organization or progressive disclosure
+- real-browser accessibility, focus/caret, and responsive behavior still require manual regression checks
 
 ## Primary files
 

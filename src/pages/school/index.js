@@ -1,5 +1,7 @@
 import { renderPageShell } from '../../components/common/pageShell.js';
+import { getGeneralPreferenceAuthoringPolicy } from '../../components/common/preferenceAuthoringPolicy.js';
 import { renderSolutionPanel } from '../../components/solutions/solutionPanel.js';
+import { renderSolveStatus } from '../../components/solutions/solveStatus.js';
 import { renderValidationPanel } from '../../components/solutions/validationPanel.js';
 import { CONSTRAINT_KINDS, createConstraint } from '../../core/model/constraints.js';
 import { createId } from '../../core/model/ids.js';
@@ -20,12 +22,25 @@ import {
   getContainerTeacherIds,
 } from '../../core/transform/domainMappings.js';
 import { FirstSolverAdapter } from '../../solver/adapters/firstSolverAdapter.js';
+import { cancelSolveExecution, createSolveExecutionState, discardSolveExecution, startSolveExecution } from '../../solver/solveExecution.js';
 import { exportSchoolSolutionWorkbook } from './exportSchoolSolution.js';
-import { importSchoolWorkbook } from './importSchoolWorkbook.js';
+import { exportSchoolConfigurationWorkbook, previewSchoolWorkbookFile } from './workbooks.js';
 import { validateSchoolProject } from './validateSchoolProject.js';
+import { confirmProjectReplacement } from '../../app/dataSafety.js';
+import { bindPageDraftAutosave, persistPageDraft } from '../../storage/localDrafts.js';
+import { bindWorkflowTabs, isWorkflowTab, renderWorkflowPanel, renderWorkflowTabs } from '../../components/common/workflowTabs.js';
+import { buildWorkflowSolveOptions, createWorkflowSolveDraft, renderAdvancedDiagnostics, renderSolveConfiguration, renderWorkbookSetup, solveOptionIssues } from '../../components/common/workflowSetup.js';
+import { validateSolveOptions } from '../../solver/solveOptions.js';
+import { parseBulkLabels } from '../../components/common/bulkEntry.js';
+
+const REPLACE_SCHOOL_MESSAGE = 'This will replace your current non-empty school scenario. Continue?';
 
 function createSchoolEditorState() {
   return {
+    ...createWorkflowSolveDraft(),
+    dataSearch: '',
+    bulkStudentLabels: '',
+    bulkStudentLevelId: '',
     draftStudentLabel: '',
     draftTeacherLabel: '',
     draftLevelLabel: '',
@@ -88,6 +103,9 @@ function ensureSchoolProject(state) {
   if (typeof state.schoolPage.validationPanelExpanded !== 'boolean') {
     state.schoolPage.validationPanelExpanded = false;
   }
+  state.schoolPage.solveExecution ??= createSolveExecutionState();
+  state.schoolPage.workbookImport ??= { status: 'idle', error: '', preview: null };
+  if (!isWorkflowTab(state.schoolPage.activeWorkflowTab)) state.schoolPage.activeWorkflowTab = 'setup';
 }
 
 function escapeHtml(value) {
@@ -135,6 +153,22 @@ function findContainerById(project, containerId) {
   return getClasses(project).find((container) => container.id === containerId) ?? null;
 }
 
+function matchesSearch(entry, editor) {
+  return !editor.dataSearch.trim() || `${entry.label} ${entry.id}`.toLocaleLowerCase().includes(editor.dataSearch.trim().toLocaleLowerCase());
+}
+
+function renderSchoolDataTools(project, editor) {
+  return `<section class="card data-tools">
+    <h2>Find or add students in bulk</h2>
+    <div class="form-grid three-columns compact-form-grid">
+      <label><span>Search students, teachers, levels, and classes</span><input type="search" name="dataSearch" value="${escapeHtml(editor.dataSearch)}" /></label>
+      <label><span>Student names, one per line or comma-separated</span><textarea name="bulkStudentLabels" rows="4">${escapeHtml(editor.bulkStudentLabels)}</textarea></label>
+      <label><span>Assign new students to level</span><select name="bulkStudentLevelId">${renderSelectOptions(getLevels(project), editor.bulkStudentLevelId, 'No level assignment')}</select></label>
+    </div>
+    <div class="button-row top-gap"><button type="button" data-action="bulk-add-students">Add students</button></div>
+  </section>`;
+}
+
 function getAssignedStudentIds(solution, containerId) {
   return (solution?.assignments ?? [])
     .filter((assignment) => assignment.containerRef?.id === containerId)
@@ -162,6 +196,7 @@ function renderSummary(project) {
   const teachers = getTeachers(project);
   const levels = getLevels(project);
   const classes = buildSchoolClassroomIndex(project);
+  const hasUnlimitedCapacity = classes.some((classroom) => classroom.capacity == null);
   const totalCapacity = classes.reduce((sum, classroom) => sum + (Number.isFinite(classroom.capacity) ? classroom.capacity : 0), 0);
 
   return `
@@ -176,7 +211,7 @@ function renderSummary(project) {
         <div><dt>Teachers</dt><dd>${teachers.length}</dd></div>
         <div><dt>Levels</dt><dd>${levels.length}</dd></div>
         <div><dt>Classes</dt><dd>${classes.length}</dd></div>
-        <div><dt>Total capacity</dt><dd>${totalCapacity}</dd></div>
+        <div><dt>Total capacity</dt><dd>${hasUnlimitedCapacity ? `${totalCapacity} finite + unlimited` : totalCapacity}</dd></div>
         <div><dt>Rules</dt><dd>${project.constraints.length + project.preferences.length}</dd></div>
       </dl>
     </section>
@@ -184,8 +219,6 @@ function renderSummary(project) {
 }
 
 function renderSchoolCommandBar(result, expanded = true) {
-  const canExport = result?.status === 'solved' && (result?.solutions?.length ?? 0) > 0;
-
   return `
     <section class="command-bar-card${expanded ? '' : ' is-collapsed'}">
       <div class="command-bar-header">
@@ -204,18 +237,9 @@ function renderSchoolCommandBar(result, expanded = true) {
           <span class="command-bar-icon" aria-hidden="true">✓</span>
           <span>Validate</span>
         </button>
-        <label class="command-bar-button command-bar-file-button">
-          <span class="command-bar-icon" aria-hidden="true">⤴</span>
-          <span>Import Excel</span>
-          <input type="file" data-action="import-school-workbook" accept=".xlsx,.xls" hidden />
-        </label>
         <button type="button" class="command-bar-button command-bar-button-primary" data-action="solve-school">
           <span class="command-bar-icon" aria-hidden="true">▶</span>
           <span>Validate + normalize + solve</span>
-        </button>
-        <button type="button" class="command-bar-button" data-action="export-school-solution"${canExport ? '' : ' disabled'}>
-          <span class="command-bar-icon" aria-hidden="true">⬇</span>
-          <span>Export Excel</span>
         </button>
       </div>
     </section>
@@ -292,7 +316,7 @@ function renderMembershipChips(labels, emptyText) {
 }
 
 function renderStudentsPanel(project, editor) {
-  const students = getStudents(project);
+  const students = getStudents(project).filter((entry) => matchesSearch(entry, editor));
   const levels = getLevels(project);
 
   return `
@@ -302,7 +326,8 @@ function renderStudentsPanel(project, editor) {
         <span class="panel-count">${students.length}</span>
       </div>
       <div class="entity-board">
-        ${students.length === 0 ? '<div class="empty-board">Add students to start your school scenario.</div>' : students.map((student, index) => {
+        ${students.length === 0 ? '<div class="empty-board">No students match this search, or none have been added yet.</div>' : students.map((student) => {
+    const index = getItems(project).findIndex((entry) => entry.id === student.id);
     const selectedLevelIds = getContainedGroupIdsForItem(project, student.id);
     const levelLabels = selectedLevelIds.map((levelId) => findNodeLabel(levels, levelId));
 
@@ -313,7 +338,7 @@ function renderStudentsPanel(project, editor) {
                   <p class="entity-kind">Student</p>
                   <input type="text" class="entity-inline-input" data-action="edit-school-label" data-kind="item" data-index="${index}" value="${escapeHtml(student.label)}" />
                 </div>
-                <button type="button" class="ghost-danger-button" data-action="remove-student" data-index="${index}">Remove</button>
+                <button type="button" class="ghost-danger-button" data-action="remove-student" data-index="${index}" aria-label="Remove student ${escapeHtml(student.label)}">Remove</button>
               </div>
               <p class="entity-id">${escapeHtml(student.id)}</p>
               <div class="entity-meta-grid">
@@ -341,8 +366,8 @@ function renderStudentsPanel(project, editor) {
   `;
 }
 
-function renderTeachersPanel(project) {
-  const teachers = getTeachers(project);
+function renderTeachersPanel(project, editor) {
+  const teachers = getTeachers(project).filter((entry) => matchesSearch(entry, editor));
   const levels = getLevels(project);
   const classes = getClasses(project);
 
@@ -368,7 +393,7 @@ function renderTeachersPanel(project) {
                   <p class="entity-kind">Teacher</p>
                   <input type="text" class="entity-inline-input" data-action="edit-school-label" data-kind="item" data-index="${teacherIndex}" value="${escapeHtml(teacher.label)}" />
                 </div>
-                <button type="button" class="ghost-danger-button" data-action="remove-teacher" data-index="${teacherIndex}">Remove</button>
+                <button type="button" class="ghost-danger-button" data-action="remove-teacher" data-index="${teacherIndex}" aria-label="Remove teacher ${escapeHtml(teacher.label)}">Remove</button>
               </div>
               <p class="entity-id">${escapeHtml(teacher.id)}</p>
               <div class="entity-meta-grid">
@@ -400,8 +425,8 @@ function renderTeachersPanel(project) {
   `;
 }
 
-function renderLevelsPanel(project) {
-  const levels = getLevels(project);
+function renderLevelsPanel(project, editor) {
+  const levels = getLevels(project).filter((entry) => matchesSearch(entry, editor));
   const students = getStudents(project);
   const teachers = getTeachers(project);
 
@@ -412,7 +437,8 @@ function renderLevelsPanel(project) {
         <span class="panel-count">${levels.length}</span>
       </div>
       <div class="entity-board">
-        ${levels.length === 0 ? '<div class="empty-board">Create levels such as First grade or Second grade.</div>' : levels.map((level, index) => {
+        ${levels.length === 0 ? '<div class="empty-board">No levels match this search, or none have been created yet.</div>' : levels.map((level) => {
+    const index = getGroups(project).findIndex((entry) => entry.id === level.id);
     const memberLabels = [...students, ...teachers]
       .filter((item) => getContainedGroupIdsForItem(project, item.id).includes(level.id))
       .map((item) => item.label);
@@ -424,7 +450,7 @@ function renderLevelsPanel(project) {
                   <p class="entity-kind">Level</p>
                   <input type="text" class="entity-inline-input" data-action="edit-school-label" data-kind="group" data-index="${index}" value="${escapeHtml(level.label)}" />
                 </div>
-                <button type="button" class="ghost-danger-button" data-action="remove-level" data-index="${index}">Remove</button>
+                <button type="button" class="ghost-danger-button" data-action="remove-level" data-index="${index}" aria-label="Remove level ${escapeHtml(level.label)}">Remove</button>
               </div>
               <p class="entity-id">${escapeHtml(level.id)}</p>
               <div class="entity-meta-grid">
@@ -441,8 +467,8 @@ function renderLevelsPanel(project) {
   `;
 }
 
-function renderClassesPanel(project) {
-  const classes = getClasses(project);
+function renderClassesPanel(project, editor) {
+  const classes = getClasses(project).filter((entry) => matchesSearch(entry, editor));
   const levels = getLevels(project);
   const teachers = getTeachers(project);
 
@@ -453,7 +479,8 @@ function renderClassesPanel(project) {
         <span class="panel-count">${classes.length}</span>
       </div>
       <div class="entity-board">
-        ${classes.length === 0 ? '<div class="empty-board">Add classes and set their capacity and accepted levels.</div>' : classes.map((classroom, index) => {
+        ${classes.length === 0 ? '<div class="empty-board">No classes match this search, or none have been added yet.</div>' : classes.map((classroom) => {
+    const index = getClasses(project).findIndex((entry) => entry.id === classroom.id);
     const acceptedLevelIds = getContainerAcceptedLevelIds(classroom);
     const teacherIds = getContainerTeacherIds(classroom);
     const acceptedLabels = acceptedLevelIds.map((levelId) => findNodeLabel(levels, levelId));
@@ -468,7 +495,7 @@ function renderClassesPanel(project) {
                   <p class="entity-kind">Class</p>
                   <input type="text" class="entity-inline-input" data-action="edit-school-label" data-kind="container" data-index="${index}" value="${escapeHtml(classroom.label)}" />
                 </div>
-                <button type="button" class="ghost-danger-button" data-action="remove-class" data-index="${index}">Remove</button>
+                <button type="button" class="ghost-danger-button" data-action="remove-class" data-index="${index}" aria-label="Remove class ${escapeHtml(classroom.label)}">Remove</button>
               </div>
               <p class="entity-id">${escapeHtml(classroom.id)}</p>
               <div class="entity-meta-grid">
@@ -554,16 +581,14 @@ function renderSchoolParticipant(participants, participantId) {
   return escapeHtml(findNodeLabel(participants, participantId));
 }
 
-function renderRulePanels(project, editor) {
+function renderRulePanels(project, editor, preferencePolicy) {
   const participants = [...getStudents(project), ...getTeachers(project)];
   const hardRuleRows = project.constraints.length === 0
     ? '<tr><td colspan="4" class="muted-text">No school hard rules yet.</td></tr>'
     : project.constraints.map((constraint, index) => `
         <tr>
-          <td>${escapeHtml(getSchoolRuleLabel(constraint.kind))}</td>
-          <td>${renderSchoolParticipant(participants, constraint.leftRef.id)}</td>
-          <td>${renderSchoolParticipant(participants, constraint.rightRef.id)}</td>
-          <td><button type="button" data-action="remove-school-constraint" data-index="${index}">Remove</button></td>
+          <td colspan="3">${renderSchoolParticipant(participants, constraint.leftRef.id)} ${escapeHtml(getSchoolRuleLabel(constraint.kind).toLowerCase())} ${renderSchoolParticipant(participants, constraint.rightRef.id)}.</td>
+          <td><button type="button" data-action="remove-school-constraint" data-index="${index}" aria-label="Remove hard rule ${index + 1}">Remove</button></td>
         </tr>
       `).join('');
 
@@ -575,7 +600,7 @@ function renderRulePanels(project, editor) {
           <td>${renderSchoolParticipant(participants, preference.leftRef.id)}</td>
           <td>${renderSchoolParticipant(participants, preference.rightRef.id)}</td>
           <td>${escapeHtml(preference.weight)}</td>
-          <td><button type="button" data-action="remove-school-preference" data-index="${index}">Remove</button></td>
+          <td><button type="button" data-action="remove-school-preference" data-index="${index}" aria-label="Remove audited preference ${index + 1}">Remove</button></td>
         </tr>
       `).join('');
 
@@ -614,6 +639,7 @@ function renderRulePanels(project, editor) {
         </div>
         <div class="table-wrap audit-table-wrap top-gap">
           <table class="data-table">
+            <caption>Supported hard class placement rules</caption>
             <thead>
               <tr><th>Rule</th><th>Left participant</th><th>Right participant</th><th>Actions</th></tr>
             </thead>
@@ -630,35 +656,37 @@ function renderRulePanels(project, editor) {
           </div>
         </div>
         <div class="school-rule-form-stack compact-form-grid">
+          ${preferencePolicy.message ? `<p class="muted-text">${escapeHtml(preferencePolicy.message)}</p>` : ''}
           <div class="form-grid compact-form-grid school-rule-top-row school-preference-top-row">
             <label>
               <span>Preference</span>
-              <select name="draftPreferenceKind">
+              <select name="draftPreferenceKind"${preferencePolicy.disabled ? ' disabled' : ''}>
                 <option value="${PREFERENCE_KINDS.PREFER_SHARE_CONTAINER}"${editor.draftPreferenceKind === PREFERENCE_KINDS.PREFER_SHARE_CONTAINER ? ' selected' : ''}>Prefers to be together</option>
                 <option value="${PREFERENCE_KINDS.PREFER_SEPARATE_CONTAINERS}"${editor.draftPreferenceKind === PREFERENCE_KINDS.PREFER_SEPARATE_CONTAINERS ? ' selected' : ''}>Prefers not to be together</option>
               </select>
             </label>
             <label>
               <span>Weight</span>
-              <input type="number" min="0" step="1" name="draftPreferenceWeight" value="${escapeHtml(editor.draftPreferenceWeight)}" />
+              <input type="number" min="0" step="1" name="draftPreferenceWeight" value="${escapeHtml(editor.draftPreferenceWeight)}"${preferencePolicy.disabled ? ' disabled' : ''} />
             </label>
           </div>
           <div class="form-grid compact-form-grid school-rule-participants-row">
             <label>
               <span>Left participant</span>
-              <select name="draftPreferenceLeftId">${renderSelectOptions(participants, editor.draftPreferenceLeftId)}</select>
+              <select name="draftPreferenceLeftId"${preferencePolicy.disabled ? ' disabled' : ''}>${renderSelectOptions(participants, editor.draftPreferenceLeftId)}</select>
             </label>
             <label>
               <span>Right participant</span>
-              <select name="draftPreferenceRightId">${renderSelectOptions(participants, editor.draftPreferenceRightId)}</select>
+              <select name="draftPreferenceRightId"${preferencePolicy.disabled ? ' disabled' : ''}>${renderSelectOptions(participants, editor.draftPreferenceRightId)}</select>
             </label>
           </div>
         </div>
         <div class="button-row top-gap">
-          <button type="button" data-action="add-school-preference">Add preference</button>
+          <button type="button" data-action="add-school-preference"${preferencePolicy.disabled ? ' disabled' : ''}>Add preference</button>
         </div>
         <div class="table-wrap audit-table-wrap top-gap">
           <table class="data-table">
+            <caption>Unsupported preferences retained for audit and removal</caption>
             <thead>
               <tr><th>Preference</th><th>Left participant</th><th>Right participant</th><th>Weight</th><th>Actions</th></tr>
             </thead>
@@ -726,7 +754,6 @@ function renderSchoolSolutionPanelOptions(project, normalizedProject) {
     panelEyebrow: 'School solver output',
     emptyResultMessage: 'Run solve after school validation to see proposed class placements.',
     unsatMessage: 'The solver completed but could not place students into classes while satisfying the current school rules.',
-    noAssignmentsMessage: 'No student-to-class placements are available for this solver result.',
     noWarningsMessage: 'No school solver warnings.',
     rawJsonSummaryLabel: 'View raw school solver result JSON',
     containerKindLabel: 'Class',
@@ -736,6 +763,12 @@ function renderSchoolSolutionPanelOptions(project, normalizedProject) {
     solutionPrefixLabel: 'Placement',
     capacityLabel: 'Capacity',
     displayProject: project,
+    searchHintVocabulary: {
+      'use-first-mode': 'Find the first class placement',
+      'tighten-eligibility-bounds': 'Tighten class eligibility and capacities',
+      'add-fixed-assignments': 'Pre-place students with known classes',
+      'split-problem': 'Split independent levels or cohorts',
+    },
     renderContainerMeta: ({ container, assignments, defaultItemList }) => {
       const sourceContainer = findContainerById(project, container.id) ?? container;
       const acceptedLevelLabels = getContainerAcceptedLevelIds(sourceContainer)
@@ -799,9 +832,11 @@ function renderNormalizationSummary(normalizedProject) {
 }
 
 function resetSchoolDerivedState(state) {
+  discardSolveExecution(state.schoolPage.solveExecution);
   state.schoolPage.lastValidation = null;
   state.schoolPage.lastNormalizedProject = null;
   state.schoolPage.lastSolverResult = null;
+  state.schoolPage.validationPanelExpanded = false;
   state.schoolPage.editor.activeSolutionIndex = 0;
 }
 
@@ -821,7 +856,8 @@ function runSchoolValidationFlow(state) {
   const validation = mergeValidationResults(schoolValidation, genericValidation);
 
   state.schoolPage.lastValidation = validation;
-  state.schoolPage.validationPanelExpanded = false;
+  state.schoolPage.validationPanelExpanded = !validation.valid;
+  state.schoolPage.activeWorkflowTab = 'review';
 
   if (!validation.valid) {
     state.schoolPage.lastNormalizedProject = null;
@@ -833,27 +869,25 @@ function runSchoolValidationFlow(state) {
   state.schoolPage.lastSolverResult = null;
 }
 
-function runSchoolSolveFlow(state) {
+function runSchoolSolveFlow(state, root) {
   const adapter = new FirstSolverAdapter();
   const schoolValidation = validateSchoolProject(state.schoolPage.project);
   const schoolProject = buildSchoolSolveProject(state.schoolPage.project);
   const genericValidation = validateProject(schoolProject, adapter.getCapabilities());
-  const validation = mergeValidationResults(schoolValidation, genericValidation);
+  const optionsValidation = validateSolveOptions(buildWorkflowSolveOptions(state.schoolPage.editor), adapter.getCapabilities());
+  const validation = mergeValidationResults(mergeValidationResults(schoolValidation, genericValidation), {
+    valid: optionsValidation.valid,
+    errors: solveOptionIssues(optionsValidation.errors),
+    warnings: [],
+  });
 
   state.schoolPage.lastValidation = validation;
   state.schoolPage.validationPanelExpanded = true;
 
   if (!validation.valid) {
     state.schoolPage.lastNormalizedProject = null;
-    state.schoolPage.lastSolverResult = {
-      status: 'validation-failed',
-      solutions: [],
-      warnings: ['Solve was not attempted because the school scenario still has problems to fix.'],
-      runtimeMs: 0,
-      truncatedByLimit: false,
-      interrupted: false,
-      timeoutReached: false,
-    };
+    state.schoolPage.lastSolverResult = null;
+    state.schoolPage.activeWorkflowTab = 'review';
     return;
   }
 
@@ -861,13 +895,30 @@ function runSchoolSolveFlow(state) {
   state.schoolPage.lastNormalizedProject = normalizedProject;
 
   const adapterValidation = adapter.validateModel(normalizedProject);
-  const solverResult = adapter.solve(normalizedProject);
-
-  state.schoolPage.lastSolverResult = {
-    ...solverResult,
-    warnings: [...(adapterValidation.warnings ?? []), ...(solverResult.warnings ?? [])],
-  };
+  if (!adapterValidation.valid) {
+    state.schoolPage.lastValidation = mergeValidationResults(validation, adapterValidation);
+    state.schoolPage.lastSolverResult = null;
+    state.schoolPage.activeWorkflowTab = 'review';
+    return;
+  }
   state.schoolPage.editor.activeSolutionIndex = 0;
+  state.schoolPage.activeWorkflowTab = 'review';
+  startSolveExecution({
+    execution: state.schoolPage.solveExecution,
+    model: normalizedProject,
+    options: optionsValidation.options,
+    onResult(solverResult) {
+      state.schoolPage.lastSolverResult = {
+        ...solverResult,
+        warnings: [...(adapterValidation.warnings ?? []), ...(solverResult.warnings ?? [])],
+      };
+      state.schoolPage.message = solverResult.status === 'solved'
+        ? 'School solve completed. A valid class distribution was found.'
+        : 'School solve stopped without a complete result.';
+      state.schoolPage.activeWorkflowTab = solverResult.status === 'solved' ? 'results' : 'review';
+    },
+    onChange: () => renderSchoolPage(root, state),
+  });
 }
 
 function renderProjectDebug(project) {
@@ -906,6 +957,22 @@ function addStudent(state) {
   state.schoolPage.editor.draftStudentLabel = '';
   clearSchoolMessage(state);
   resetSchoolDerivedState(state);
+}
+
+function bulkAddStudents(state) {
+  const editor = state.schoolPage.editor;
+  const labels = parseBulkLabels(editor.bulkStudentLabels);
+  labels.forEach((label) => {
+    const student = createItem({ id: createId('item'), label, metadata: { schoolRole: SCHOOL_ITEM_ROLES.STUDENT } });
+    state.schoolPage.project.items.push(student);
+    if (editor.bulkStudentLevelId) toggleMembership(state.schoolPage.project, editor.bulkStudentLevelId, student.id, true);
+  });
+  if (labels.length) {
+    editor.bulkStudentLabels = '';
+    clearSchoolMessage(state);
+    resetSchoolDerivedState(state);
+    state.schoolPage.message = `Added ${labels.length} student${labels.length === 1 ? '' : 's'}${editor.bulkStudentLevelId ? ' and assigned the selected level' : ''}.`;
+  }
 }
 
 function addTeacher(state) {
@@ -1019,11 +1086,17 @@ function addSchoolConstraint(state) {
   resetSchoolDerivedState(state);
 }
 
-function addSchoolPreference(state) {
+export function addSchoolPreference(state) {
+  if (!new FirstSolverAdapter().getCapabilities().softPreferences) {
+    return;
+  }
+
   const editor = state.schoolPage.editor;
   if (!editor.draftPreferenceLeftId || !editor.draftPreferenceRightId) {
     return;
   }
+
+  const weight = Number.parseInt(editor.draftPreferenceWeight || '1', 10);
 
   state.schoolPage.project.preferences.push(createPreference({
     kind: editor.draftPreferenceKind,
@@ -1130,7 +1203,16 @@ function bindInputs(root, state) {
         return;
       }
 
-      state.schoolPage.editor[name] = value;
+      if (name === 'dataSearch') {
+        state.schoolPage.editor.dataSearch = value;
+        renderSchoolPage(root, state);
+        const search = root.querySelector('input[name="dataSearch"]');
+        search?.focus();
+        search?.setSelectionRange?.(value.length, value.length);
+        return;
+      }
+
+      state.schoolPage.editor[name] = event.target.type === 'checkbox' ? event.target.checked : value;
       clearSchoolMessage(state);
     });
   });
@@ -1155,12 +1237,29 @@ function bindInputs(root, state) {
 }
 
 function bindActions(root, state) {
+  root.querySelector('.validation-panel-details')?.addEventListener('toggle', (event) => {
+    state.schoolPage.validationPanelExpanded = event.target.open;
+  });
+
+  bindWorkflowTabs(root, (tabId) => {
+    state.schoolPage.activeWorkflowTab = tabId;
+    renderSchoolPage(root, state);
+  });
+
   root.querySelectorAll('[data-action]').forEach((element) => {
     const action = element.dataset.action;
 
     if (action === 'add-student') {
       element.addEventListener('click', () => {
         addStudent(state);
+        renderSchoolPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'bulk-add-students') {
+      element.addEventListener('click', () => {
+        bulkAddStudents(state);
         renderSchoolPage(root, state);
       });
       return;
@@ -1329,16 +1428,21 @@ function bindActions(root, state) {
 
     if (action === 'solve-school') {
       element.addEventListener('click', () => {
-        runSchoolSolveFlow(state);
-        state.schoolPage.message = state.schoolPage.lastSolverResult?.status === 'solved'
+        runSchoolSolveFlow(state, root);
+        state.schoolPage.message = !state.schoolPage.lastValidation?.valid
+          ? 'The class distribution was not attempted because the school scenario still has problems to fix. ⚠️'
+          : state.schoolPage.lastSolverResult?.status === 'solved'
           ? 'School solve completed. A valid class distribution was found. 🎉'
           : state.schoolPage.lastSolverResult?.status === 'unsat'
             ? 'No valid class distribution was found with the current rules and capacities. 🧠'
-            : state.schoolPage.lastSolverResult?.status === 'validation-failed'
-              ? 'The class distribution was not attempted because the school scenario still has problems to fix. ⚠️'
-              : 'School solve could not complete successfully.';
+            : 'School solve could not complete successfully.';
         renderSchoolPage(root, state);
       });
+      return;
+    }
+
+    if (action === 'cancel-solve') {
+      element.addEventListener('click', () => cancelSolveExecution(state.schoolPage.solveExecution));
       return;
     }
 
@@ -1350,18 +1454,48 @@ function bindActions(root, state) {
         }
 
         try {
-          state.schoolPage.project = await importSchoolWorkbook(file);
-          state.schoolPage.project.viewHint = VIEW_HINTS.SCHOOL;
-          clearSchoolMessage(state);
-          resetSchoolDerivedState(state);
-          state.schoolPage.message = `Excel workbook imported from ${file.name}. Please validate the imported scenario. 📗`;
+          const preview = await previewSchoolWorkbookFile(file);
+          state.schoolPage.workbookImport = { status: 'ready', error: '', preview: { ...preview, fileName: file.name } };
         } catch (error) {
-          state.schoolPage.message = error instanceof Error
-            ? `Excel import failed: ${error.message}`
-            : 'Excel import failed.';
+          state.schoolPage.workbookImport = { status: 'idle', preview: null, error: error instanceof Error ? error.message : 'Excel import failed.' };
         }
 
         event.target.value = '';
+        renderSchoolPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'confirm-school-workbook') {
+      element.addEventListener('click', () => {
+        const preview = state.schoolPage.workbookImport.preview;
+        if (!preview) return;
+        preview.project.viewHint = VIEW_HINTS.SCHOOL;
+        state.schoolPage.project = preview.project;
+        state.schoolPage.workbookImport = { status: 'idle', error: '', preview: null };
+        resetSchoolDerivedState(state);
+        state.schoolPage.message = `Workbook imported from ${preview.fileName}. Review the scenario before solving.`;
+        renderSchoolPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'cancel-school-workbook') {
+      element.addEventListener('click', () => {
+        state.schoolPage.workbookImport = { status: 'idle', error: '', preview: null };
+        renderSchoolPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'export-school-configuration') {
+      element.addEventListener('click', () => {
+        try {
+          exportSchoolConfigurationWorkbook(state.schoolPage.project);
+          state.schoolPage.message = 'School configuration workbook downloaded.';
+        } catch (error) {
+          state.schoolPage.message = error instanceof Error ? `Configuration export failed: ${error.message}` : 'Configuration export failed.';
+        }
         renderSchoolPage(root, state);
       });
       return;
@@ -1452,56 +1586,41 @@ function bindEnterToCreate(root, state) {
 
 export function renderSchoolPage(root, state) {
   ensureSchoolProject(state);
+  persistPageDraft(state.draftStorage, 'school', state.schoolPage.project, state.schoolPage.persistence);
+  const preferencePolicy = getGeneralPreferenceAuthoringPolicy(new FirstSolverAdapter().getCapabilities());
+  const activeTab = state.schoolPage.activeWorkflowTab;
+  const setupContent = `
+    <section class="card sticky-panel"><h2>School scenario</h2><div class="form-grid two-columns">
+      <label><span>Scenario name</span><input type="text" name="schoolTitle" value="${escapeHtml(state.schoolPage.project.title)}" /></label>
+      <label class="full-width"><span>Description</span><textarea name="schoolDescription" rows="3">${escapeHtml(state.schoolPage.project.description)}</textarea></label>
+    </div></section>
+    ${renderSolveConfiguration(state.schoolPage.editor, 'school')}
+    ${renderWorkbookSetup(state.schoolPage.workbookImport, 'school', 'school scenario')}`;
+  const dataContent = `${renderSchoolDataTools(state.schoolPage.project, state.schoolPage.editor)}${renderCreateCards(state.schoolPage.project, state.schoolPage.editor)}
+    <section class="workspace-columns two-up">${renderStudentsPanel(state.schoolPage.project, state.schoolPage.editor)}${renderTeachersPanel(state.schoolPage.project, state.schoolPage.editor)}</section>
+    <section class="workspace-columns two-up">${renderLevelsPanel(state.schoolPage.project, state.schoolPage.editor)}${renderClassesPanel(state.schoolPage.project, state.schoolPage.editor)}</section>`;
+  const reviewContent = `${renderSchoolCommandBar(state.schoolPage.lastSolverResult, state.schoolPage.commandBarExpanded !== false)}${renderSolveStatus(state.schoolPage.solveExecution)}${renderValidationPanel(state.schoolPage.lastValidation, { hasComputedSolution: Boolean(state.schoolPage.lastSolverResult), expanded: state.schoolPage.validationPanelExpanded })}${renderAdvancedDiagnostics(state.schoolPage.project, state.schoolPage.lastNormalizedProject)}`;
+  const resultsContent = `${renderSolutionPanel(state.schoolPage.lastNormalizedProject ?? state.schoolPage.project, state.schoolPage.lastSolverResult, state.schoolPage.editor.activeSolutionIndex, renderSchoolSolutionPanelOptions(state.schoolPage.project, state.schoolPage.lastNormalizedProject))}${state.schoolPage.lastSolverResult?.solutions?.length ? '<div class="button-row top-gap"><button type="button" data-action="export-school-solution">Export selected solved class distribution</button></div>' : ''}`;
 
   root.innerHTML = renderPageShell({
+    activeRoute: '/school',
     title: 'School Class Creation',
     description: '🏫 Build school scenarios with students, teachers, levels, and classes while staying on the shared generic model.',
+    persistence: state.schoolPage.persistence,
     body: `
-      ${renderSchoolCommandBar(state.schoolPage.lastSolverResult, state.schoolPage.commandBarExpanded !== false)}
       ${state.schoolPage.message ? `<section class="command-bar-feedback">${escapeHtml(state.schoolPage.message)}</section>` : ''}
       ${renderSummary(state.schoolPage.project)}
-      <section class="card sticky-panel">
-        <h2>📝 School scenario metadata</h2>
-        <div class="form-grid two-columns">
-          <label>
-            <span>Scenario name</span>
-            <input type="text" name="schoolTitle" value="${escapeHtml(state.schoolPage.project.title)}" />
-          </label>
-          <label class="full-width">
-            <span>Description</span>
-            <textarea name="schoolDescription" rows="3">${escapeHtml(state.schoolPage.project.description)}</textarea>
-          </label>
-        </div>
-      </section>
-      ${renderCreateCards(state.schoolPage.project, state.schoolPage.editor)}
-      <section class="workspace-columns two-up">
-        ${renderStudentsPanel(state.schoolPage.project, state.schoolPage.editor)}
-        ${renderTeachersPanel(state.schoolPage.project)}
-      </section>
-      <section class="workspace-columns two-up">
-        ${renderLevelsPanel(state.schoolPage.project)}
-        ${renderClassesPanel(state.schoolPage.project)}
-      </section>
-      ${renderRulePanels(state.schoolPage.project, state.schoolPage.editor)}
-      ${renderValidationPanel(state.schoolPage.lastValidation, {
-      hasComputedSolution: Boolean(state.schoolPage.lastSolverResult),
-      expanded: state.schoolPage.validationPanelExpanded,
-    })}
-      <section class="audit-section-grid">
-        ${renderNormalizationSummary(state.schoolPage.lastNormalizedProject)}
-        ${renderSolutionPanel(
-      state.schoolPage.lastNormalizedProject ?? state.schoolPage.project,
-      state.schoolPage.lastSolverResult,
-      state.schoolPage.editor.activeSolutionIndex,
-      renderSchoolSolutionPanelOptions(state.schoolPage.project, state.schoolPage.lastNormalizedProject),
-    )}
-      </section>
-      ${renderProjectDebug(state.schoolPage.project)}
+      ${renderWorkflowTabs(activeTab)}
+      ${renderWorkflowPanel('setup', activeTab, setupContent)}
+      ${renderWorkflowPanel('data', activeTab, dataContent)}
+      ${renderWorkflowPanel('rules', activeTab, renderRulePanels(state.schoolPage.project, state.schoolPage.editor, preferencePolicy))}
+      ${renderWorkflowPanel('review', activeTab, reviewContent)}
+      ${renderWorkflowPanel('results', activeTab, resultsContent)}
     `,
   });
 
   bindInputs(root, state);
   bindActions(root, state);
   bindEnterToCreate(root, state);
+  bindPageDraftAutosave(root, state.draftStorage, 'school', () => state.schoolPage.project, state.schoolPage.persistence);
 }
-

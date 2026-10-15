@@ -13,7 +13,7 @@ The goal is to keep tests:
 
 ## Scope
 
-Current automated tests focus on generic constraints only.
+Automated tests primarily protect generic constraints and solver behavior, with targeted domain-transform and page-workflow tests where domain semantics are being compiled into the generic model.
 
 That means tests should describe behavior in terms of:
 
@@ -25,6 +25,8 @@ That means tests should describe behavior in terms of:
 - solver validation and solving behavior
 
 They should avoid domain-specific wording from school or wedding pages unless a test explicitly targets a transform layer.
+
+Event staffing tests may use date, slot, category, person, and preference wording when they target the staffing transform or page workflow. Solver correctness tests should still express the normalized behavior in generic terms.
 
 ## Test layers
 
@@ -60,6 +62,51 @@ Examples:
 - orphan positions
 - unsupported constraint kinds
 - ignored preferences warnings
+
+### 4. Ranked-solution correctness tests
+
+These verify optimization and enumeration behavior independently of heuristic search order.
+
+Required cases include:
+
+- zero, one, and several valid solutions
+- strict weighted-score ordering
+- deterministic tie behavior
+- duplicate solution removal
+- diverse top-K minimum-distance behavior
+- equity trade-offs
+- timeout and best-so-far metadata
+- optimality and search-completeness claims
+
+Tiny multiple-assignment models should be compared against an exhaustive brute-force oracle so the solver cannot silently miss a better schedule or report false unsatisfiability.
+
+### 5. Domain workflow tests
+
+These verify domain transforms and critical authoring behavior.
+
+Required staffing cases include:
+
+- several slots on one date
+- several category requirements in one slot
+- at most one category assignment per person and slot
+- slot-level preferences counted once
+- hard unavailability compiled into forbidden assignments
+- assignment equity across eligible people
+
+School and wedding regressions remain required whenever shared solver behavior changes.
+
+### 6. User-interface quality tests
+
+The shared workflow redesign should add tests for:
+
+- validation states and navigation to errors
+- import replacement confirmation
+- cascading-delete impact confirmation
+- keyboard focus preservation
+- accessible names and status announcements
+- responsive handling of dense tables and preference matrices
+
+The concrete browser or DOM testing technology should be selected explicitly before adding a dependency.
 
 ## Structure
 

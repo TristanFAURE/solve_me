@@ -1,5 +1,8 @@
 import { renderPageShell } from '../../components/common/pageShell.js';
+import { bindWorkflowTabs, isWorkflowTab, renderWorkflowPanel, renderWorkflowTabs } from '../../components/common/workflowTabs.js';
+import { getGeneralPreferenceAuthoringPolicy } from '../../components/common/preferenceAuthoringPolicy.js';
 import { renderSolutionPanel } from '../../components/solutions/solutionPanel.js';
+import { renderSolveStatus } from '../../components/solutions/solveStatus.js';
 import { renderValidationPanel } from '../../components/solutions/validationPanel.js';
 import { ASSIGNMENT_MODES } from '../../core/model/assignmentModes.js';
 import { CONSTRAINT_KINDS, createConstraint } from '../../core/model/constraints.js';
@@ -11,9 +14,14 @@ import { createAdjacencyRelation, createContainmentRelation, createEntityRef } f
 import { normalizeProject } from '../../core/normalize/normalizeProject.js';
 import { validateProject } from '../../core/validate/validateProject.js';
 import { FirstSolverAdapter } from '../../solver/adapters/firstSolverAdapter.js';
+import { SOLVE_MODES, validateSolveOptions } from '../../solver/solveOptions.js';
+import { cancelSolveExecution, createSolveExecutionState, discardSolveExecution, startSolveExecution } from '../../solver/solveExecution.js';
 import { exportProject, importProject } from '../../storage/importExport.js';
-import { loadDraft, saveDraft } from '../../storage/localDrafts.js';
+import { bindPageDraftAutosave, loadDraft, persistPageDraft, saveDraft } from '../../storage/localDrafts.js';
 import { getProjectVersionInfo, migrateProjectModel } from '../../storage/modelVersioning.js';
+import { confirmProjectReplacement } from '../../app/dataSafety.js';
+
+const REPLACE_PROJECT_MESSAGE = 'This will replace your current non-empty project. Continue?';
 
 const ENTITY_KIND_OPTIONS = [
   { value: NODE_KINDS.ITEM, label: 'Item' },
@@ -83,6 +91,16 @@ function createGenericPageState() {
     draftSoftItemCountTargetDestinationKind: NODE_KINDS.POSITION,
     draftSoftItemCountTargetDestinationIds: '',
     draftSoftItemCountTargetValue: '1',
+    solveMode: SOLVE_MODES.TOP_K,
+    solveMaxSolutions: '10',
+    solveTimeLimitMs: '',
+    solveIncludeScoreDetails: true,
+    solveEquityEligibleItemIds: [],
+    solvePreferenceWeight: '1',
+    solveTargetWeight: '1',
+    solveEquityWeight: '0',
+    solveDiversityEnabled: false,
+    solveMinimumAssignmentDistance: '0',
     activeSolutionIndex: 0,
     storageMessage: '',
     storageError: '',
@@ -126,6 +144,15 @@ function ensureProject(state) {
   if (typeof state.genericPage.commandBarExpanded !== 'boolean') {
     state.genericPage.commandBarExpanded = true;
   }
+
+  if (!isWorkflowTab(state.genericPage.activeWorkflowTab)) {
+    state.genericPage.activeWorkflowTab = 'setup';
+  }
+  state.genericPage.solveExecution ??= createSolveExecutionState();
+
+  ['draftAssignmentCountUpperBoundDestinationIds', 'draftSoftItemCountTargetDestinationIds', 'solveEquityEligibleItemIds'].forEach((field) => {
+    if (!Array.isArray(state.genericPage.editor[field])) state.genericPage.editor[field] = [];
+  });
 }
 
 function renderOptions(options, selectedValue) {
@@ -162,11 +189,65 @@ function renderDestinationEntityOptions(project, selectedKind, selectedId) {
   return renderEntityOptions(project, destinationKinds, selectedId);
 }
 
-function parseIdList(value) {
-  return value
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter(Boolean);
+function renderEntityMultiOptions(project, kinds, selectedIds = []) {
+  const selected = new Set(Array.isArray(selectedIds) ? selectedIds : []);
+  const nodes = [project.items, project.groups, project.containers, project.positions]
+    .flat()
+    .filter((node) => kinds.includes(node.kind));
+  return nodes.map((node) => `<option value="${escapeHtml(node.id)}"${selected.has(node.id) ? ' selected' : ''}>${escapeHtml(node.label)} (${escapeHtml(node.kind)})</option>`).join('');
+}
+
+function renderCapabilityControl(capabilities, capability, content) {
+  return capabilities[capability]
+    ? content
+    : `<p class="muted-text" role="status">The active solver does not support this option.</p>`;
+}
+
+function renderSetup(project, editor, capabilities) {
+  const positionModeSupported = capabilities.positionMode === true;
+  return `
+    <section class="card">
+      <p class="eyebrow">Model setup</p>
+      <h2>Project and assignment behavior</h2>
+      <div class="form-grid two-columns">
+        <label><span>Title</span><input type="text" name="projectTitle" value="${escapeHtml(project.title)}" /></label>
+        <label><span>Assignment mode</span><select name="assignmentMode">
+          <option value="${ASSIGNMENT_MODES.CONTAINER}"${project.assignmentMode === ASSIGNMENT_MODES.CONTAINER ? ' selected' : ''}>Container</option>
+          <option value="${ASSIGNMENT_MODES.POSITION}"${project.assignmentMode === ASSIGNMENT_MODES.POSITION ? ' selected' : ''}${positionModeSupported ? '' : ' disabled'}>Position</option>
+        </select></label>
+        <label><span>Assignment multiplicity</span><select name="assignmentMultiplicity">
+          <option value="single"${project.assignmentMultiplicity !== 'multiple' ? ' selected' : ''}>Single destination per item</option>
+          <option value="multiple"${project.assignmentMultiplicity === 'multiple' ? ' selected' : ''}>Multiple destinations per item</option>
+        </select></label>
+        <label class="full-width"><span>Description</span><textarea name="projectDescription" rows="4">${escapeHtml(project.description)}</textarea></label>
+      </div>
+    </section>
+    <section class="card">
+      <p class="eyebrow">Solver configuration</p>
+      <h2>Search and scoring</h2>
+      <div class="form-grid two-columns">
+        <label><span>Solve mode</span><select name="solveMode">
+          ${renderOptions([
+    { value: SOLVE_MODES.FIRST, label: 'First solution' },
+    { value: SOLVE_MODES.TOP_K, label: 'Top solutions' },
+    { value: SOLVE_MODES.OPTIMIZE, label: 'Optimize' },
+  ], editor.solveMode)}</select></label>
+        <label><span>Maximum solutions</span><input type="number" name="solveMaxSolutions" min="1" max="1000" value="${escapeHtml(editor.solveMaxSolutions)}" /></label>
+        ${renderCapabilityControl(capabilities, 'timeout', '<label><span>Time limit (ms, blank for none)</span><input type="number" name="solveTimeLimitMs" min="1" value="' + escapeHtml(editor.solveTimeLimitMs) + '" /></label>')}
+        ${renderCapabilityControl(capabilities, 'scoreDetails', `<label class="checkbox-label"><input type="checkbox" name="solveIncludeScoreDetails"${editor.solveIncludeScoreDetails ? ' checked' : ''} /><span>Include score details</span></label>`)}
+        ${renderCapabilityControl(capabilities, 'scoreWeights', `
+          <label><span>Preference weight</span><input type="number" name="solvePreferenceWeight" value="${escapeHtml(editor.solvePreferenceWeight)}" /></label>
+          <label><span>Target weight</span><input type="number" name="solveTargetWeight" value="${escapeHtml(editor.solveTargetWeight)}" /></label>
+          <label><span>Equity weight</span><input type="number" name="solveEquityWeight" value="${escapeHtml(editor.solveEquityWeight)}" /></label>
+          <label><span>Equity eligible items</span><select class="multi-select" name="solveEquityEligibleItemIds" multiple>${renderEntityMultiOptions(project, [NODE_KINDS.ITEM], editor.solveEquityEligibleItemIds)}</select></label>
+        `)}
+        ${renderCapabilityControl(capabilities, 'diversity', `
+          <label class="checkbox-label"><input type="checkbox" name="solveDiversityEnabled"${editor.solveDiversityEnabled ? ' checked' : ''} /><span>Require diverse solutions</span></label>
+          <label><span>Minimum assignment distance</span><input type="number" name="solveMinimumAssignmentDistance" min="0" value="${escapeHtml(editor.solveMinimumAssignmentDistance)}" /></label>
+        `)}
+      </div>
+    </section>
+  `;
 }
 
 function renderStorageFeedback(editor) {
@@ -207,7 +288,7 @@ function renderStorageFeedback(editor) {
     : '';
 
   return `
-    <div class="command-bar-feedback${editor.storageError ? ' command-bar-feedback-error' : ''}${storageWarnings.length > 0 && !editor.storageError ? ' command-bar-feedback-warning' : ''}">
+    <div class="command-bar-feedback${editor.storageError ? ' command-bar-feedback-error' : ''}${storageWarnings.length > 0 && !editor.storageError ? ' command-bar-feedback-warning' : ''}" role="${editor.storageError ? 'alert' : 'status'}" aria-live="polite">
       ${editor.storageError ? `<p class="storage-feedback-title">${escapeHtml(editor.storageError)}</p>` : ''}
       ${!editor.storageError && editor.storageMessage ? `<p class="storage-feedback-title">${escapeHtml(editor.storageMessage)}</p>` : ''}
       ${warningList}
@@ -358,10 +439,10 @@ function renderPositionSummary(project, containerId) {
   return `<div class="entity-meta-item"><dt>Positions</dt><dd class="chip-row">${chips}</dd></div>`;
 }
 
-function renderWorkspace(project, editor) {
+function renderWorkspace(project, editor, preferencePolicy, capabilities, part = 'data') {
   return `
     <section class="workspace-layout">
-      <div class="workspace-main">
+      <div class="workspace-main"${part === 'rules' ? ' hidden' : ''}>
         <section class="card workspace-toolbar">
           <div class="toolbar-head">
             <div>
@@ -425,6 +506,14 @@ function renderWorkspace(project, editor) {
     removeAction: 'remove-item',
     kindLabel: 'Item',
     emptyMessage: 'Add items to begin building your model.',
+    extraFields: [
+      (entity, index) => `
+        <div class="entity-meta-item entity-meta-form-row">
+          <label><span>Allowed containers</span><select multiple class="multi-select" data-action="edit-item-allowed-containers" data-index="${index}">${renderEntityMultiOptions(project, [NODE_KINDS.CONTAINER], entity.metadata?.allowedContainerIds ?? [])}</select></label>
+          <label><span>Forbidden containers</span><select multiple class="multi-select" data-action="edit-item-forbidden-containers" data-index="${index}">${renderEntityMultiOptions(project, [NODE_KINDS.CONTAINER], entity.metadata?.forbiddenContainerIds ?? [])}</select></label>
+        </div>
+      `,
+    ],
   })}
           ${renderEntityBoard('Groups', project.groups, {
     removeAction: 'remove-group',
@@ -466,8 +555,8 @@ function renderWorkspace(project, editor) {
         </section>
       </div>
 
-      <aside class="workspace-sidebar">
-        <section class="card sticky-panel">
+      <aside class="workspace-sidebar"${part === 'data' ? ' hidden' : ''}>
+        <section class="card sticky-panel" hidden>
           <h2>Project metadata 📝</h2>
           <div class="form-grid two-columns">
             <label>
@@ -580,48 +669,49 @@ function renderWorkspace(project, editor) {
 
             <div>
               <h3>Soft preference 💡</h3>
+              ${preferencePolicy.message ? `<p class="muted-text">${escapeHtml(preferencePolicy.message)}</p>` : ''}
               <div class="form-grid two-columns compact-form-grid">
                 <label>
                   <span>Preference kind</span>
-                  <select name="draftPreferenceKind">${renderOptions(Object.values(PREFERENCE_KINDS).map((kind) => ({ value: kind, label: kind })), editor.draftPreferenceKind)}</select>
+                  <select name="draftPreferenceKind"${preferencePolicy.disabled ? ' disabled' : ''}>${renderOptions(Object.values(PREFERENCE_KINDS).map((kind) => ({ value: kind, label: kind })), editor.draftPreferenceKind)}</select>
                 </label>
                 <label>
                   <span>Authoring mode</span>
-                  <select name="draftPreferenceMode">
+                  <select name="draftPreferenceMode"${preferencePolicy.disabled ? ' disabled' : ''}>
                     <option value="pair"${editor.draftPreferenceMode === 'pair' ? ' selected' : ''}>Left + right operands</option>
                     <option value="group"${editor.draftPreferenceMode === 'group' ? ' selected' : ''}${editor.draftPreferenceKind === PREFERENCE_KINDS.PREFER_SHARE_CONTAINER ? '' : ' disabled'}>All members of one group together</option>
                   </select>
                 </label>
                 <label>
                   <span>Weight</span>
-                  <input type="number" name="draftPreferenceWeight" value="${escapeHtml(editor.draftPreferenceWeight)}" min="0" step="1" />
+                  <input type="number" name="draftPreferenceWeight" value="${escapeHtml(editor.draftPreferenceWeight)}" min="0" step="1"${preferencePolicy.disabled ? ' disabled' : ''} />
                 </label>
                 ${editor.draftPreferenceMode === 'group' ? `
                   <label>
                     <span>Group</span>
-                    <select name="draftPreferenceGroupId">${renderEntityOptions(project, [NODE_KINDS.GROUP], editor.draftPreferenceGroupId)}</select>
+                    <select name="draftPreferenceGroupId"${preferencePolicy.disabled ? ' disabled' : ''}>${renderEntityOptions(project, [NODE_KINDS.GROUP], editor.draftPreferenceGroupId)}</select>
                   </label>
                 ` : `
                   <label>
                     <span>Left kind</span>
-                    <select name="draftPreferenceLeftKind">${renderOptions(ENTITY_KIND_OPTIONS, editor.draftPreferenceLeftKind)}</select>
+                    <select name="draftPreferenceLeftKind"${preferencePolicy.disabled ? ' disabled' : ''}>${renderOptions(ENTITY_KIND_OPTIONS, editor.draftPreferenceLeftKind)}</select>
                   </label>
                   <label>
                     <span>Left entity</span>
-                    <select name="draftPreferenceLeftId">${renderEntityOptions(project, [editor.draftPreferenceLeftKind], editor.draftPreferenceLeftId)}</select>
+                    <select name="draftPreferenceLeftId"${preferencePolicy.disabled ? ' disabled' : ''}>${renderEntityOptions(project, [editor.draftPreferenceLeftKind], editor.draftPreferenceLeftId)}</select>
                   </label>
                   <label>
                     <span>Right kind</span>
-                    <select name="draftPreferenceRightKind">${renderOptions(ENTITY_KIND_OPTIONS, editor.draftPreferenceRightKind)}</select>
+                    <select name="draftPreferenceRightKind"${preferencePolicy.disabled ? ' disabled' : ''}>${renderOptions(ENTITY_KIND_OPTIONS, editor.draftPreferenceRightKind)}</select>
                   </label>
                   <label>
                     <span>Right entity</span>
-                    <select name="draftPreferenceRightId">${renderEntityOptions(project, [editor.draftPreferenceRightKind], editor.draftPreferenceRightId)}</select>
+                    <select name="draftPreferenceRightId"${preferencePolicy.disabled ? ' disabled' : ''}>${renderEntityOptions(project, [editor.draftPreferenceRightKind], editor.draftPreferenceRightId)}</select>
                   </label>
                 `}
               </div>
               <div class="button-row top-gap">
-                <button type="button" data-action="add-preference">Add soft preference</button>
+                <button type="button" data-action="add-preference"${preferencePolicy.disabled ? ' disabled' : ''}>Add soft preference</button>
               </div>
             </div>
 
@@ -669,6 +759,7 @@ function renderWorkspace(project, editor) {
 
             <div>
               <h3>Assignment exclusion 🧱</h3>
+              ${capabilities.assignmentExclusions ? '' : '<p class="muted-text">Not supported by the active solver.</p>'}
               <p class="muted-text">Prevent one item from taking both listed destinations. Most useful in position mode.</p>
               <div class="form-grid two-columns compact-form-grid">
                 <label>
@@ -689,7 +780,7 @@ function renderWorkspace(project, editor) {
                 </label>
               </div>
               <div class="button-row top-gap">
-                <button type="button" data-action="add-assignment-exclusion">Add assignment exclusion</button>
+                 <button type="button" data-action="add-assignment-exclusion"${capabilities.assignmentExclusions ? '' : ' disabled'}>Add assignment exclusion</button>
               </div>
             </div>
 
@@ -706,8 +797,8 @@ function renderWorkspace(project, editor) {
                   <select name="draftAssignmentCountUpperBoundDestinationKind">${renderDestinationOptions(project, editor.draftAssignmentCountUpperBoundDestinationKind)}</select>
                 </label>
                 <label>
-                  <span>Destination ids</span>
-                  <input type="text" name="draftAssignmentCountUpperBoundDestinationIds" value="${escapeHtml(editor.draftAssignmentCountUpperBoundDestinationIds)}" placeholder="id-1, id-2" />
+                  <span>Destinations</span>
+                  <select class="multi-select" name="draftAssignmentCountUpperBoundDestinationIds" multiple>${renderEntityMultiOptions(project, [editor.draftAssignmentCountUpperBoundDestinationKind], editor.draftAssignmentCountUpperBoundDestinationIds)}</select>
                 </label>
                 <label>
                   <span>Max count</span>
@@ -758,8 +849,8 @@ function renderWorkspace(project, editor) {
                   <select name="draftSoftItemCountTargetDestinationKind">${renderDestinationOptions(project, editor.draftSoftItemCountTargetDestinationKind)}</select>
                 </label>
                 <label>
-                  <span>Destination ids</span>
-                  <input type="text" name="draftSoftItemCountTargetDestinationIds" value="${escapeHtml(editor.draftSoftItemCountTargetDestinationIds)}" placeholder="id-1, id-2" />
+                  <span>Destinations</span>
+                  <select class="multi-select" name="draftSoftItemCountTargetDestinationIds" multiple>${renderEntityMultiOptions(project, [editor.draftSoftItemCountTargetDestinationKind], editor.draftSoftItemCountTargetDestinationIds)}</select>
                 </label>
                 <label>
                   <span>Target count</span>
@@ -950,8 +1041,8 @@ function renderNormalizationSummary(normalizedProject) {
       <div><dt>Adjacency nodes</dt><dd>${adjacencyEntries.length}</dd></div>
       <div><dt>Must-share components</dt><dd>${componentCount}</dd></div>
     </dl>
-    <details class="details-panel">
-      <summary>View normalized project JSON</summary>
+    <details class="details-panel advanced-diagnostics">
+      <summary>Advanced diagnostics: normalized project JSON</summary>
       <pre class="json-block">${escapeHtml(JSON.stringify(normalizedProject, null, 2))}</pre>
     </details>
     `;
@@ -1002,9 +1093,14 @@ function validateImportedProject(project) {
 }
 
 function applyImportedProject(state, project, successMessage = 'Project loaded successfully.', options = {}) {
+  if (!confirmProjectReplacement(state.genericPage.project, REPLACE_PROJECT_MESSAGE)) {
+    return false;
+  }
+
   state.genericPage.project = project;
   resetDerivedState(state);
   setStorageMessage(state, successMessage, options);
+  return true;
 }
 
 function triggerDownload(filename, text) {
@@ -1029,15 +1125,17 @@ function createExportFilename(project) {
 }
 
 function resetDerivedState(state) {
+  discardSolveExecution(state.genericPage.solveExecution);
   state.genericPage.lastValidation = null;
   state.genericPage.lastNormalizedProject = null;
   state.genericPage.lastSolverResult = null;
+  state.genericPage.validationPanelExpanded = false;
   state.genericPage.editor.activeSolutionIndex = 0;
 }
 
 function saveDraftFlow(state) {
   try {
-    saveDraft(state.genericPage.project);
+    saveDraft(state.genericPage.project, state.draftStorage);
     setStorageMessage(state, 'Draft saved to browser storage.');
   } catch (error) {
     setStorageError(state, `Draft save failed: ${error.message}`);
@@ -1046,7 +1144,7 @@ function saveDraftFlow(state) {
 
 function loadDraftFlow(state) {
   try {
-    const draft = loadDraft();
+    const draft = loadDraft(state.draftStorage);
     if (!draft) {
       setStorageError(state, 'No saved draft was found in browser storage.');
       return;
@@ -1275,6 +1373,10 @@ function addConstraintEntry(state) {
 }
 
 function addPreferenceEntry(state) {
+  if (!new FirstSolverAdapter().getCapabilities().softPreferences) {
+    return;
+  }
+
   const editor = state.genericPage.editor;
   const weight = Number.parseInt(editor.draftPreferenceWeight || '1', 10);
 
@@ -1367,7 +1469,7 @@ function addAssignmentExclusion(state) {
 function addAssignmentCountUpperBound(state) {
   const editor = state.genericPage.editor;
   const maxCount = Number.parseInt(editor.draftAssignmentCountUpperBoundMaxCount || '1', 10);
-  const destinationIds = parseIdList(editor.draftAssignmentCountUpperBoundDestinationIds);
+  const destinationIds = editor.draftAssignmentCountUpperBoundDestinationIds;
   if (!editor.draftAssignmentCountUpperBoundItemId || destinationIds.length === 0) {
     return;
   }
@@ -1379,7 +1481,7 @@ function addAssignmentCountUpperBound(state) {
   });
 
   editor.draftAssignmentCountUpperBoundItemId = '';
-  editor.draftAssignmentCountUpperBoundDestinationIds = '';
+  editor.draftAssignmentCountUpperBoundDestinationIds = [];
   editor.draftAssignmentCountUpperBoundMaxCount = '1';
   resetDerivedState(state);
 }
@@ -1406,7 +1508,7 @@ function addSoftAssignmentScore(state) {
 function addSoftItemCountTarget(state) {
   const editor = state.genericPage.editor;
   const targetCount = Number.parseInt(editor.draftSoftItemCountTargetValue || '1', 10);
-  const destinationIds = parseIdList(editor.draftSoftItemCountTargetDestinationIds);
+  const destinationIds = editor.draftSoftItemCountTargetDestinationIds;
   if (!editor.draftSoftItemCountTargetItemId || destinationIds.length === 0) {
     return;
   }
@@ -1418,7 +1520,7 @@ function addSoftItemCountTarget(state) {
   });
 
   editor.draftSoftItemCountTargetItemId = '';
-  editor.draftSoftItemCountTargetDestinationIds = '';
+  editor.draftSoftItemCountTargetDestinationIds = [];
   editor.draftSoftItemCountTargetValue = '1';
   resetDerivedState(state);
 }
@@ -1432,10 +1534,8 @@ function bindEnterToAction(root, state) {
     draftContainerMaxCapacity: addContainer,
     draftPositionLabel: addPosition,
     draftPreferenceWeight: addPreferenceEntry,
-    draftAssignmentCountUpperBoundDestinationIds: addAssignmentCountUpperBound,
     draftAssignmentCountUpperBoundMaxCount: addAssignmentCountUpperBound,
     draftSoftAssignmentScoreValue: addSoftAssignmentScore,
-    draftSoftItemCountTargetDestinationIds: addSoftItemCountTarget,
     draftSoftItemCountTargetValue: addSoftItemCountTarget,
   };
 
@@ -1543,6 +1643,17 @@ function removeNodeAndReferences(state, collectionName, index) {
     state.genericPage.project.assignmentCountUpperBounds = state.genericPage.project.assignmentCountUpperBounds.filter((entry) => entry.itemId !== removed.id);
     state.genericPage.project.softAssignmentScores = state.genericPage.project.softAssignmentScores.filter((entry) => entry.itemId !== removed.id);
     state.genericPage.project.softItemCountTargets = state.genericPage.project.softItemCountTargets.filter((entry) => entry.itemId !== removed.id);
+    state.genericPage.editor.solveEquityEligibleItemIds = state.genericPage.editor.solveEquityEligibleItemIds.filter((id) => id !== removed.id);
+  }
+
+  if (removed.kind === NODE_KINDS.CONTAINER) {
+    state.genericPage.project.items.forEach((item) => {
+      item.metadata = {
+        ...(item.metadata ?? {}),
+        allowedContainerIds: (item.metadata?.allowedContainerIds ?? []).filter((id) => id !== removed.id),
+        forbiddenContainerIds: (item.metadata?.forbiddenContainerIds ?? []).filter((id) => id !== removed.id),
+      };
+    });
   }
 
   state.genericPage.project.fixedAssignments = state.genericPage.project.fixedAssignments.filter((entry) => entry.destinationId !== removed.id);
@@ -1584,6 +1695,45 @@ function updateContainerCapacity(state, index, field, value) {
   resetDerivedState(state);
 }
 
+function updateItemContainerMetadata(state, index, field, values) {
+  const item = state.genericPage.project.items[index];
+  if (!item) return;
+  item.metadata = { ...(item.metadata ?? {}), [field]: values };
+  resetDerivedState(state);
+}
+
+function parseInteger(value) {
+  return value === '' ? null : Number(value);
+}
+
+export function buildGenericSolveOptions(editor) {
+  return {
+    mode: editor.solveMode,
+    maxSolutions: Number(editor.solveMaxSolutions),
+    timeLimitMs: parseInteger(editor.solveTimeLimitMs),
+    includeScoreDetails: Boolean(editor.solveIncludeScoreDetails),
+    equityEligibleItemIds: [...(editor.solveEquityEligibleItemIds ?? [])],
+    scoreWeights: {
+      preferences: Number(editor.solvePreferenceWeight),
+      targets: Number(editor.solveTargetWeight),
+      equity: Number(editor.solveEquityWeight),
+    },
+    diversity: {
+      enabled: Boolean(editor.solveDiversityEnabled),
+      minimumAssignmentDistance: Number(editor.solveMinimumAssignmentDistance),
+    },
+  };
+}
+
+function optionIssues(errors) {
+  return errors.map((message, index) => ({
+    level: 'error',
+    code: 'invalid-solve-option',
+    message,
+    path: `solveOptions[${index}]`,
+  }));
+}
+
 function runValidationFlow(state) {
   const adapter = new FirstSolverAdapter();
   const capabilities = adapter.getCapabilities();
@@ -1591,7 +1741,8 @@ function runValidationFlow(state) {
 
   state.genericPage.lastValidation = validation;
   state.genericPage.lastSolverResult = null;
-  state.genericPage.validationPanelExpanded = false;
+  state.genericPage.validationPanelExpanded = !validation.valid;
+  state.genericPage.activeWorkflowTab = 'review';
 
   if (validation.valid) {
     state.genericPage.lastNormalizedProject = normalizeProject(state.genericPage.project);
@@ -1601,39 +1752,56 @@ function runValidationFlow(state) {
   state.genericPage.lastNormalizedProject = null;
 }
 
-function runSolveFlow(state) {
+function runSolveFlow(state, root) {
   const adapter = new FirstSolverAdapter();
   const capabilities = adapter.getCapabilities();
-  const validation = validateProject(state.genericPage.project, capabilities);
+  const projectValidation = validateProject(state.genericPage.project, capabilities);
+  const options = buildGenericSolveOptions(state.genericPage.editor);
+  const optionsValidation = validateSolveOptions(options, capabilities);
+  const validation = {
+    ...projectValidation,
+    valid: projectValidation.valid && optionsValidation.valid,
+    errors: [...projectValidation.errors, ...optionIssues(optionsValidation.errors)],
+  };
 
   state.genericPage.lastValidation = validation;
   state.genericPage.validationPanelExpanded = true;
 
   if (!validation.valid) {
     state.genericPage.lastNormalizedProject = null;
-    state.genericPage.lastSolverResult = {
-      status: 'validation-failed',
-      solutions: [],
-      warnings: ['Solve was not attempted because validation failed.'],
-      runtimeMs: 0,
-      truncatedByLimit: false,
-      interrupted: false,
-      timeoutReached: false,
-    };
+    state.genericPage.lastSolverResult = null;
+    state.genericPage.activeWorkflowTab = 'review';
     return;
   }
 
   const normalizedProject = normalizeProject(state.genericPage.project);
   state.genericPage.lastNormalizedProject = normalizedProject;
 
-  const adapterValidation = adapter.validateModel(normalizedProject);
-  const solverResult = adapter.solve(normalizedProject);
-
-  state.genericPage.lastSolverResult = {
-    ...solverResult,
-    warnings: [...(adapterValidation.warnings ?? []), ...(solverResult.warnings ?? [])],
-  };
+  const adapterValidation = adapter.validateModel(normalizedProject, optionsValidation.options);
+  if (!adapterValidation.valid) {
+    state.genericPage.lastValidation = {
+      ...validation,
+      valid: false,
+      errors: [...validation.errors, ...optionIssues(adapterValidation.errors)],
+    };
+    state.genericPage.lastSolverResult = null;
+    state.genericPage.activeWorkflowTab = 'review';
+    return;
+  }
   state.genericPage.editor.activeSolutionIndex = 0;
+  state.genericPage.activeWorkflowTab = 'results';
+  startSolveExecution({
+    execution: state.genericPage.solveExecution,
+    model: normalizedProject,
+    options: optionsValidation.options,
+    onResult(solverResult) {
+      state.genericPage.lastSolverResult = {
+        ...solverResult,
+        warnings: [...(adapterValidation.warnings ?? []), ...(solverResult.warnings ?? [])],
+      };
+    },
+    onChange: () => renderGenericPage(root, state),
+  });
 }
 
 function bindFileInputs(root, state) {
@@ -1656,12 +1824,18 @@ function bindFileInputs(root, state) {
 function bindInputs(root, state) {
   root.querySelectorAll('select[name]').forEach((element) => {
     element.addEventListener('change', (event) => {
-      const { name, value } = event.target;
+      const { name, value, multiple, selectedOptions } = event.target;
+      const nextValue = multiple ? [...selectedOptions].map((option) => option.value) : value;
 
       if (name === 'assignmentMode') {
         updateProjectField(state, 'assignmentMode', value);
+      } else if (name === 'assignmentMultiplicity') {
+        updateProjectField(state, 'assignmentMultiplicity', value);
       } else {
-        updateEditorField(state, name, value);
+        updateEditorField(state, name, nextValue);
+        if (name === 'solveMode' && value === SOLVE_MODES.FIRST) {
+          updateEditorField(state, 'solveMaxSolutions', '1');
+        }
       }
 
       renderGenericPage(root, state);
@@ -1670,14 +1844,15 @@ function bindInputs(root, state) {
 
   root.querySelectorAll('input[name], textarea[name]').forEach((element) => {
     element.addEventListener('input', (event) => {
-      const { name, value } = event.target;
+      const { name, value, type, checked } = event.target;
+      const nextValue = type === 'checkbox' ? checked : value;
 
       if (name === 'projectTitle') {
         updateProjectField(state, 'title', value);
       } else if (name === 'projectDescription') {
         updateProjectField(state, 'description', value);
       } else {
-        updateEditorField(state, name, value);
+        updateEditorField(state, name, nextValue);
       }
     });
   });
@@ -1699,11 +1874,30 @@ function bindInputs(root, state) {
       updateContainerCapacity(state, Number.parseInt(event.target.dataset.index, 10), 'maxCapacity', event.target.value);
     });
   });
+
+  root.querySelectorAll('[data-action="edit-item-allowed-containers"]').forEach((element) => {
+    element.addEventListener('change', (event) => {
+      updateItemContainerMetadata(state, Number.parseInt(event.target.dataset.index, 10), 'allowedContainerIds', [...event.target.selectedOptions].map((option) => option.value));
+      renderGenericPage(root, state);
+    });
+  });
+
+  root.querySelectorAll('[data-action="edit-item-forbidden-containers"]').forEach((element) => {
+    element.addEventListener('change', (event) => {
+      updateItemContainerMetadata(state, Number.parseInt(event.target.dataset.index, 10), 'forbiddenContainerIds', [...event.target.selectedOptions].map((option) => option.value));
+      renderGenericPage(root, state);
+    });
+  });
 }
 
 function bindActions(root, state) {
   root.querySelector('.validation-panel-details')?.addEventListener('toggle', (event) => {
     state.genericPage.validationPanelExpanded = event.target.open;
+  });
+
+  bindWorkflowTabs(root, (tabId) => {
+    state.genericPage.activeWorkflowTab = tabId;
+    renderGenericPage(root, state);
   });
 
   const actionMap = {
@@ -1743,9 +1937,14 @@ function bindActions(root, state) {
 
     if (action === 'solve') {
       element.addEventListener('click', () => {
-        runSolveFlow(state);
+        runSolveFlow(state, root);
         renderGenericPage(root, state);
       });
+      return;
+    }
+
+    if (action === 'cancel-solve') {
+      element.addEventListener('click', () => cancelSolveExecution(state.genericPage.solveExecution));
       return;
     }
 
@@ -1775,6 +1974,9 @@ function bindActions(root, state) {
 
     if (action === 'reset-project') {
       element.addEventListener('click', () => {
+        if (!confirmProjectReplacement(state.genericPage.project, REPLACE_PROJECT_MESSAGE)) {
+          return;
+        }
         state.genericPage.project = createEmptyProject({ viewHint: VIEW_HINTS.GENERIC });
         state.genericPage.editor = createGenericPageState();
         clearStorageFeedback(state);
@@ -1924,17 +2126,15 @@ function bindActions(root, state) {
 
 export function renderGenericPage(root, state) {
   ensureProject(state);
+  persistPageDraft(state.draftStorage, 'generic', state.genericPage.project, state.genericPage.persistence);
 
   const validation = state.genericPage.lastValidation;
   const editor = state.genericPage.editor;
+  const capabilities = new FirstSolverAdapter().getCapabilities();
+  const preferencePolicy = getGeneralPreferenceAuthoringPolicy(capabilities);
+  const activeTab = state.genericPage.activeWorkflowTab;
 
-  root.innerHTML = renderPageShell({
-    title: 'Generic Constraint Page 🎛️',
-    description: 'Create and edit a generic project, then run validation, normalization, and the solver adapter workflow — with a slightly friendlier vibe ✨',
-    body: `
-    ${renderCommandBar(editor, state.genericPage.commandBarExpanded !== false)}
-    ${renderProjectSummary(state.genericPage.project)}
-    ${renderWorkspace(state.genericPage.project, editor)}
+  const rulesContent = `
     <section class="audit-section-grid">
       ${renderRelationList(state.genericPage.project, 'Containments 🫶', state.genericPage.project.containments, 'remove-containment')}
       ${renderRelationList(state.genericPage.project, 'Topologies 🗺️', state.genericPage.project.topologies, 'remove-topology')}
@@ -1949,24 +2149,37 @@ export function renderGenericPage(root, state) {
     </section>
     <section class="audit-section-grid">
       ${renderSimpleEntryList('Assignment exclusions 🧱', 'Solver-facing assignments', state.genericPage.project.assignmentExclusions, ['Item', 'First destination', 'Second destination'], (entry) => `<td>${escapeHtml(getEntityLabel(state.genericPage.project, NODE_KINDS.ITEM, entry.itemId))}</td><td>${escapeHtml(renderDestinationIdLabel(state.genericPage.project, entry.firstDestinationId))}</td><td>${escapeHtml(renderDestinationIdLabel(state.genericPage.project, entry.secondDestinationId))}</td>`, 'remove-assignment-exclusion')}
-      ${renderSimpleEntryList('Assignment count upper bounds 🔢', 'Solver-facing assignments', state.genericPage.project.assignmentCountUpperBounds, ['Item', 'Destination ids', 'Max count'], (entry) => `<td>${escapeHtml(getEntityLabel(state.genericPage.project, NODE_KINDS.ITEM, entry.itemId))}</td><td>${escapeHtml((entry.destinationIds ?? []).map((id) => renderDestinationIdLabel(state.genericPage.project, id)).join(', '))}</td><td>${escapeHtml(entry.maxCount)}</td>`, 'remove-assignment-count-upper-bound')}
+      ${renderSimpleEntryList('Assignment count upper bounds 🔢', 'Solver-facing assignments', state.genericPage.project.assignmentCountUpperBounds, ['Item', 'Destinations', 'Max count'], (entry) => `<td>${escapeHtml(getEntityLabel(state.genericPage.project, NODE_KINDS.ITEM, entry.itemId))}</td><td>${escapeHtml((entry.destinationIds ?? []).map((id) => renderDestinationIdLabel(state.genericPage.project, id)).join(', '))}</td><td>${escapeHtml(entry.maxCount)}</td>`, 'remove-assignment-count-upper-bound')}
     </section>
     <section class="audit-section-grid">
-      ${renderSimpleEntryList('Soft assignment scores ⭐', 'Future optimization inputs', state.genericPage.project.softAssignmentScores, ['Item', 'Destination', 'Score'], (entry) => `<td>${escapeHtml(getEntityLabel(state.genericPage.project, NODE_KINDS.ITEM, entry.itemId))}</td><td>${escapeHtml(renderDestinationIdLabel(state.genericPage.project, entry.destinationId))}</td><td>${escapeHtml(entry.score)}</td>`, 'remove-soft-assignment-score')}
-      ${renderSimpleEntryList('Soft item count targets 🎯', 'Future optimization inputs', state.genericPage.project.softItemCountTargets, ['Item', 'Destination ids', 'Target count'], (entry) => `<td>${escapeHtml(getEntityLabel(state.genericPage.project, NODE_KINDS.ITEM, entry.itemId))}</td><td>${escapeHtml((entry.destinationIds ?? []).map((id) => renderDestinationIdLabel(state.genericPage.project, id)).join(', '))}</td><td>${escapeHtml(entry.targetCount)}</td>`, 'remove-soft-item-count-target')}
-    </section>
-    ${renderValidationPanel(validation, {
+      ${renderSimpleEntryList('Soft assignment scores ⭐', 'Optimization inputs', state.genericPage.project.softAssignmentScores, ['Item', 'Destination', 'Score'], (entry) => `<td>${escapeHtml(getEntityLabel(state.genericPage.project, NODE_KINDS.ITEM, entry.itemId))}</td><td>${escapeHtml(renderDestinationIdLabel(state.genericPage.project, entry.destinationId))}</td><td>${escapeHtml(entry.score)}</td>`, 'remove-soft-assignment-score')}
+      ${renderSimpleEntryList('Soft item count targets 🎯', 'Optimization inputs', state.genericPage.project.softItemCountTargets, ['Item', 'Destinations', 'Target count'], (entry) => `<td>${escapeHtml(getEntityLabel(state.genericPage.project, NODE_KINDS.ITEM, entry.itemId))}</td><td>${escapeHtml((entry.destinationIds ?? []).map((id) => renderDestinationIdLabel(state.genericPage.project, id)).join(', '))}</td><td>${escapeHtml(entry.targetCount)}</td>`, 'remove-soft-item-count-target')}
+    </section>`;
+
+  root.innerHTML = renderPageShell({
+    title: 'Generic Constraint Page 🎛️',
+    description: 'Create and edit a generic project, then run validation, normalization, and the solver adapter workflow — with a slightly friendlier vibe ✨',
+    activeRoute: '/generic',
+    persistence: state.genericPage.persistence,
+    body: `
+    ${renderCommandBar(editor, state.genericPage.commandBarExpanded !== false)}
+    ${renderSolveStatus(state.genericPage.solveExecution)}
+    ${renderProjectSummary(state.genericPage.project)}
+    ${renderWorkflowTabs(activeTab)}
+    ${renderWorkflowPanel('setup', activeTab, renderSetup(state.genericPage.project, editor, capabilities))}
+    ${renderWorkflowPanel('data', activeTab, renderWorkspace(state.genericPage.project, editor, preferencePolicy, capabilities, 'data'))}
+    ${renderWorkflowPanel('rules', activeTab, `${renderWorkspace(state.genericPage.project, editor, preferencePolicy, capabilities, 'rules')}${rulesContent}`)}
+    ${renderWorkflowPanel('review', activeTab, renderValidationPanel(validation, {
       hasComputedSolution: Boolean(state.genericPage.lastSolverResult),
       expanded: state.genericPage.validationPanelExpanded,
-    })}
-    <section class="audit-section-grid">
+    }))}
+    ${renderWorkflowPanel('results', activeTab, `<section class="audit-section-grid">
       ${renderNormalizationSummary(state.genericPage.lastNormalizedProject)}
       ${renderSolutionPanel(state.genericPage.project, state.genericPage.lastSolverResult, editor.activeSolutionIndex, {
       panelTitle: 'Solve result 🎉',
       panelEyebrow: 'Generic solver output 🤖',
       emptyResultMessage: 'Run solve after validation to see generic assignments.',
       unsatMessage: 'The solver completed but found no valid assignment satisfying the current hard constraints.',
-      noAssignmentsMessage: 'No concrete assignments are available for this generic solver result.',
       noWarningsMessage: 'No generic solver warnings.',
       rawJsonSummaryLabel: 'View raw generic solver result JSON',
       containerKindLabel: 'Container',
@@ -1976,7 +2189,7 @@ export function renderGenericPage(root, state) {
       solutionPrefixLabel: 'Solution',
       capacityLabel: 'Capacity',
     })}
-    </section>
+    </section>`)}
     `,
   });
 
@@ -1984,5 +2197,5 @@ export function renderGenericPage(root, state) {
   bindFileInputs(root, state);
   bindActions(root, state);
   bindEnterToAction(root, state);
+  bindPageDraftAutosave(root, state.draftStorage, 'generic', () => state.genericPage.project, state.genericPage.persistence);
 }
-

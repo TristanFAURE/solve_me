@@ -16,6 +16,7 @@ This feature includes:
 - solver execution for seating plans
 - display of one or more seating solutions through the shared solution display layer
 - export of seating results to an easy-to-read spreadsheet format suitable for wedding planners
+- export and import of a complete editable wedding configuration workbook before solving
 
 ## Out of scope
 
@@ -39,6 +40,7 @@ This feature does not define:
 - As a user, I want group-level rules such as family separation to apply automatically to all affected guests.
 - As a user, I want to run the solver and explore valid seating plans.
 - As a user, I want to export a seating plan in a spreadsheet that is easy for a wedding planner, venue, or family organizer to read.
+- As a user, I want a full configuration workbook that preserves guests, groups, tables, seats, topology, rules, preferences, metadata, and assignment arrays.
 - As a user, I want to understand when no valid plan exists.
 
 ## Relationship to the generic model
@@ -385,4 +387,6 @@ It should not expose generic terms such as Item, Group, Container, Position, con
 - A planner can add a soft `Keep this group together` preference from `Prefer if possible` by selecting a single group, and that shortcut propagates through the normalized model.
 - The wedding page writes data using the generic core model rather than custom wedding-only structures.
 - The page can invoke the solver and display one or more seating plans.
-- The page can export a solved seating plan to a readable spreadsheet format suitable for wedding planners.
+- The page can export a complete configuration workbook before solving and can validate, migrate, preview, and confirm a full replacement from it without losing seat positions or topology.
+- Readable workbook examples use one guest per row (`Guest`, `Groups`, `Guest ID`), one table per row, and sentence-friendly rule columns. Seats and Topology follow the main sheets as advanced references; the web UI is recommended for edits.
+- Legacy workbook imports remain supported, and the selected solved seating plan remains a separate, clearly named result export.

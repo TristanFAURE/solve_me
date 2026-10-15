@@ -1,9 +1,9 @@
-import * as XLSX from 'xlsx';
 import { createId } from '../../core/model/ids.js';
 import { createContainer, createGroup, createItem } from '../../core/model/nodes.js';
 import { createEmptyProject, VIEW_HINTS } from '../../core/model/project.js';
 import { createContainmentRelation, createEntityRef } from '../../core/model/relations.js';
 import { SCHOOL_ITEM_ROLES } from '../../core/transform/domainMappings.js';
+import { readWorkbookFile, sheetToSafeRows } from '../../workbooks/safety.js';
 
 function normalizeHeader(value) {
   return String(value ?? '')
@@ -28,7 +28,7 @@ function getSheetRows(workbook, preferredNames) {
     return [];
   }
 
-  return XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+  return sheetToSafeRows(workbook.Sheets[sheetName], {
     defval: '',
     raw: false,
   });
@@ -213,15 +213,12 @@ function applyClassesSheet(project, classRows, levelsByLabel, classesByLabel, te
   }
 }
 
-export async function importSchoolWorkbook(file) {
-  const arrayBuffer = await file.arrayBuffer();
-  const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-
+export function importSchoolWorkbookFromWorkbook(workbook, fileName = 'school-workbook.xlsx') {
   const studentRows = getSheetRows(workbook, ['students']);
   const classRows = getSheetRows(workbook, ['classes']);
 
   const project = createEmptyProject({
-    title: file.name.replace(/\.[^.]+$/, ''),
+    title: fileName.replace(/\.[^.]+$/, ''),
     description: 'Imported from school workbook',
     viewHint: VIEW_HINTS.SCHOOL,
   });
@@ -234,4 +231,8 @@ export async function importSchoolWorkbook(file) {
   applyClassesSheet(project, classRows, levelsByLabel, classesByLabel, teachersByLabel);
 
   return project;
+}
+
+export async function importSchoolWorkbook(file) {
+  return importSchoolWorkbookFromWorkbook(await readWorkbookFile(file), file.name);
 }

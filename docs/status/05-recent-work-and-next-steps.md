@@ -2,45 +2,49 @@
 
 ## Most recent completed work
 
-Latest meaningful completed step:
+The ranked-solutions and shared-workflow implementation milestone is complete:
 
-- corrected the staffing solver philosophy to support reusable people across events: staffing now uses additive multi-assignment semantics in container mode while preserving the generic core model and existing public solver API shape
-- introduced an additive `assignmentMultiplicity` project flag, set staffing transforms to `multiple`, and kept other domains on the existing single-assignment default so school and wedding semantics do not drift
-- updated the first solver adapter so container mode can honor multiple fixed destinations, per-event exclusivity bounds, cooldown exclusions, person/group count bounds, and requirement min/max capacities for staffing-style repeated assignments
-- fixed a false-unsat staffing search bug for larger hard-minimum schedules by replacing the previous bounded subset enumeration with a demand-aware greedy multi-assignment step that always tries to cover currently required destinations while respecting hard bounds and exclusions
-- added stronger staffing transform regressions around single-group event semantics, including the large satisfied case of three people covering thirty-one required single-slot events, alongside the smaller satisfied and unsat regressions already present
-- re-ran the targeted staffing transform regression file successfully
+- fixed school preference creation, unlimited aggregate capacity, two-seat wedding adjacency, and cascading wedding-table deletion
+- added validated `first`, `topK`, and `optimize` solve options
+- added configurable weighted assignment, target-deviation, and equity scoring
+- added canonical fingerprints, ranked alternatives, minimum-distance diversity, score details, and honest completeness/optimality metadata
+- replaced greedy repeated-assignment selection with complete pair branching, bounded candidate retention, and explicit bounded-search reporting
+- moved browser solves to a module Web Worker with progress, cancellation, timeout, partial incumbents, and search-narrowing hints
+- added Setup, Data, Rules, Review, and Results tabs to all four pages
+- added explicit validation lifecycle and disabled unsupported general-preference authoring truthfully
+- added versioned local autosave and recovery without accumulating rerender listeners
+- added full-fidelity School, Wedding, and Event Staffing configuration workbooks with preview/replacement flows and workbook safety limits
+- added Event Staffing date/slot migration, category requirements, person-slot preferences, hard unavailability, fixed/forbidden assignments, cooldowns, and ranked schedule export
+- added cross-domain compatibility, solver-contract, worker, workbook, migration, topology, lifecycle, and regression tests
 
-## Files touched most recently
+No dependency was added. `package.json` only adds the `test:compat` script.
 
-- `src/solver/adapters/firstSolverAdapter.js`
-- `tests/core/transform/eventStaffingProject.test.js`
-- `docs/status/05-recent-work-and-next-steps.md`
-- `status.md`
+## Verification
 
-## Recommended next step
+Final automated verification must include:
 
-1. continue the event staffing editor from the current planner workflow shell:
-   - add first-class authoring controls for the remaining planner rule data: cooldown rules, forced assignments, and forbidden assignments
-   - consider whether saved-people summaries should show event labels instead of raw event ids now that preferences can be authored directly in the GUI
-   - verify other event-browser filters and editing inputs for similar rerender-driven focus or caret regressions now that search has been repaired
-   - keep refining editing safeguards and feedback around date/order changes and any remaining destructive flows
-   - if the user explicitly requests it later, consider browser-level interaction coverage with an approved browser-test approach
-2. then run broader manual testing and assess performance on larger staffing-style scenarios
-3. then consider further solver refinement only if needed:
-   - tighten pruning bounds further for complex mixed hard/soft cases
-   - evaluate whether staffing-scale scenarios need deeper best-first search or additional dominance pruning
+- `npm test`
+- `npm run build`
+- `git diff --check`
+- review for credentials, tokens, internal URLs, and database secrets
 
-## Key open risks
+The final verification run passed 212 tests across 30 files, the 5-test compatibility suite, the production build, and `git diff --check`.
 
-- the intended next UI direction is to reuse existing shared page styling patterns rather than invent page-specific ad hoc markup
-- solver milestone 1 now ranks returned solutions using `softAssignmentScores[]` and `softItemCountTargets[]`, but the search still returns the best solution only among the enumerated set and does not yet guarantee a global optimum
-- transform-based expansion of cooldown and exclusivity rules may significantly increase normalized constraint volume on large schedules
-- the staffing page now has planner-facing multi-solution navigation plus a direct solution picker, and the event/person lists are bounded with scroll regions; the workflow and bulk-edit areas are now split, but larger solution sets may still need richer ranking or comparison UX
-- the people list now uses the bounded scroll box as intended, but if the roster table gains many more columns later it may still need column prioritization or a card/list fallback on narrower screens
-- the keyboard-only add/save shortcut currently triggers from the person name field specifically; if broader keyboard-first editing is desired later, other staffing editor sections may need explicit Enter / shortcut semantics too
-- removing sample bootstrap data makes the first-run planner experience cleaner; direct creation flows now exist for group types, people, edited people, and global limits including default per-group soft targets, but the page still needs first-class authoring for cooldown rules and assignment exceptions
-- event insert/delete, multi-select, validation display, and bulk requirement actions include confirmation safeguards; the event search focus regression is now fixed, but other rerender-sensitive inputs should still be sanity-checked, and browser-level interaction test work should not be proposed unless the user explicitly asks for that direction
-- container minimum capacities are now enforced in container mode, and the staffing multi-assignment search now covers large hard-minimum repeated-event cases such as three people across thirty-one required single-slot events; however, the current solver baseline still uses heuristic backtracking/greedy choices and may need further refinement for larger mixed hard-soft scenarios
-- backward compatibility must continue to be protected for existing school and wedding use cases as staffing transforms are added; targeted school and wedding validation regressions still pass after the staffing multi-assignment solver change
-- larger staffing scenarios may be slow with the current backtracking solver even before optimization is introduced
+## Recommended next steps
+
+1. Manually verify Generic, School, Wedding, and Event Staffing workflows in a real browser on desktop and mobile.
+2. Benchmark realistic Event Staffing datasets and tune time limits, candidate budgets, and search hints from measurements.
+3. Review alternatives to `xlsx`, which has unresolved upstream advisories; current upload, ZIP expansion, workbook-shape, and cell limits reduce but do not eliminate parser risk.
+4. Add browser automation only if explicitly requested; current project guidance does not assume a browser-test framework.
+5. Consider WebAssembly only if benchmarks show the Worker-based JavaScript solver is insufficient.
+
+## Known residual risks
+
+- general relation preferences remain unsupported by the first solver
+- repeated-assignment search remains exponential and can return incomplete bounded or timed-out results on large scenarios
+- Event Staffing uses event-shaped slot records grouped by date metadata rather than a separate date entity
+- local drafts can contain personal data in origin-local browser storage
+- full-page rerenders still warrant manual focus/caret and accessibility checks
+- generated wedding shapes share perimeter-ring adjacency semantics
+- the production bundle emits a large-chunk warning
+- `xlsx` has unresolved upstream security advisories and no available npm audit fix

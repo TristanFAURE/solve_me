@@ -54,6 +54,12 @@ This lets the current generic container-mode solver enforce school eligibility h
 - assigned student levels summarized on solved class cards
 - Excel export of solved results
 - Excel import of teacher-facing workbooks
+- shared Setup, Data, Rules, Review, and Results workflow
+- bulk student entry and explicit validation lifecycle
+- Web Worker solving with ranked result controls and interruption handling
+- versioned local autosave and draft recovery
+- full-fidelity configuration workbook export/import with replacement preview
+- regression fixes for preference creation and aggregate capacity when a class is unlimited
 
 ## Workbook import/export baseline
 
@@ -75,7 +81,7 @@ Current workbook import baseline:
 - optional `Classes` sheet may enrich classes further
 - imported workbook becomes the school page's own project draft with `viewHint: school`
 
-Workbook import is a convenience format, not full-fidelity persistence.
+Teacher-facing sheets remain a convenience format. A reserved, hidden configuration envelope now provides full-fidelity round trips when present, with bounded import and replacement preview checks.
 
 ## Validation regression coverage
 
@@ -96,6 +102,8 @@ Current coverage includes:
 - teachers are not yet part of full assignment solving
 - school-specific validation is still page-local rather than extracted into a broader domain-validation layer
 - spreadsheet import/export increases bundle size because of `xlsx`
+- local drafts may contain student data in browser storage and should only be used in an appropriate browser profile
+- the existing `xlsx` release has unresolved upstream advisories despite file-size and ZIP preflight controls
 
 ## Primary files
 

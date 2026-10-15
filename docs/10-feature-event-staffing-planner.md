@@ -1,4 +1,39 @@
-# Feature: Event Staffing Planner
+# Feature: Event Staffing
+
+## Implemented date and slot model
+
+Event Staffing stores each independently staffed slot as an existing event-shaped record with stable `id`, plus `dateKey`, `date`, and `slotLabel`. Several records may share a date. Legacy projects migrate deterministically one event to one slot without changing IDs or references. Dates remain domain metadata and are not generic core entities.
+
+Requirements are unique per slot and category and contain hard `min`/`max` coverage. A person can hold at most one category in a slot and can work multiple slots when cooldown, eligibility, limits, fixed, forbidden, and availability rules permit it.
+
+Preferences are `prefer`, `neutral`, `preferNot`, or `unavailable` per person and slot. Workbook exports use `P`, blank, `N`, and `U`; legacy `Y` remains accepted. Unavailable compiles to forbidden assignments for every category in the slot. Other values are soft terms and count at most once because slot exclusivity is hard.
+
+People may have an optional email, which must be unique case-insensitively when present.
+
+## Configuration and preference workbook contract
+
+The configuration workbook is available before solving and contains the complete domain configuration in `_Configuration`, plus these readable sheets:
+
+- `Instructions`: meanings and matching rules.
+- `Preferences`: one row per person. The first columns are `Name`, `Email`, and `Person ID`; every remaining column is one independently staffed occurrence in schedule order, such as `2026-10-14 | Morning`.
+- `Slots`: maps each exact `Preference column key` to stable `Slot ID`, `Date`, `Slot label`, and `Category coverage`.
+- `Categories`, `Requirements`, `People`, `Cooldowns`, `Forced assignments`, `Forbidden assignments`, and `Limits`: readable views of all staffing inputs.
+
+Accepted preference cells are case-insensitive `P`, `X`, `Y`, `YES`, `PREFER`, or `PREFERRED`; blank or `NEUTRAL`; `N`, `NO`, or `PREFER NOT`; and `U` or `UNAVAILABLE`. Duplicate display labels are deterministically suffixed, for example `2026-10-14 | Morning [2]`, while `Slots` retains the exact stable-ID mapping.
+
+One import control detects the full envelope after workbook safety validation. A valid envelope can replace the full migrated configuration only after explicit impact confirmation, or optionally apply preferences alone. Only preference cells are editable import surfaces in the configuration workbook; other readable sheets are reference views. Without an envelope, valid legacy `Preferences`/`Slots` workbooks remain preference-only merges. Preference matching uses exact Person ID, unique case-insensitive email, then unique case-insensitive name and never creates people. Parse, validation, cancellation, or confirmation failure leaves the active project unchanged.
+
+The selected solved schedule export contains:
+
+- `Schedule`: Date, Slot, Category, Person, Email for each assignment.
+- `People summary`: totals, category counts, targets, and score contributions.
+- `Solution metadata`: rank, score, status, search completeness, optimality, timeout, and runtime.
+
+Every exported user-controlled string beginning with `=`, `+`, `-`, or `@` is prefixed with an apostrophe to prevent spreadsheet formula execution.
+
+## Workbook safety limits
+
+School, Wedding, and Event Staffing workbook paths share these limits: 5 MB upload, 20 sheets, 10,000 rows per sheet, 500 columns per sheet, and 10,000 characters per cell. Envelope chunks are at most 8,000 characters; reconstructed JSON is capped at 2 MB and depth 64. Missing, duplicate, or out-of-order chunks, malformed JSON, dangerous prototype keys, sensitive fields, wrong domains, and unsupported versions are rejected. Malformed or oversized files produce user-safe messages without stack traces or local paths. The accepted residual advisory in the existing `xlsx` dependency remains documented; no additional dependency is introduced.
 
 ## Purpose
 
@@ -40,6 +75,54 @@ V1 does not include:
 - role composition inside a group
 - pair / anti-pair rules between people
 - recurring schedule templates beyond UI helpers that generate explicit events/requirements
+
+## Approved next iteration
+
+The next iteration extends the V1 event model into an explicit date and slot authoring model. This section describes planned behavior and does not claim that the current implementation already supports it.
+
+### Date, slot, and category structure
+
+The planned structure is:
+
+```text
+Date
+  Slot
+    Category requirement with min/max staffing
+    Category requirement with min/max staffing
+  Slot
+    Category requirement with min/max staffing
+```
+
+Decisions:
+
+- one date may contain several independently staffed slots
+- one slot may contain several reusable staffing categories
+- each slot-category requirement has hard minimum and maximum staffing bounds
+- one person may occupy at most one category in the same slot
+- a person may be assigned to several slots across the planning period when all hard constraints allow it
+
+Examples of slots include morning, afternoon, evening, and night, but slot labels remain administrator-defined and generic.
+
+### Slot-level preferences
+
+Preferences are provided per person and slot. They do not vary by category within the slot.
+
+The planned states are:
+
+- `prefer`: positive soft score
+- `neutral`: no score effect
+- `prefer not`: negative soft score
+- `unavailable`: hard prohibition
+
+`Unavailable` must not be represented as a very negative preference. It is a hard rule and should transform into forbidden generic assignments for every category in the slot.
+
+Because a person may occupy at most one category in a slot, a slot preference contributes to scoring at most once for that person and slot.
+
+### Compatibility direction
+
+The existing internal event structure may initially represent an assignable slot, with date metadata used to group slots in the interface. This minimizes migration while preserving the Event Staffing use case name and generic terminology.
+
+The complete solver and UI direction is specified in `docs/11-feature-ranked-solutions-and-shared-workflow.md`.
 
 ## Domain vocabulary
 

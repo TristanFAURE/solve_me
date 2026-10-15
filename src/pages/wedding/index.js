@@ -1,5 +1,7 @@
 import { renderPageShell } from '../../components/common/pageShell.js';
+import { getGeneralPreferenceAuthoringPolicy } from '../../components/common/preferenceAuthoringPolicy.js';
 import { renderSolutionPanel } from '../../components/solutions/solutionPanel.js';
+import { renderSolveStatus } from '../../components/solutions/solveStatus.js';
 import { renderValidationPanel } from '../../components/solutions/validationPanel.js';
 import { ASSIGNMENT_MODES } from '../../core/model/assignmentModes.js';
 import { CONSTRAINT_KINDS, createConstraint } from '../../core/model/constraints.js';
@@ -11,6 +13,7 @@ import { createContainmentRelation, createEntityRef } from '../../core/model/rel
 import { normalizeProject } from '../../core/normalize/normalizeProject.js';
 import { validateProject } from '../../core/validate/validateProject.js';
 import { FirstSolverAdapter } from '../../solver/adapters/firstSolverAdapter.js';
+import { cancelSolveExecution, createSolveExecutionState, discardSolveExecution, startSolveExecution } from '../../solver/solveExecution.js';
 import {
   WEDDING_TABLE_SHAPES,
   findGeneratedNeighbor,
@@ -24,15 +27,28 @@ import {
   hasAdjacency,
   removeGeneratedSeatAdjacency,
   removeGeneratedSeatBothSides,
+  removeWeddingTable,
   setTableGenerationMode,
   setTableShape,
 } from './tableTopology.js';
 import { validateWeddingProject } from './validateWeddingProject.js';
 import { exportWeddingSolutionWorkbook } from './exportWeddingSolution.js';
-import { importWeddingWorkbook } from './importWeddingWorkbook.js';
+import { exportWeddingConfigurationWorkbook, previewWeddingWorkbookFile } from './workbooks.js';
+import { confirmProjectReplacement } from '../../app/dataSafety.js';
+import { bindPageDraftAutosave, persistPageDraft } from '../../storage/localDrafts.js';
+import { bindWorkflowTabs, isWorkflowTab, renderWorkflowPanel, renderWorkflowTabs } from '../../components/common/workflowTabs.js';
+import { buildWorkflowSolveOptions, createWorkflowSolveDraft, renderAdvancedDiagnostics, renderSolveConfiguration, renderWorkbookSetup, solveOptionIssues } from '../../components/common/workflowSetup.js';
+import { validateSolveOptions } from '../../solver/solveOptions.js';
+import { parseBulkLabels } from '../../components/common/bulkEntry.js';
+
+const REPLACE_WEDDING_MESSAGE = 'This will replace your current non-empty wedding plan. Continue?';
 
 function createWeddingEditorState() {
   return {
+    ...createWorkflowSolveDraft(),
+    dataSearch: '',
+    bulkGuestLabels: '',
+    bulkGuestGroupId: '',
     draftGuestLabel: '',
     draftGroupLabel: '',
     draftTableLabel: '',
@@ -93,6 +109,9 @@ function ensureWeddingProject(state) {
   if (typeof state.weddingPage.validationPanelExpanded !== 'boolean') {
     state.weddingPage.validationPanelExpanded = false;
   }
+  state.weddingPage.solveExecution ??= createSolveExecutionState();
+  state.weddingPage.workbookImport ??= { status: 'idle', error: '', preview: null };
+  if (!isWorkflowTab(state.weddingPage.activeWorkflowTab)) state.weddingPage.activeWorkflowTab = 'setup';
 }
 
 function escapeHtml(value) {
@@ -126,7 +145,6 @@ function renderWeddingSolutionPanelOptions() {
     panelEyebrow: 'Wedding solver output',
     emptyResultMessage: 'Run solve after wedding validation to see table or seat assignments.',
     unsatMessage: 'The solver completed but could not find a valid wedding seating arrangement for the current hard rules.',
-    noAssignmentsMessage: 'No guest placements are available for this solver result.',
     noWarningsMessage: 'No wedding solver warnings.',
     rawJsonSummaryLabel: 'View raw wedding solver result JSON',
     containerKindLabel: 'Table',
@@ -135,6 +153,12 @@ function renderWeddingSolutionPanelOptions() {
     sectionSummaryLabel: 'Guests grouped by table.',
     solutionPrefixLabel: 'Seating',
     capacityLabel: 'Capacity',
+    searchHintVocabulary: {
+      'use-first-mode': 'Find the first seating plan',
+      'tighten-eligibility-bounds': 'Tighten table or seat eligibility',
+      'add-fixed-assignments': 'Pre-seat guests with known places',
+      'split-problem': 'Split independent guest groups',
+    },
   };
 }
 
@@ -161,6 +185,22 @@ function findLabelById(entries, id) {
   return entries.find((entry) => entry.id === id)?.label || id;
 }
 
+function matchesSearch(entry, editor) {
+  return !editor.dataSearch.trim() || `${entry.label} ${entry.id}`.toLocaleLowerCase().includes(editor.dataSearch.trim().toLocaleLowerCase());
+}
+
+function renderWeddingDataTools(project, editor) {
+  return `<section class="card data-tools">
+    <h2>Find or add guests in bulk</h2>
+    <div class="form-grid three-columns compact-form-grid">
+      <label><span>Search guests, groups, and tables</span><input type="search" name="dataSearch" value="${escapeHtml(editor.dataSearch)}" /></label>
+      <label><span>Guest names, one per line or comma-separated</span><textarea name="bulkGuestLabels" rows="4">${escapeHtml(editor.bulkGuestLabels)}</textarea></label>
+      <label><span>Assign new guests to group</span><select name="bulkGuestGroupId">${renderSimpleOptions(getGroups(project), editor.bulkGuestGroupId, 'No group assignment')}</select></label>
+    </div>
+    <div class="button-row top-gap"><button type="button" data-action="bulk-add-wedding-guests">Add guests</button></div>
+  </section>`;
+}
+
 function createOperandOptions(project) {
   return [
     ...getGuests(project).map((guest) => ({ id: guest.id, label: `🧑 ${guest.label}`, kind: 'item' })),
@@ -175,14 +215,14 @@ function renderSimpleOptions(entries, selectedId, placeholder = 'Select…') {
   ].join('');
 }
 
-function renderRefSelect(nameKind, nameId, options, selectedKind, selectedId, placeholder) {
+function renderRefSelect(nameKind, nameId, options, selectedKind, selectedId, placeholder, disabled = false) {
   return `
     <div class="split-select-row">
-      <select name="${escapeHtml(nameKind)}">
+      <select name="${escapeHtml(nameKind)}"${disabled ? ' disabled' : ''}>
         <option value="item"${selectedKind === 'item' ? ' selected' : ''}>Guest</option>
         <option value="group"${selectedKind === 'group' ? ' selected' : ''}>Group</option>
       </select>
-      <select name="${escapeHtml(nameId)}">
+      <select name="${escapeHtml(nameId)}"${disabled ? ' disabled' : ''}>
         <option value="">${escapeHtml(placeholder)}</option>
         ${options
       .filter((option) => option.kind === selectedKind)
@@ -202,9 +242,11 @@ function renderMembershipChips(labels, emptyText) {
 }
 
 function resetWeddingDerivedState(state) {
+  discardSolveExecution(state.weddingPage.solveExecution);
   state.weddingPage.lastValidation = null;
   state.weddingPage.lastNormalizedProject = null;
   state.weddingPage.lastSolverResult = null;
+  state.weddingPage.validationPanelExpanded = false;
   state.weddingPage.editor.activeSolutionIndex = 0;
 }
 
@@ -227,7 +269,8 @@ function runWeddingValidationFlow(state) {
   const validation = mergeValidationResults(weddingValidation, genericValidation);
 
   state.weddingPage.lastValidation = validation;
-  state.weddingPage.validationPanelExpanded = false;
+  state.weddingPage.validationPanelExpanded = !validation.valid;
+  state.weddingPage.activeWorkflowTab = 'review';
 
   if (!validation.valid) {
     state.weddingPage.lastNormalizedProject = null;
@@ -239,26 +282,24 @@ function runWeddingValidationFlow(state) {
   state.weddingPage.lastSolverResult = null;
 }
 
-function runWeddingSolveFlow(state) {
+function runWeddingSolveFlow(state, root) {
   const adapter = new FirstSolverAdapter();
   const weddingValidation = validateWeddingProject(state.weddingPage.project);
   const genericValidation = validateProject(state.weddingPage.project, adapter.getCapabilities());
-  const validation = mergeValidationResults(weddingValidation, genericValidation);
+  const optionsValidation = validateSolveOptions(buildWorkflowSolveOptions(state.weddingPage.editor), adapter.getCapabilities());
+  const validation = mergeValidationResults(mergeValidationResults(weddingValidation, genericValidation), {
+    valid: optionsValidation.valid,
+    errors: solveOptionIssues(optionsValidation.errors),
+    warnings: [],
+  });
 
   state.weddingPage.lastValidation = validation;
   state.weddingPage.validationPanelExpanded = true;
 
   if (!validation.valid) {
     state.weddingPage.lastNormalizedProject = null;
-    state.weddingPage.lastSolverResult = {
-      status: 'validation-failed',
-      solutions: [],
-      warnings: ['Solve was not attempted because the wedding plan still has problems to fix.'],
-      runtimeMs: 0,
-      truncatedByLimit: false,
-      interrupted: false,
-      timeoutReached: false,
-    };
+    state.weddingPage.lastSolverResult = null;
+    state.weddingPage.activeWorkflowTab = 'review';
     return;
   }
 
@@ -266,16 +307,34 @@ function runWeddingSolveFlow(state) {
   state.weddingPage.lastNormalizedProject = normalizedProject;
 
   const adapterValidation = adapter.validateModel(normalizedProject);
-  const solverResult = adapter.solve(normalizedProject);
-
-  state.weddingPage.lastSolverResult = {
-    ...solverResult,
-    warnings: [...(adapterValidation.warnings ?? []), ...(solverResult.warnings ?? [])],
-  };
+  if (!adapterValidation.valid) {
+    state.weddingPage.lastValidation = mergeValidationResults(validation, adapterValidation);
+    state.weddingPage.lastSolverResult = null;
+    state.weddingPage.activeWorkflowTab = 'review';
+    return;
+  }
   state.weddingPage.editor.activeSolutionIndex = 0;
+  state.weddingPage.activeWorkflowTab = 'review';
+  startSolveExecution({
+    execution: state.weddingPage.solveExecution,
+    model: normalizedProject,
+    options: optionsValidation.options,
+    onResult(solverResult) {
+      state.weddingPage.lastSolverResult = {
+        ...solverResult,
+        warnings: [...(adapterValidation.warnings ?? []), ...(solverResult.warnings ?? [])],
+      };
+      state.weddingPage.message = solverResult.status === 'solved'
+        ? 'Wedding solve completed. A seating plan was found.'
+        : 'Wedding solve stopped without a complete result.';
+      state.weddingPage.activeWorkflowTab = solverResult.status === 'solved' ? 'results' : 'review';
+    },
+    onChange: () => renderWeddingPage(root, state),
+  });
 }
 
 function renderSummary(project) {
+  const hasUnlimitedCapacity = getTables(project).some((table) => getTableCapacity(table).maxCapacity == null);
   const totalCapacity = getTables(project).reduce((sum, table) => sum + (getTableCapacity(table).maxCapacity ?? 0), 0);
 
   return `
@@ -290,7 +349,7 @@ function renderSummary(project) {
         <div><dt>Groups</dt><dd>${getGroups(project).length}</dd></div>
         <div><dt>Tables</dt><dd>${getTables(project).length}</dd></div>
         <div><dt>Seats</dt><dd>${getSeats(project).length}</dd></div>
-        <div><dt>Total capacity</dt><dd>${totalCapacity}</dd></div>
+        <div><dt>Total capacity</dt><dd>${hasUnlimitedCapacity ? `${totalCapacity} finite + unlimited` : totalCapacity}</dd></div>
         <div><dt>Mode</dt><dd>${getSeatModeEnabled(project) ? 'Seat-aware 🪑' : 'Table only 🍽️'}</dd></div>
       </dl>
     </section>
@@ -298,8 +357,6 @@ function renderSummary(project) {
 }
 
 function renderCommandBar(result, expanded = true) {
-  const canExport = result?.status === 'solved' && (result?.solutions?.length ?? 0) > 0;
-
   return `
     <section class="command-bar-card wedding-command-bar${expanded ? '' : ' is-collapsed'}">
       <div class="command-bar-header">
@@ -318,22 +375,9 @@ function renderCommandBar(result, expanded = true) {
           <span class="command-bar-icon" aria-hidden="true">✓</span>
           <span>Validate</span>
         </button>
-        <label class="command-bar-button command-bar-file-button">
-          <span class="command-bar-icon" aria-hidden="true">⤴</span>
-          <span>Import Excel</span>
-          <input type="file" data-action="import-wedding-workbook" accept=".xlsx,.xls" hidden />
-        </label>
         <button type="button" class="command-bar-button command-bar-button-primary" data-action="solve-wedding">
           <span class="command-bar-icon" aria-hidden="true">▶</span>
           <span>Validate + normalize + solve</span>
-        </button>
-        <button type="button" class="command-bar-button" data-action="export-wedding-solution"${canExport ? '' : ' disabled'}>
-          <span class="command-bar-icon" aria-hidden="true">⬇</span>
-          <span>Export Excel</span>
-        </button>
-        <button type="button" class="command-bar-button" data-action="toggle-wedding-mode">
-          <span class="command-bar-icon" aria-hidden="true">🪑</span>
-          <span>Toggle table / seat mode</span>
         </button>
       </div>
     </section>
@@ -442,8 +486,8 @@ function renderCreateCards(project, editor) {
   `;
 }
 
-function renderGuestsPanel(project) {
-  const guests = getGuests(project);
+function renderGuestsPanel(project, editor) {
+  const guests = getGuests(project).filter((entry) => matchesSearch(entry, editor));
   const groups = getGroups(project);
 
   return `
@@ -453,7 +497,8 @@ function renderGuestsPanel(project) {
         <span class="panel-count">${guests.length}</span>
       </div>
       <div class="entity-board">
-        ${guests.length === 0 ? '<div class="empty-board">Add the guest list first. 🎊</div>' : guests.map((guest, index) => {
+        ${guests.length === 0 ? '<div class="empty-board">No guests match this search, or the guest list is empty.</div>' : guests.map((guest) => {
+    const index = getGuests(project).findIndex((entry) => entry.id === guest.id);
     const guestGroupIds = getGuestGroupIds(project, guest.id);
     const groupLabels = guestGroupIds.map((groupId) => findLabelById(groups, groupId));
     return `
@@ -463,7 +508,7 @@ function renderGuestsPanel(project) {
                   <p class="entity-kind">Guest</p>
                   <input type="text" class="entity-inline-input" data-action="edit-wedding-label" data-kind="item" data-index="${index}" value="${escapeHtml(guest.label)}" />
                 </div>
-                <button type="button" class="ghost-danger-button" data-action="remove-wedding-guest" data-index="${index}">Remove</button>
+                <button type="button" class="ghost-danger-button" data-action="remove-wedding-guest" data-index="${index}" aria-label="Remove guest ${escapeHtml(guest.label)}">Remove</button>
               </div>
               <p class="entity-id">${escapeHtml(guest.id)}</p>
               <div class="entity-meta-grid">
@@ -572,7 +617,7 @@ function setGroupPreferTogetherShortcut(project, groupId, weight) {
 }
 
 function renderGroupsPanel(project, editor) {
-  const groups = getGroups(project);
+  const groups = getGroups(project).filter((entry) => matchesSearch(entry, editor));
   const guests = getGuests(project);
 
   return `
@@ -582,7 +627,8 @@ function renderGroupsPanel(project, editor) {
         <span class="panel-count">${groups.length}</span>
       </div>
       <div class="entity-board">
-        ${groups.length === 0 ? '<div class="empty-board">Create families, friends circles, wedding party groups, or any other custom grouping. 🥂</div>' : groups.map((group, index) => {
+        ${groups.length === 0 ? '<div class="empty-board">No groups match this search, or none have been created yet.</div>' : groups.map((group) => {
+    const index = getGroups(project).findIndex((entry) => entry.id === group.id);
     const memberLabels = guests.filter((guest) => getGuestGroupIds(project, guest.id).includes(group.id)).map((guest) => guest.label);
     return `
             <article class="entity-card wedding-entity-card">
@@ -591,7 +637,7 @@ function renderGroupsPanel(project, editor) {
                   <p class="entity-kind">Group</p>
                   <input type="text" class="entity-inline-input" data-action="edit-wedding-label" data-kind="group" data-index="${index}" value="${escapeHtml(group.label)}" />
                 </div>
-                <button type="button" class="ghost-danger-button" data-action="remove-wedding-group" data-index="${index}">Remove</button>
+                <button type="button" class="ghost-danger-button" data-action="remove-wedding-group" data-index="${index}" aria-label="Remove group ${escapeHtml(group.label)}">Remove</button>
               </div>
               <p class="entity-id">${escapeHtml(group.id)}</p>
               <div class="entity-meta-grid">
@@ -608,8 +654,8 @@ function renderGroupsPanel(project, editor) {
   `;
 }
 
-function renderTablesPanel(project) {
-  const tables = getTables(project);
+function renderTablesPanel(project, editor) {
+  const tables = getTables(project).filter((entry) => matchesSearch(entry, editor));
 
   return `
     <section class="workspace-panel wedding-panel">
@@ -618,7 +664,8 @@ function renderTablesPanel(project) {
         <span class="panel-count">${tables.length}</span>
       </div>
       <div class="entity-board">
-        ${tables.length === 0 ? '<div class="empty-board">Add tables with capacities before solving. 🍽️</div>' : tables.map((table, index) => {
+        ${tables.length === 0 ? '<div class="empty-board">No tables match this search, or none have been added yet.</div>' : tables.map((table) => {
+    const index = getTables(project).findIndex((entry) => entry.id === table.id);
     const capacity = getTableCapacity(table);
     const seats = getSeatsForTable(project, table.id);
     const shape = getWeddingTableShape(table);
@@ -630,7 +677,7 @@ function renderTablesPanel(project) {
                   <p class="entity-kind">Table</p>
                   <input type="text" class="entity-inline-input" data-action="edit-wedding-label" data-kind="container" data-index="${index}" value="${escapeHtml(table.label)}" />
                 </div>
-                <button type="button" class="ghost-danger-button" data-action="remove-wedding-table" data-index="${index}">Remove</button>
+                <button type="button" class="ghost-danger-button" data-action="remove-wedding-table" data-index="${index}" aria-label="Remove table ${escapeHtml(table.label)}">Remove</button>
               </div>
               <p class="entity-id">${escapeHtml(table.id)}</p>
               <div class="entity-meta-grid">
@@ -747,10 +794,19 @@ function renderSeatsPanel(project, editor) {
       </article>
     `;
 
-    const seatCards = seats.map((seat, index) => {
+    const orderedSeats = [
+      ...tables.flatMap((table) => getSeatsForTable(project, table.id)),
+      ...seats.filter((seat) => !getSeatTableId(project, seat.id)),
+    ];
+    const seatCards = orderedSeats.map((seat, orderedIndex) => {
+      const index = seats.findIndex((entry) => entry.id === seat.id);
       const tableId = getSeatTableId(project, seat.id);
       const table = tables.find((entry) => entry.id === tableId);
       const tableLabel = tableId ? findLabelById(tables, tableId) : 'Unlinked table';
+      const previousTableId = orderedIndex > 0 ? getSeatTableId(project, orderedSeats[orderedIndex - 1].id) : null;
+      const groupHeading = orderedIndex === 0 || previousTableId !== tableId
+        ? `<div class="section-summary-row wedding-topology-group"><h4>${escapeHtml(tableLabel)}</h4><span class="muted-text">${getSeatsForTable(project, tableId).length} seat(s)</span></div>`
+        : '';
       const adjacentSeatLabels = adjacencies
         .filter((relation) => relation?.from?.kind === 'position' && relation?.from?.id === seat.id && relation?.to?.kind === 'position')
         .map((relation) => findLabelById(seats, relation.to.id));
@@ -759,14 +815,14 @@ function renderSeatsPanel(project, editor) {
       const leftConnected = leftNeighbor ? hasAdjacency(project, seat.id, leftNeighbor.id) : false;
       const rightConnected = rightNeighbor ? hasAdjacency(project, seat.id, rightNeighbor.id) : false;
 
-      return `
+      return `${groupHeading}
         <article class="entity-card wedding-entity-card">
           <div class="entity-card-header">
             <div>
               <p class="entity-kind">Seat</p>
               <input type="text" class="entity-inline-input" data-action="edit-wedding-label" data-kind="position" data-index="${index}" value="${escapeHtml(seat.label)}" />
             </div>
-            <button type="button" class="ghost-danger-button" data-action="remove-wedding-seat" data-index="${index}">Remove</button>
+            <button type="button" class="ghost-danger-button" data-action="remove-wedding-seat" data-index="${index}" aria-label="Remove seat ${escapeHtml(seat.label)} from ${escapeHtml(tableLabel)}">Remove</button>
           </div>
           <p class="entity-id">${escapeHtml(seat.id)}</p>
           <div class="entity-meta-grid">
@@ -880,17 +936,15 @@ function renderWeddingOperand(project, ref, entry = null, side = 'left') {
   return escapeHtml(findLabelById(entries, ref.id));
 }
 
-function renderRulesPanel(project, editor) {
+function renderRulesPanel(project, editor, preferencePolicy) {
   const operandOptions = createOperandOptions(project);
   const groupOptions = getGroups(project);
   const hardRuleRows = project.constraints.length === 0
     ? '<tr><td colspan="4" class="muted-text">No hard seating rules yet.</td></tr>'
     : project.constraints.map((constraint, index) => `
         <tr>
-          <td>${escapeHtml(getWeddingRuleLabel(constraint.kind))}</td>
-          <td>${renderWeddingOperand(project, constraint.leftRef, constraint, 'left')}</td>
-          <td>${renderWeddingOperand(project, constraint.rightRef, constraint, 'right')}</td>
-          <td><button type="button" data-action="remove-wedding-constraint" data-index="${index}">Remove</button></td>
+          <td colspan="3">${renderWeddingOperand(project, constraint.leftRef, constraint, 'left')} ${escapeHtml(getWeddingRuleLabel(constraint.kind).toLowerCase())} ${renderWeddingOperand(project, constraint.rightRef, constraint, 'right')}.</td>
+          <td><button type="button" data-action="remove-wedding-constraint" data-index="${index}" aria-label="Remove hard seating rule ${index + 1}">Remove</button></td>
         </tr>
       `).join('');
 
@@ -902,7 +956,7 @@ function renderRulesPanel(project, editor) {
           <td>${renderWeddingOperand(project, preference.leftRef, preference, 'left')}</td>
           <td>${renderWeddingOperand(project, preference.rightRef, preference, 'right')}</td>
           <td>${escapeHtml(preference.weight)}</td>
-          <td><button type="button" data-action="remove-wedding-preference" data-index="${index}">Remove</button></td>
+          <td><button type="button" data-action="remove-wedding-preference" data-index="${index}" aria-label="Remove audited seating preference ${index + 1}">Remove</button></td>
         </tr>
       `).join('');
 
@@ -946,6 +1000,7 @@ function renderRulesPanel(project, editor) {
         <p class="muted-text top-gap">Example: Pierre can belong to both “Family A” and “Groom bachelors”, so you can put Groom bachelors at one table while keeping Family A close together elsewhere.</p>
         <div class="table-wrap audit-table-wrap top-gap">
           <table class="data-table">
+            <caption>Supported hard seating rules</caption>
             <thead>
               <tr><th>Rule</th><th>Left</th><th>Right</th><th>Actions</th></tr>
             </thead>
@@ -962,10 +1017,11 @@ function renderRulesPanel(project, editor) {
           </div>
         </div>
         <div class="wedding-rule-form-stack">
+          ${preferencePolicy.message ? `<p class="muted-text">${escapeHtml(preferencePolicy.message)}</p>` : ''}
           <div class="form-grid compact-form-grid">
             <label>
               <span>Preference</span>
-              <select name="draftPreferenceKind">
+              <select name="draftPreferenceKind"${preferencePolicy.disabled ? ' disabled' : ''}>
                 <option value="groupTogether"${editor.draftPreferenceKind === 'groupTogether' ? ' selected' : ''}>Keep this group together</option>
                 <option value="${PREFERENCE_KINDS.PREFER_SHARE_CONTAINER}"${editor.draftPreferenceKind === PREFERENCE_KINDS.PREFER_SHARE_CONTAINER ? ' selected' : ''}>Prefer same table</option>
                 <option value="${PREFERENCE_KINDS.PREFER_SEPARATE_CONTAINERS}"${editor.draftPreferenceKind === PREFERENCE_KINDS.PREFER_SEPARATE_CONTAINERS ? ' selected' : ''}>Prefer different tables</option>
@@ -978,23 +1034,24 @@ function renderRulesPanel(project, editor) {
             <label>
               <span>Options</span>
               ${editor.draftPreferenceKind === 'groupTogether'
-      ? `<select name="draftPreferenceGroupId">${renderSimpleOptions(groupOptions, editor.draftPreferenceGroupId, 'Select group…')}</select>`
+      ? `<select name="draftPreferenceGroupId"${preferencePolicy.disabled ? ' disabled' : ''}>${renderSimpleOptions(groupOptions, editor.draftPreferenceGroupId, 'Select group…')}</select>`
       : `<div class="wedding-group-selection-row">
-                ${renderRefSelect('draftPreferenceLeftKind', 'draftPreferenceLeftId', operandOptions, editor.draftPreferenceLeftKind, editor.draftPreferenceLeftId, 'Select guest or group…')}
-                ${renderRefSelect('draftPreferenceRightKind', 'draftPreferenceRightId', operandOptions, editor.draftPreferenceRightKind, editor.draftPreferenceRightId, 'Select guest or group…')}
+                ${renderRefSelect('draftPreferenceLeftKind', 'draftPreferenceLeftId', operandOptions, editor.draftPreferenceLeftKind, editor.draftPreferenceLeftId, 'Select guest or group…', preferencePolicy.disabled)}
+                ${renderRefSelect('draftPreferenceRightKind', 'draftPreferenceRightId', operandOptions, editor.draftPreferenceRightKind, editor.draftPreferenceRightId, 'Select guest or group…', preferencePolicy.disabled)}
               </div>`}
             </label>
             <label>
               <span>Soft / hard strength</span>
-              <input type="number" min="0" step="1" name="draftPreferenceWeight" value="${escapeHtml(editor.draftPreferenceWeight)}" ${editor.draftPreferenceKind === 'groupTogether' ? '' : ''} />
+              <input type="number" min="0" step="1" name="draftPreferenceWeight" value="${escapeHtml(editor.draftPreferenceWeight)}"${preferencePolicy.disabled ? ' disabled' : ''} />
             </label>
           </div>
         </div>
         <div class="button-row top-gap">
-          <button type="button" data-action="add-wedding-preference">Add preference</button>
+          <button type="button" data-action="add-wedding-preference"${preferencePolicy.disabled ? ' disabled' : ''}>Add preference</button>
         </div>
         <div class="table-wrap audit-table-wrap top-gap">
           <table class="data-table">
+            <caption>Unsupported preferences retained for audit and removal</caption>
             <thead>
               <tr><th>Preference</th><th>Left</th><th>Right</th><th>Weight</th><th>Actions</th></tr>
             </thead>
@@ -1031,6 +1088,22 @@ function addWeddingGuest(state) {
   state.weddingPage.editor.draftGuestLabel = '';
   clearWeddingMessage(state);
   resetWeddingDerivedState(state);
+}
+
+function bulkAddWeddingGuests(state) {
+  const editor = state.weddingPage.editor;
+  const labels = parseBulkLabels(editor.bulkGuestLabels);
+  labels.forEach((label) => {
+    const guest = createItem({ id: createId('item'), label });
+    state.weddingPage.project.items.push(guest);
+    if (editor.bulkGuestGroupId) toggleWeddingMembership(state.weddingPage.project, editor.bulkGuestGroupId, guest.id, true);
+  });
+  if (labels.length) {
+    editor.bulkGuestLabels = '';
+    clearWeddingMessage(state);
+    resetWeddingDerivedState(state);
+    state.weddingPage.message = `Added ${labels.length} guest${labels.length === 1 ? '' : 's'}${editor.bulkGuestGroupId ? ' and assigned the selected group' : ''}.`;
+  }
 }
 
 function addWeddingGroup(state) {
@@ -1214,6 +1287,10 @@ function addWeddingConstraint(state) {
 }
 
 function addWeddingPreference(state) {
+  if (!new FirstSolverAdapter().getCapabilities().softPreferences) {
+    return;
+  }
+
   const editor = state.weddingPage.editor;
   if (!editor.draftPreferenceLeftId || !editor.draftPreferenceRightId) {
     return;
@@ -1314,7 +1391,16 @@ function bindInputs(root, state) {
         return;
       }
 
-      state.weddingPage.editor[name] = value;
+      if (name === 'dataSearch') {
+        state.weddingPage.editor.dataSearch = value;
+        renderWeddingPage(root, state);
+        const search = root.querySelector('input[name="dataSearch"]');
+        search?.focus();
+        search?.setSelectionRange?.(value.length, value.length);
+        return;
+      }
+
+      state.weddingPage.editor[name] = event.target.type === 'checkbox' ? event.target.checked : value;
 
       if (name === 'draftConstraintKind') {
         if (value === 'groupTogether') {
@@ -1406,6 +1492,15 @@ function bindInputs(root, state) {
 }
 
 function bindActions(root, state) {
+  root.querySelector('.validation-panel-details')?.addEventListener('toggle', (event) => {
+    state.weddingPage.validationPanelExpanded = event.target.open;
+  });
+
+  bindWorkflowTabs(root, (tabId) => {
+    state.weddingPage.activeWorkflowTab = tabId;
+    renderWeddingPage(root, state);
+  });
+
   root.querySelectorAll('[data-action]').forEach((element) => {
     const action = element.dataset.action;
 
@@ -1420,6 +1515,14 @@ function bindActions(root, state) {
     if (action === 'add-wedding-guest') {
       element.addEventListener('click', () => {
         addWeddingGuest(state);
+        renderWeddingPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'bulk-add-wedding-guests') {
+      element.addEventListener('click', () => {
+        bulkAddWeddingGuests(state);
         renderWeddingPage(root, state);
       });
       return;
@@ -1530,6 +1633,10 @@ function bindActions(root, state) {
 
     if (action === 'add-wedding-preference') {
       element.addEventListener('click', () => {
+        if (!new FirstSolverAdapter().getCapabilities().softPreferences) {
+          return;
+        }
+
         if (state.weddingPage.editor.draftPreferenceKind === 'groupTogether') {
           const groupId = state.weddingPage.editor.draftPreferenceGroupId;
           if (!groupId) {
@@ -1573,7 +1680,10 @@ function bindActions(root, state) {
 
     if (action === 'remove-wedding-table') {
       element.addEventListener('click', () => {
-        removeNodeAndReferences(state.weddingPage.project, 'containers', Number.parseInt(element.dataset.index, 10));
+        const table = state.weddingPage.project.containers[Number.parseInt(element.dataset.index, 10)];
+        if (table) {
+          removeWeddingTable(state.weddingPage.project, table.id);
+        }
         clearWeddingMessage(state);
         resetWeddingDerivedState(state);
         renderWeddingPage(root, state);
@@ -1699,16 +1809,21 @@ function bindActions(root, state) {
 
     if (action === 'solve-wedding') {
       element.addEventListener('click', () => {
-        runWeddingSolveFlow(state);
-        state.weddingPage.message = state.weddingPage.lastSolverResult?.status === 'solved'
+        runWeddingSolveFlow(state, root);
+        state.weddingPage.message = !state.weddingPage.lastValidation?.valid
+          ? 'The seating plan was not attempted because the wedding setup still has problems to fix. ⚠️'
+          : state.weddingPage.lastSolverResult?.status === 'solved'
           ? 'Wedding solve completed. A seating plan was found. 💖'
           : state.weddingPage.lastSolverResult?.status === 'unsat'
             ? 'No valid seating plan was found with the current rules and capacities. 🧠'
-            : state.weddingPage.lastSolverResult?.status === 'validation-failed'
-              ? 'The seating plan was not attempted because the wedding setup still has problems to fix. ⚠️'
-              : 'Wedding solve could not complete successfully.';
+            : 'Wedding solve could not complete successfully.';
         renderWeddingPage(root, state);
       });
+      return;
+    }
+
+    if (action === 'cancel-solve') {
+      element.addEventListener('click', () => cancelSolveExecution(state.weddingPage.solveExecution));
       return;
     }
 
@@ -1720,18 +1835,48 @@ function bindActions(root, state) {
         }
 
         try {
-          state.weddingPage.project = await importWeddingWorkbook(file);
-          state.weddingPage.project.viewHint = VIEW_HINTS.WEDDING;
-          clearWeddingMessage(state);
-          resetWeddingDerivedState(state);
-          state.weddingPage.message = `Excel workbook imported from ${file.name}. Please validate the imported wedding plan. 💌`;
+          const preview = await previewWeddingWorkbookFile(file);
+          state.weddingPage.workbookImport = { status: 'ready', error: '', preview: { ...preview, fileName: file.name } };
         } catch (error) {
-          state.weddingPage.message = error instanceof Error
-            ? `Excel import failed: ${error.message}`
-            : 'Excel import failed.';
+          state.weddingPage.workbookImport = { status: 'idle', preview: null, error: error instanceof Error ? error.message : 'Excel import failed.' };
         }
 
         event.target.value = '';
+        renderWeddingPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'confirm-wedding-workbook') {
+      element.addEventListener('click', () => {
+        const preview = state.weddingPage.workbookImport.preview;
+        if (!preview) return;
+        preview.project.viewHint = VIEW_HINTS.WEDDING;
+        state.weddingPage.project = preview.project;
+        state.weddingPage.workbookImport = { status: 'idle', error: '', preview: null };
+        resetWeddingDerivedState(state);
+        state.weddingPage.message = `Workbook imported from ${preview.fileName}. Review the plan before solving.`;
+        renderWeddingPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'cancel-wedding-workbook') {
+      element.addEventListener('click', () => {
+        state.weddingPage.workbookImport = { status: 'idle', error: '', preview: null };
+        renderWeddingPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'export-wedding-configuration') {
+      element.addEventListener('click', () => {
+        try {
+          exportWeddingConfigurationWorkbook(state.weddingPage.project);
+          state.weddingPage.message = 'Wedding configuration workbook downloaded.';
+        } catch (error) {
+          state.weddingPage.message = error instanceof Error ? `Configuration export failed: ${error.message}` : 'Configuration export failed.';
+        }
         renderWeddingPage(root, state);
       });
       return;
@@ -1833,63 +1978,33 @@ function bindEnterToCreate(root, state) {
 
 export function renderWeddingPage(root, state) {
   ensureWeddingProject(state);
+  persistPageDraft(state.draftStorage, 'wedding', state.weddingPage.project, state.weddingPage.persistence);
+  const preferencePolicy = getGeneralPreferenceAuthoringPolicy(new FirstSolverAdapter().getCapabilities());
+  const activeTab = state.weddingPage.activeWorkflowTab;
+  const setupContent = `${renderMetadataPanel(state.weddingPage.project)}${renderSolveConfiguration(state.weddingPage.editor, 'wedding')}${renderWorkbookSetup(state.weddingPage.workbookImport, 'wedding', 'wedding plan')}`;
+  const dataContent = `${renderWeddingDataTools(state.weddingPage.project, state.weddingPage.editor)}${renderCreateCards(state.weddingPage.project, state.weddingPage.editor)}<section class="workspace-columns two-up">${renderGuestsPanel(state.weddingPage.project, state.weddingPage.editor)}${renderGroupsPanel(state.weddingPage.project, state.weddingPage.editor)}</section>${renderTablesPanel(state.weddingPage.project, state.weddingPage.editor)}<details class="card advanced-diagnostics"><summary>Advanced seat topology by table</summary>${renderSeatsPanel(state.weddingPage.project, state.weddingPage.editor)}</details>`;
+  const reviewContent = `${renderCommandBar(state.weddingPage.lastSolverResult, state.weddingPage.commandBarExpanded !== false)}${renderSolveStatus(state.weddingPage.solveExecution)}${renderValidationPanel(state.weddingPage.lastValidation, { hasComputedSolution: Boolean(state.weddingPage.lastSolverResult), expanded: state.weddingPage.validationPanelExpanded })}${renderAdvancedDiagnostics(state.weddingPage.project, state.weddingPage.lastNormalizedProject)}`;
+  const resultsContent = `${renderSolutionPanel(state.weddingPage.lastNormalizedProject ?? state.weddingPage.project, state.weddingPage.lastSolverResult, state.weddingPage.editor.activeSolutionIndex, renderWeddingSolutionPanelOptions())}${state.weddingPage.lastSolverResult?.solutions?.length ? '<div class="button-row top-gap"><button type="button" data-action="export-wedding-solution">Export selected solved seating plan</button></div>' : ''}`;
 
   root.innerHTML = renderPageShell({
+    activeRoute: '/wedding',
     title: 'Wedding Table Plan',
     description: '💍 Build a wedding seating plan with guests, overlapping groups, tables, optional seats, and planner-friendly rules.',
+    persistence: state.weddingPage.persistence,
     body: `
-      ${renderCommandBar(state.weddingPage.lastSolverResult, state.weddingPage.commandBarExpanded !== false)}
       ${state.weddingPage.message ? `<section class="command-bar-feedback">${escapeHtml(state.weddingPage.message)}</section>` : ''}
       ${renderSummary(state.weddingPage.project)}
-      ${renderMetadataPanel(state.weddingPage.project)}
-      ${renderCreateCards(state.weddingPage.project, state.weddingPage.editor)}
-      <section class="workspace-columns two-up">
-        ${renderGuestsPanel(state.weddingPage.project)}
-        ${renderGroupsPanel(state.weddingPage.project, state.weddingPage.editor)}
-      </section>
-      <section class="workspace-columns two-up">
-        ${renderTablesPanel(state.weddingPage.project)}
-      </section>
-      ${renderRulesPanel(state.weddingPage.project, state.weddingPage.editor)}
-      ${renderValidationPanel(state.weddingPage.lastValidation, {
-      hasComputedSolution: Boolean(state.weddingPage.lastSolverResult),
-      expanded: state.weddingPage.validationPanelExpanded,
-    })
-      }
-    <section class="audit-section-grid">
-      <section class="card audit-card">
-        <div class="audit-card-header">
-          <div>
-            <p class="eyebrow">🧮 Derived model</p>
-            <h2>Normalization</h2>
-          </div>
-        </div>
-        ${state.weddingPage.lastNormalizedProject ? `
-            <dl class="summary-grid audit-summary-grid">
-              <div><dt>Items sent to solver</dt><dd>${state.weddingPage.lastNormalizedProject.items.length}</dd></div>
-              <div><dt>Constraints</dt><dd>${state.weddingPage.lastNormalizedProject.constraints.length}</dd></div>
-              <div><dt>Preferences</dt><dd>${state.weddingPage.lastNormalizedProject.preferences.length}</dd></div>
-              <div><dt>Must-share groups</dt><dd>${state.weddingPage.lastNormalizedProject.derived?.mustShareComponents?.length ?? 0}</dd></div>
-            </dl>
-            <details class="details-panel top-gap">
-              <summary>View normalized project JSON</summary>
-              <pre class="json-block">${escapeHtml(JSON.stringify(state.weddingPage.lastNormalizedProject, null, 2))}</pre>
-            </details>
-          ` : '<p class="muted-text">Validate or solve the wedding plan to inspect the normalized project.</p>'}
-      </section>
-      ${renderSolutionPanel(
-        state.weddingPage.lastNormalizedProject ?? state.weddingPage.project,
-        state.weddingPage.lastSolverResult,
-        state.weddingPage.editor.activeSolutionIndex,
-        renderWeddingSolutionPanelOptions(),
-      )}
-      ${renderSeatsPanel(state.weddingPage.project, state.weddingPage.editor)}
-    </section>
+      ${renderWorkflowTabs(activeTab)}
+      ${renderWorkflowPanel('setup', activeTab, setupContent)}
+      ${renderWorkflowPanel('data', activeTab, dataContent)}
+      ${renderWorkflowPanel('rules', activeTab, renderRulesPanel(state.weddingPage.project, state.weddingPage.editor, preferencePolicy))}
+      ${renderWorkflowPanel('review', activeTab, reviewContent)}
+      ${renderWorkflowPanel('results', activeTab, resultsContent)}
     `,
   });
 
   bindInputs(root, state);
   bindActions(root, state);
   bindEnterToCreate(root, state);
+  bindPageDraftAutosave(root, state.draftStorage, 'wedding', () => state.weddingPage.project, state.weddingPage.persistence);
 }
-

@@ -43,6 +43,7 @@ export function buildRingAdjacency(seatIds) {
   }
 
   const relations = [];
+  const seenEdges = new Set();
   for (let index = 0; index < seatIds.length; index += 1) {
     const fromId = seatIds[index];
     const toId = seatIds[(index + 1) % seatIds.length];
@@ -50,22 +51,72 @@ export function buildRingAdjacency(seatIds) {
       continue;
     }
 
+    const edgeKey = JSON.stringify([fromId, toId].sort());
+    if (seenEdges.has(edgeKey)) {
+      continue;
+    }
+    seenEdges.add(edgeKey);
     relations.push(createAdjacencyRelation(createEntityRef('position', fromId), createEntityRef('position', toId)));
   }
 
   return relations;
 }
 
-export function removeSeatsForTable(project, tableId) {
-  const tableSeatIds = new Set(getSeatsForTable(project, tableId).map((seat) => seat.id));
+export function removeWeddingEntitiesAndReferences(project, entities) {
+  const entityIdsByKind = new Map();
+  for (const entity of entities) {
+    if (!entity?.kind || !entity?.id) {
+      continue;
+    }
 
-  project.positions = (project.positions ?? []).filter((seat) => !tableSeatIds.has(seat.id));
-  project.containments = (project.containments ?? []).filter(
-    (relation) => !(relation?.from?.kind === 'container' && relation?.from?.id === tableId && relation?.to?.kind === 'position'),
+    const ids = entityIdsByKind.get(entity.kind) ?? new Set();
+    ids.add(entity.id);
+    entityIdsByKind.set(entity.kind, ids);
+  }
+
+  const matchesRef = (ref) => entityIdsByKind.get(ref?.kind)?.has(ref?.id) ?? false;
+  const removedIds = new Set([...entityIdsByKind.values()].flatMap((ids) => [...ids]));
+
+  project.items = (project.items ?? []).filter((node) => !matchesRef(node));
+  project.groups = (project.groups ?? []).filter((node) => !matchesRef(node));
+  project.containers = (project.containers ?? []).filter((node) => !matchesRef(node));
+  project.positions = (project.positions ?? []).filter((node) => !matchesRef(node));
+  project.containments = (project.containments ?? []).filter((relation) => !matchesRef(relation?.from) && !matchesRef(relation?.to));
+  project.topologies = (project.topologies ?? []).filter((relation) => !matchesRef(relation?.from) && !matchesRef(relation?.to));
+  project.constraints = (project.constraints ?? []).filter((entry) => !matchesRef(entry?.leftRef) && !matchesRef(entry?.rightRef));
+  project.preferences = (project.preferences ?? []).filter((entry) => !matchesRef(entry?.leftRef) && !matchesRef(entry?.rightRef));
+  project.fixedAssignments = (project.fixedAssignments ?? []).filter((entry) => !removedIds.has(entry?.destinationId));
+  project.forbiddenAssignments = (project.forbiddenAssignments ?? []).filter((entry) => !removedIds.has(entry?.destinationId));
+  project.assignmentExclusions = (project.assignmentExclusions ?? []).filter(
+    (entry) => !removedIds.has(entry?.firstDestinationId) && !removedIds.has(entry?.secondDestinationId),
   );
-  project.topologies = (project.topologies ?? []).filter(
-    (relation) => !tableSeatIds.has(relation?.from?.id) && !tableSeatIds.has(relation?.to?.id),
+  project.assignmentCountUpperBounds = (project.assignmentCountUpperBounds ?? []).filter(
+    (entry) => !(entry?.destinationIds ?? []).some((id) => removedIds.has(id)),
   );
+  project.softAssignmentScores = (project.softAssignmentScores ?? []).filter((entry) => !removedIds.has(entry?.destinationId));
+  project.softItemCountTargets = (project.softItemCountTargets ?? []).filter(
+    (entry) => !(entry?.destinationIds ?? []).some((id) => removedIds.has(id)),
+  );
+}
+
+export function removeSeatsForTable(project, tableId) {
+  const tableSeatRefs = (project.containments ?? [])
+    .filter((relation) => relation?.from?.kind === 'container' && relation?.from?.id === tableId && relation?.to?.kind === 'position')
+    .map((relation) => relation.to);
+  removeWeddingEntitiesAndReferences(project, tableSeatRefs);
+}
+
+export function removeWeddingTable(project, tableId) {
+  const table = (project.containers ?? []).find((entry) => entry?.id === tableId);
+  if (!table) {
+    return false;
+  }
+
+  const tableSeatRefs = (project.containments ?? [])
+    .filter((relation) => relation?.from?.kind === 'container' && relation?.from?.id === tableId && relation?.to?.kind === 'position')
+    .map((relation) => relation.to);
+  removeWeddingEntitiesAndReferences(project, [table, ...tableSeatRefs]);
+  return true;
 }
 
 export function setTableGenerationMode(table, generationMode) {

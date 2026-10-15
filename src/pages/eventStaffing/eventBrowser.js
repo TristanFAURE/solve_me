@@ -84,7 +84,7 @@ export function syncSelectedEventDrafts(editor, selectedEvent, selectedRequireme
   if (shouldRefresh) {
     editor.selectedEventId = selectedEvent.id;
     editor.lastSyncedSelectedEventId = selectedEvent.id;
-    editor.draftSelectedEventLabel = selectedEvent.label ?? '';
+    editor.draftSelectedEventLabel = selectedEvent.slotLabel ?? selectedEvent.label ?? '';
     editor.draftSelectedEventDate = selectedEvent.date ?? '';
     editor.draftSelectedEventOrderIndex = String(selectedEvent.orderIndex ?? '');
   }
@@ -173,9 +173,9 @@ export function renderEventBrowser(domainProject, browserState, selection, edito
     <section class="workspace-panel">
       <div class="panel-header">
         <div>
-          <p class="eyebrow">Event browser</p>
-          <h3>📅 Events</h3>
-          <p class="muted-text">Browse ordered events and open one event at a time for editing.</p>
+          <p class="eyebrow">Date and slot browser</p>
+          <h3>📅 Slots</h3>
+          <p class="muted-text">Browse date-grouped slots and open one slot at a time for editing.</p>
         </div>
         <span class="panel-count">${escapeHtml(String(filteredEvents.length))} shown · ${escapeHtml(String(selectedEventIds.length))} selected</span>
       </div>
@@ -256,7 +256,7 @@ export function renderEventBrowser(domainProject, browserState, selection, edito
               <tr>
                 <th>Select</th>
                 <th>Date</th>
-                <th>Event</th>
+                 <th>Slot</th>
                 <th>Order</th>
                 <th>Reqs</th>
                 <th>Total min-max</th>

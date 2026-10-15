@@ -16,5 +16,12 @@ export function createDefaultCapabilities() {
     forbiddenAssignments: false,
     softAssignmentScores: false,
     softItemCountTargets: false,
+    firstSolution: true,
+    scoreDetails: false,
+    scoreWeights: false,
+    diversity: false,
+    solutionFingerprints: false,
+    searchStatistics: false,
+    partialResults: false,
   };
 }

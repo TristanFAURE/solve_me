@@ -19,10 +19,21 @@ export function isAssignment(value) {
   );
 }
 
-export function createSolution({ assignments = [], score = null, violations = [], metadata = {} } = {}) {
+export function createSolution({
+  assignments = [],
+  score = null,
+  scoreDetails = null,
+  fingerprint = null,
+  diversity = null,
+  violations = [],
+  metadata = {},
+} = {}) {
   return {
     assignments,
     score,
+    scoreDetails,
+    fingerprint,
+    diversity,
     violations,
     metadata,
   };

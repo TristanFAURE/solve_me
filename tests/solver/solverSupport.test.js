@@ -22,6 +22,13 @@ describe('solver support modules', () => {
       forbiddenAssignments: false,
       softAssignmentScores: false,
       softItemCountTargets: false,
+      firstSolution: true,
+      scoreDetails: false,
+      scoreWeights: false,
+      diversity: false,
+      solutionFingerprints: false,
+      searchStatistics: false,
+      partialResults: false,
     });
   });
 
@@ -41,6 +48,13 @@ describe('solver support modules', () => {
       softItemCountTargets: true,
       optimization: true,
       weightedPreferences: true,
+      scoreDetails: true,
+      scoreWeights: true,
+      diversity: true,
+      timeout: true,
+      solutionFingerprints: true,
+      searchStatistics: true,
+      partialResults: true,
     });
   });
 

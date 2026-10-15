@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:compat": "vitest run tests/integration/crossDomainCompatibility.test.js",
     "test:solver": "vitest run tests/solver",
     "test:solver:coverage": "vitest run tests/solver --coverage",
     "bench:solver": "node scripts/solverBenchmark.js"

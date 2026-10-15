@@ -61,12 +61,13 @@ export function validateSchoolProject(project) {
     }
   });
 
+  const hasUnlimitedClass = classes.some((classroom) => classroom.metadata?.maxCapacity == null);
   const totalMaxCapacity = classes.reduce((sum, classroom) => {
     const maxCapacity = classroom.metadata?.maxCapacity;
     return sum + (Number.isFinite(maxCapacity) ? maxCapacity : 0);
   }, 0);
 
-  if (classes.length > 0 && totalMaxCapacity < students.length) {
+  if (classes.length > 0 && !hasUnlimitedClass && totalMaxCapacity < students.length) {
     errors.push(createIssue('error', 'school-capacity-too-small', `The total class capacity (${totalMaxCapacity}) is smaller than the number of students (${students.length}). Some students would have nowhere to go.`, 'classes'));
   }
 

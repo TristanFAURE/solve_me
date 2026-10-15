@@ -4,8 +4,8 @@ function renderNoSelectedEventEmptyState(domainProject) {
   return `
     <section class="workspace-panel event-staffing-detail-card">
       <div class="empty-board event-staffing-empty-state">
-        <h3>No event selected yet</h3>
-        <p>Create or focus an event to edit its details and staffing requirements.</p>
+        <h3>No slot selected yet</h3>
+        <p>Create or focus a slot to edit its date, label, and category coverage.</p>
         <ul class="empty-state-checklist">
           <li>Use the bulk creator above to generate a first schedule from a start and end date.</li>
           <li>After an event exists, select it from the browser to set its label, date, and order.</li>
@@ -64,9 +64,9 @@ export function renderSelectedEventEditor(selectedEvent, selectedRequirements, d
     <section class="workspace-panel event-staffing-detail-card">
       <div class="panel-header">
         <div>
-          <p class="eyebrow">Selected event</p>
-          <h3>🗂️ ${escapeHtml(selectedEvent.label)}</h3>
-          <p class="muted-text">Edit event metadata and staffing requirements without leaving the event browser.</p>
+          <p class="eyebrow">Selected slot</p>
+          <h3>🗂️ ${escapeHtml(selectedEvent.slotLabel ?? selectedEvent.label)}</h3>
+          <p class="muted-text">Edit slot metadata and category coverage without leaving the slot browser.</p>
         </div>
         <span class="panel-count">${escapeHtml(String(selectedRequirements.length))} reqs</span>
       </div>
@@ -80,24 +80,24 @@ export function renderSelectedEventEditor(selectedEvent, selectedRequirements, d
 
       <div class="stacked-form-sections top-gap">
         <section>
-          <h4>✏️ Event details</h4>
+          <h4>✏️ Slot details</h4>
           <div class="form-grid three-columns compact-form-grid">
-            <label>Label<input type="text" name="draftSelectedEventLabel" value="${escapeHtml(editor.draftSelectedEventLabel)}" /></label>
+            <label>Slot label<input type="text" name="draftSelectedEventLabel" value="${escapeHtml(editor.draftSelectedEventLabel)}" /></label>
             <label>Date<input type="date" name="draftSelectedEventDate" value="${escapeHtml(editor.draftSelectedEventDate)}" /></label>
             <label>Order index<input type="number" name="draftSelectedEventOrderIndex" value="${escapeHtml(editor.draftSelectedEventOrderIndex)}" min="0" step="1" /></label>
           </div>
           <div class="event-staffing-inline-actions top-gap">
-            <button type="button" data-event-staffing-action="save-selected-event">Save event details</button>
+            <button type="button" data-event-staffing-action="save-selected-event">Save slot details</button>
           </div>
         </section>
 
         <section>
           <div class="section-summary-row">
-            <h4>🧱 Insert event</h4>
+              <h4>🧱 Insert slot</h4>
             <span class="section-count-pill">Around ${escapeHtml(selectedEvent.label)}</span>
           </div>
           <div class="form-grid three-columns compact-form-grid">
-            <label>Label<input type="text" name="draftInsertedEventLabel" value="${escapeHtml(editor.draftInsertedEventLabel)}" placeholder="New event label" /></label>
+            <label>Slot label<input type="text" name="draftInsertedEventLabel" value="${escapeHtml(editor.draftInsertedEventLabel)}" placeholder="New slot label" /></label>
             <label>Date<input type="date" name="draftInsertedEventDate" value="${escapeHtml(editor.draftInsertedEventDate)}" /></label>
             <label>
               Position
@@ -108,8 +108,8 @@ export function renderSelectedEventEditor(selectedEvent, selectedRequirements, d
             </label>
           </div>
           <div class="event-staffing-inline-actions top-gap">
-            <button type="button" data-event-staffing-action="insert-event-near-selection">Insert event</button>
-            <button type="button" class="ghost-danger-button" data-event-staffing-action="delete-focused-event">Delete focused event</button>
+            <button type="button" data-event-staffing-action="insert-event-near-selection">Insert slot</button>
+            <button type="button" class="ghost-danger-button" data-event-staffing-action="delete-focused-event">Delete focused slot</button>
           </div>
         </section>
 

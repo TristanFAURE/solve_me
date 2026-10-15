@@ -10,7 +10,7 @@ The app is a lightweight web application for generic constraint solving with:
 - a generic core model
 - domain-specific pages built on top of that core
 
-Planned pages:
+Implemented pages:
 
 - generic constraint page
 - wedding table plan page
@@ -73,7 +73,7 @@ Soft preferences include:
 - prefer adjacent
 - prefer non-adjacent
 
-Soft preferences are still solver-dependent and are not yet optimized by the first solver.
+General relation preferences remain solver-dependent. The first solver now optimizes normalized assignment scores, item count targets, and configurable workload equity.
 
 ### Generic adjacency modeling
 
@@ -141,8 +141,10 @@ The first real solver adapter currently supports:
 
 Still not supported by the first solver:
 
-- optimization of soft preferences
+- direct optimization of general relation preferences
 - advanced heuristics for large scenarios
+
+The solver boundary now accepts validated solve options for `first`, `topK`, and `optimize` modes. Results include ranked scores, fingerprints, diversity metadata, search completeness, optimality claims, and search statistics. Browser solves run in a module Web Worker with progress, cancellation, timeout, and partial-result handling. Candidate retention is bounded to avoid retaining an unbounded feasible set.
 
 ## Shared workflow baseline
 
@@ -154,6 +156,8 @@ The main workflow remains:
 
 This sequence should remain intact.
 
+All four pages now present this sequence through shared Setup, Data, Rules, Review, and Results tabs.
+
 ## Cross-cutting technical constraints reminder
 
 In addition to the product and architecture decisions in this file, future work must also preserve the dedicated technical constraints document, especially for:
@@ -162,7 +166,7 @@ In addition to the product and architecture decisions in this file, future work 
 - validate -> normalize -> solve separation
 - dependency license compatibility with the project MIT license
 
-## New documented domain direction: event staffing planner
+## Event staffing planner
 
 A new dedicated feature/specification document now exists for an event staffing planner use case:
 
@@ -181,13 +185,13 @@ This use case introduces a domain with:
 - soft event-level preferences imported from `.xlsx`
 - fairness as an optimization goal
 
-This is currently a specification step only.
-Implementation design is now guided by a backward-compatible solver evolution direction: keep the current public solver API shape, preserve existing generic/school/wedding flows, compile ordered-event logic in transforms where possible, and extend solver capabilities additively for count-bounds and soft optimization needs.
+The planner is implemented while retaining event-shaped slot records grouped by date metadata. Its transform compiles repeated assignments, category coverage, preferences, unavailability, count limits, fixed/forbidden assignments, and cooldown exclusions into the generic model.
 
 ## Cross-cutting risks
 
 - normalization currently expands some group relations pairwise and may grow large
 - contradiction detection is still incomplete for advanced cases
 - the current solver is a straightforward backtracking implementation and may need stronger pruning for larger inputs
-- soft preferences remain ignored by the first solver
-- the event staffing planner spec likely requires solver and normalization evolution because worked-event limits, cooldown rules across ordered events, and same-event multi-assignment semantics do not map directly onto the current baseline feature set
+- general relation preferences remain ignored by the first solver
+- repeated-assignment search is exponential and relies on browser time limits and bounded candidate retention for larger scenarios
+- the current `xlsx` dependency has unresolved upstream security advisories; workbook size and ZIP preflight controls reduce but do not eliminate parser risk

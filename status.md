@@ -46,6 +46,8 @@ Also read this dedicated cross-cutting constraints document when the task touche
   - read for wedding semantics, topology generation, seat-aware solving, wedding UI decisions
 - `docs/status/05-recent-work-and-next-steps.md`
   - read for the latest completed step, immediate next steps, and current risks
+- `docs/status/06-ranked-solutions-and-ui-plan.md`
+  - read for the approved ranked-solution roadmap, shared workflow direction, Event Staffing slot semantics, and exact next implementation slice
 
 ## Current project stage
 
@@ -56,6 +58,7 @@ The app now has:
 - a real generic editing page
 - a real school page with `.xlsx` import/export
 - a real wedding page with seat topology authoring
+- a real Event Staffing page with repeated-assignment transforms and schedule-oriented results
 - a first solver adapter that supports:
   - container mode
   - position mode
@@ -67,9 +70,9 @@ The app now has:
 
 Current recommended next work:
 
-- continue regression coverage for existing school and wedding flows while staffing behavior expands
-- run broader manual testing and assess performance on larger staffing-style scenarios now that solver optimization milestones 1 and 2 are in place
-- if further solver work is needed, refine pruning/bounding for larger mixed hard-soft staffing scenarios without changing the public solver API
+- manually verify the four browser workflows on desktop and mobile
+- benchmark realistic Event Staffing searches and tune time limits and search guidance from measured results
+- evaluate replacement or isolation options for the existing `xlsx` dependency, which has unresolved upstream advisories
 
 ## Key invariant decisions
 
@@ -85,16 +88,15 @@ Preserve these project rules:
 
 ## Latest update
 
-- fixed a staffing solver false-unsat case for larger hard-minimum schedules by changing multi-assignment container search to cover required destinations directly instead of relying on the previous bounded subset enumeration
-- added a regression test covering the satisfied case of three people covering thirty-one required single-slot events, alongside the existing staffing single-group regressions
-- re-ran the targeted staffing transform regression file successfully
+- implemented the reliability fixes, ranked weighted solving, diverse top-K alternatives, and explicit completeness/optimality metadata
+- moved browser solving to a module Web Worker with progress, cancellation, timeout, partial results, and search guidance
+- migrated Generic, School, Wedding, and Event Staffing to the shared Setup/Data/Rules/Review/Results workflow
+- added versioned local draft recovery and full-fidelity configuration workbook flows for specialized pages
+- implemented Event Staffing date/slot migration, category requirements, preferences, unavailability, assignment rules, cooldowns, and ranked schedule results
+- bounded solver candidate retention and hardened autosave and workbook handling during final review
+- automated verification passes; real-browser and realistic performance verification remain manual follow-up work
 
-Files modified:
-
-- `src/solver/adapters/firstSolverAdapter.js`
-- `tests/core/transform/eventStaffingProject.test.js`
-- `docs/status/05-recent-work-and-next-steps.md`
-- `status.md`
+See `docs/status/05-recent-work-and-next-steps.md` and `docs/status/06-ranked-solutions-and-ui-plan.md` for implementation detail and residual risks.
 
 ## Restart prompt for a new context
 
@@ -109,6 +111,7 @@ Then read only the relevant files from `docs/status/` based on the task:
 - school page/import-export/validation: `docs/status/03-school-page.md`
 - wedding page/topology/seat-aware solving: `docs/status/04-wedding-page.md`
 - latest progress/next steps: `docs/status/05-recent-work-and-next-steps.md`
+- ranked solutions/shared UI/next implementation slice: `docs/status/06-ranked-solutions-and-ui-plan.md`
 
 Then read the concrete implementation and spec files directly related to the requested task.
 
@@ -121,18 +124,21 @@ Always preserve these rules:
 
 Before finishing, update `status.md` and the relevant `docs/status/*.md` file(s).
 
-If the task is to implement the event staffing planner solver path, also read:
+If the task touches the event staffing planner solver path, also read:
 - `docs/00-core-architecture.md`
 - `docs/04-feature-solver-capabilities-and-configuration.md`
 - `docs/07-feature-domain-model-and-semantics.md`
 - `docs/10-feature-event-staffing-planner.md`
+- `docs/11-feature-ranked-solutions-and-shared-workflow.md`
 
-Implementation direction already decided:
-- preserve the current public solver API shape
-- evolve normalized constraint families additively
-- compile ordered-event cooldown logic in transforms where possible
+Current implementation direction:
+- preserve the adapter boundary and evolve `solve(model, options)` additively
+- keep the core generic and compile date/slot semantics in the Event Staffing transform
+- use configurable weighted numeric scoring with equity as the initial dominant staffing objective
+- return diverse top-K alternatives with honest completeness and optimality metadata
+- move solving to a Web Worker before considering WebAssembly
+- migrate all pages toward Setup, Data, Rules, Review, and Results tabs
 - protect school and wedding behavior with regression tests
-- continue the staffing planner from the repaired browser/detail page by wiring transform + solve actions into the existing workflow
-- preserve the shared layout-class approach (`workspace-layout`, `workspace-panel`, `summary-grid`, `data-table`) for further staffing page refinement
-- keep protecting school and wedding behavior with regression tests while staffing planner workflow expands
+- preserve bounded-memory search and honest incomplete-result metadata
+- treat browser workflow verification, performance benchmarking, and the residual `xlsx` advisory as current follow-up work
 ```

@@ -32,6 +32,12 @@ Implemented features include:
 - single-group `Keep this group together` authoring in both hard-rule and preference sections
 - seats panel moved to the end of the page for better authoring flow
 - denser seat-card presentation for larger weddings
+- shared Setup, Data, Rules, Review, and Results workflow
+- bulk guest entry, explicit validation lifecycle, and ranked Web Worker solving
+- versioned local autosave and draft recovery
+- full-fidelity configuration workbook export/import with replacement preview
+- one-edge topology generation for two-seat tables
+- cascading normal table deletion so generated seats cannot become orphaned
 
 ## Topology model
 
@@ -54,7 +60,7 @@ The first solver now supports seat-aware position-mode solving with:
 - must be adjacent
 - must not be adjacent
 
-Soft preferences are still not optimized.
+General relation preferences are still not optimized; normalized assignment scores and count targets are optimized.
 
 ## Important UX decisions
 
@@ -84,6 +90,8 @@ Current coverage includes:
 - wedding-specific solution presentation may still need refinement after more seat-aware testing
 - large seating plans may stress the current backtracking solver
 - the UI may still need dynamic operand filtering for adjacency rules so unsupported operand combinations are hidden rather than merely validated later
+- real-browser focus/caret, accessibility, and responsive behavior still require manual regression checks
+- the existing `xlsx` release has unresolved upstream advisories despite file-size and ZIP preflight controls
 
 ## Primary files
 

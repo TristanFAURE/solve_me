@@ -1,8 +1,17 @@
+import { getPreferenceMap, migrateEventStaffingProject, normalizePreferenceState, PREFERENCE_STATES } from './migration.js';
+
 function isOmittedOptionalNumber(value) {
   return value === undefined || value === null || value === '';
 }
 
+function isIsoDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 export function validateEventStaffingProject(domainProject = {}) {
+  domainProject = migrateEventStaffingProject(domainProject);
   const errors = [];
   const warnings = [];
 
@@ -46,6 +55,16 @@ export function validateEventStaffingProject(domainProject = {}) {
       seenEventIds.add(event.id);
     }
 
+    if (typeof event?.dateKey !== 'string' || event.dateKey.trim().length === 0) {
+      errors.push({ level: 'error', code: 'event-staffing-slot-missing-date-key', message: 'Every slot must have a date key.', path: `events[${index}].dateKey` });
+    }
+    if (event?.date && !isIsoDate(event.date)) {
+      errors.push({ level: 'error', code: 'event-staffing-invalid-slot-date', message: `Slot "${event.slotLabel || event.id}" must use a YYYY-MM-DD date.`, path: `events[${index}].date` });
+    }
+    if (typeof event?.slotLabel !== 'string' || event.slotLabel.trim().length === 0) {
+      errors.push({ level: 'error', code: 'event-staffing-slot-missing-label', message: 'Every slot must have a label.', path: `events[${index}].slotLabel` });
+    }
+
     if (!Number.isInteger(event?.orderIndex)) {
       errors.push({ level: 'error', code: 'event-staffing-event-missing-order', message: `Event "${event?.label ?? event?.id ?? index + 1}" must define an integer order index.`, path: `events[${index}].orderIndex` });
     } else if (seenOrderIndexes.has(event.orderIndex)) {
@@ -67,6 +86,7 @@ export function validateEventStaffingProject(domainProject = {}) {
   });
 
   const seenPersonIds = new Set();
+  const seenEmails = new Map();
   people.forEach((person, index) => {
     const personName = person?.name ?? person?.id ?? `person ${index + 1}`;
 
@@ -76,6 +96,17 @@ export function validateEventStaffingProject(domainProject = {}) {
       errors.push({ level: 'error', code: 'event-staffing-duplicate-person-id', message: `Person id "${person.id}" is duplicated.`, path: `people[${index}].id` });
     } else {
       seenPersonIds.add(person.id);
+    }
+
+    if (person?.email !== undefined && person.email !== null && typeof person.email !== 'string') {
+      errors.push({ level: 'error', code: 'event-staffing-invalid-person-email', message: `Person "${personName}" must use a text email value.`, path: `people[${index}].email` });
+    } else if (String(person?.email ?? '').trim()) {
+      const normalizedEmail = person.email.trim().toLocaleLowerCase();
+      if (seenEmails.has(normalizedEmail)) {
+        errors.push({ level: 'error', code: 'event-staffing-duplicate-person-email', message: `Email "${person.email}" is used by more than one person.`, path: `people[${index}].email` });
+      } else {
+        seenEmails.set(normalizedEmail, person.id);
+      }
     }
 
     if (!isOmittedOptionalNumber(person?.maxAssignments) && (!Number.isInteger(person.maxAssignments) || person.maxAssignments < 0)) {
@@ -183,6 +214,7 @@ export function validateEventStaffingProject(domainProject = {}) {
     });
   });
 
+  const requirementKeys = new Set(requirements.map((requirement) => `${requirement.eventId}::${requirement.groupTypeId}`));
   [...forcedAssignments, ...forbiddenAssignments].forEach((assignment, index) => {
     if (!personIds.has(assignment?.personId)) {
       errors.push({ level: 'error', code: 'event-staffing-unknown-assignment-person', message: `Assignment ${index + 1} references an unknown person.`, path: `assignments[${index}].personId` });
@@ -195,6 +227,23 @@ export function validateEventStaffingProject(domainProject = {}) {
     if (!groupTypeIds.has(assignment?.groupTypeId)) {
       errors.push({ level: 'error', code: 'event-staffing-unknown-assignment-group-type', message: `Assignment ${index + 1} references an unknown group type.`, path: `assignments[${index}].groupTypeId` });
     }
+    if (eventIds.has(assignment?.eventId) && groupTypeIds.has(assignment?.groupTypeId)
+      && !requirementKeys.has(`${assignment.eventId}::${assignment.groupTypeId}`)) {
+      errors.push({ level: 'error', code: 'event-staffing-assignment-without-requirement', message: `Assignment ${index + 1} references a category that is not active in the slot.`, path: `assignments[${index}]` });
+    }
+  });
+
+  const forcedKeys = new Set(forcedAssignments.map((entry) => `${entry.personId}::${entry.eventId}::${entry.groupTypeId}`));
+  forbiddenAssignments.forEach((entry, index) => {
+    if (forcedKeys.has(`${entry.personId}::${entry.eventId}::${entry.groupTypeId}`)) {
+      errors.push({ level: 'error', code: 'event-staffing-forced-forbidden-conflict', message: 'The same person, slot, and category cannot be both forced and forbidden.', path: `forbiddenAssignments[${index}]` });
+    }
+  });
+  const forcedPersonSlotKeys = new Set();
+  forcedAssignments.forEach((entry, index) => {
+    const key = `${entry.personId}::${entry.eventId}`;
+    if (forcedPersonSlotKeys.has(key)) errors.push({ level: 'error', code: 'event-staffing-multiple-forced-slot-categories', message: 'A person cannot be forced into more than one category in the same slot.', path: `forcedAssignments[${index}]` });
+    forcedPersonSlotKeys.add(key);
   });
 
   preferences.forEach((preference, index) => {
@@ -203,7 +252,7 @@ export function validateEventStaffingProject(domainProject = {}) {
       return;
     }
 
-    const eventPreferences = preference?.eventPreferences;
+    const eventPreferences = getPreferenceMap(preference);
     if (!eventPreferences || typeof eventPreferences !== 'object') {
       errors.push({ level: 'error', code: 'event-staffing-invalid-preference-map', message: `Preferences for person "${preference.personId}" must use an eventPreferences object.`, path: `preferences[${index}].eventPreferences` });
       return;
@@ -214,8 +263,13 @@ export function validateEventStaffingProject(domainProject = {}) {
         errors.push({ level: 'error', code: 'event-staffing-unknown-preference-event', message: `Preferences for person "${preference.personId}" reference unknown event "${eventId}".`, path: `preferences[${index}].eventPreferences.${eventId}` });
       }
 
-      if (value !== 'Y' && value !== 'N' && value !== '' && value !== null && value !== undefined) {
-        errors.push({ level: 'error', code: 'event-staffing-invalid-preference-value', message: `Preference value for person "${preference.personId}" and event "${eventId}" must be Y, N, or empty.`, path: `preferences[${index}].eventPreferences.${eventId}` });
+      const state = normalizePreferenceState(value);
+      if (!state) {
+        errors.push({ level: 'error', code: 'event-staffing-invalid-preference-value', message: `Preference value for person "${preference.personId}" and slot "${eventId}" is invalid.`, path: `preferences[${index}].slotPreferences.${eventId}` });
+      }
+      if (state === PREFERENCE_STATES.UNAVAILABLE
+        && forcedAssignments.some((assignment) => assignment.personId === preference.personId && assignment.eventId === eventId)) {
+        errors.push({ level: 'error', code: 'event-staffing-forced-unavailable-conflict', message: `Person "${preference.personId}" is both forced and unavailable for slot "${eventId}".`, path: `preferences[${index}].slotPreferences.${eventId}` });
       }
     });
   });
@@ -231,6 +285,18 @@ export function validateEventStaffingProject(domainProject = {}) {
   if (!isOmittedOptionalNumber(domainProject?.globalLimits?.targetAssignmentsPerGroupType) && (!Number.isInteger(domainProject.globalLimits.targetAssignmentsPerGroupType) || domainProject.globalLimits.targetAssignmentsPerGroupType < 0)) {
     errors.push({ level: 'error', code: 'event-staffing-invalid-global-group-target', message: 'globalLimits.targetAssignmentsPerGroupType must be a non-negative integer when provided.', path: 'globalLimits.targetAssignmentsPerGroupType' });
   }
+
+  events.forEach((slot) => {
+    const totalMinimum = requirements.filter((requirement) => requirement.eventId === slot.id).reduce((sum, requirement) => sum + (Number.isInteger(requirement.min) ? requirement.min : 0), 0);
+    const unavailablePersonIds = new Set(preferences
+      .filter((entry) => normalizePreferenceState(getPreferenceMap(entry)?.[slot.id]) === PREFERENCE_STATES.UNAVAILABLE)
+      .map((entry) => entry.personId));
+    const availablePeople = people.filter((person) => !unavailablePersonIds.has(person.id)).length;
+    if (totalMinimum > availablePeople) {
+      errors.push({ level: 'error', code: 'event-staffing-insufficient-slot-coverage', message: `Slot "${slot.slotLabel}" requires at least ${totalMinimum} people but only ${availablePeople} are available in the roster.`, path: `events.${slot.id}` });
+    }
+    if (totalMinimum === 0) warnings.push({ level: 'warning', code: 'event-staffing-zero-minimum-coverage', message: `Slot "${slot.slotLabel}" has no required minimum coverage.`, path: `events.${slot.id}` });
+  });
 
   return {
     valid: errors.length === 0,

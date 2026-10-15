@@ -1,9 +1,9 @@
-import * as XLSX from 'xlsx';
 import { createId } from '../../core/model/ids.js';
 import { createContainer, createGroup, createItem } from '../../core/model/nodes.js';
 import { createEmptyProject, VIEW_HINTS } from '../../core/model/project.js';
 import { createContainmentRelation, createEntityRef } from '../../core/model/relations.js';
 import { WEDDING_TABLE_SHAPES } from './tableTopology.js';
+import { readWorkbookFile, sheetToSafeRows } from '../../workbooks/safety.js';
 
 function normalizeHeader(value) {
   return String(value ?? '')
@@ -28,7 +28,7 @@ function getSheetRows(workbook, preferredNames) {
     return [];
   }
 
-  return XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+  return sheetToSafeRows(workbook.Sheets[sheetName], {
     defval: '',
     raw: false,
   });
@@ -236,17 +236,14 @@ function applySeatingSheet(project, seatingRows, groupsByLabel, tablesByLabel, g
   }
 }
 
-export async function importWeddingWorkbook(file) {
-  const arrayBuffer = await file.arrayBuffer();
-  const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-
+export function importWeddingWorkbookFromWorkbook(workbook, fileName = 'wedding-workbook.xlsx') {
   const guestRows = getSheetRows(workbook, ['guests']);
   const groupRows = getSheetRows(workbook, ['groups']);
   const tableRows = getSheetRows(workbook, ['tables']);
   const seatingRows = getSheetRows(workbook, ['seating']);
 
   const project = createEmptyProject({
-    title: file.name.replace(/\.[^.]+$/, ''),
+    title: fileName.replace(/\.[^.]+$/, ''),
     description: 'Imported from wedding workbook',
     viewHint: VIEW_HINTS.WEDDING,
   });
@@ -270,4 +267,8 @@ export async function importWeddingWorkbook(file) {
   }
 
   return project;
+}
+
+export async function importWeddingWorkbook(file) {
+  return importWeddingWorkbookFromWorkbook(await readWorkbookFile(file), file.name);
 }

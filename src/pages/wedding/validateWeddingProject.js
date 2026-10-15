@@ -76,6 +76,7 @@ export function validateWeddingProject(project) {
   const constraints = getConstraints(project);
   const assignmentMode = project?.assignmentMode;
   const totalCapacity = tables.reduce((sum, table) => sum + (getTableCapacity(table) ?? 0), 0);
+  const hasUnlimitedCapacity = tables.some((table) => getTableCapacity(table) == null);
 
   if (!project?.title?.trim()) {
     warnings.push(createIssue('warning', 'wedding-missing-title', 'Add an event name so the seating plan is easier to identify.', ['title']));
@@ -89,7 +90,7 @@ export function validateWeddingProject(project) {
     errors.push(createIssue('error', 'wedding-no-tables', 'Add at least one table before solving the wedding seating plan.', ['containers']));
   }
 
-  if (tables.length > 0 && totalCapacity < guests.length) {
+  if (tables.length > 0 && !hasUnlimitedCapacity && totalCapacity < guests.length) {
     errors.push(createIssue('error', 'wedding-not-enough-seats', `The current tables only provide ${totalCapacity} seats for ${guests.length} guests. Increase table capacities before solving.`, ['containers']));
   }
 

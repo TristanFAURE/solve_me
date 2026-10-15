@@ -1,6 +1,12 @@
 import { ASSIGNMENT_MODES } from '../model/assignmentModes.js';
 import { createContainer, createItem } from '../model/nodes.js';
 import { createEmptyProject, VIEW_HINTS } from '../model/project.js';
+import {
+  getPreferenceMap,
+  migrateEventStaffingProject,
+  normalizePreferenceState,
+  PREFERENCE_STATES,
+} from '../../pages/eventStaffing/migration.js';
 
 const ANY_GROUP_TYPES = 'ANY';
 
@@ -138,10 +144,11 @@ function createPerEventExclusivityBounds({ people, orderedEvents, destinationIds
   return bounds;
 }
 
-function createRequirementContainers(requirements, groupTypeLabelById, eventLabelById) {
+function createRequirementContainers(requirements, groupTypeLabelById, eventById) {
   return requirements.map((requirement) => {
     const destinationId = createDestinationId(requirement.eventId, requirement.groupTypeId);
-    const eventLabel = eventLabelById.get(requirement.eventId) ?? requirement.eventId;
+    const slot = eventById.get(requirement.eventId);
+    const eventLabel = slot?.slotLabel ?? slot?.label ?? requirement.eventId;
     const groupTypeLabel = groupTypeLabelById.get(requirement.groupTypeId) ?? requirement.groupTypeId;
 
     return createContainer({
@@ -152,6 +159,10 @@ function createRequirementContainers(requirements, groupTypeLabelById, eventLabe
       metadata: {
         domain: 'eventStaffing',
         eventId: requirement.eventId,
+        slotId: requirement.eventId,
+        dateKey: slot?.dateKey ?? '',
+        date: slot?.date ?? '',
+        slotLabel: eventLabel,
         groupTypeId: requirement.groupTypeId,
       },
     });
@@ -203,32 +214,34 @@ function createForcedAssignments(assignments) {
     }));
 }
 
-function createEventPreferenceScores(preferences, requirements, orderedEvents) {
+function createEventPreferenceTerms(preferences, requirements, orderedEvents) {
   const eventIds = new Set(orderedEvents.map((event) => event.id));
-
-  return toArray(preferences).flatMap((preference) => {
+  const scores = [];
+  const forbiddenAssignments = [];
+  toArray(preferences).forEach((preference) => {
     const personId = toNonEmptyString(preference?.personId);
-    const eventPreferences = preference?.eventPreferences;
+    const eventPreferences = getPreferenceMap(preference);
 
     if (!personId || typeof eventPreferences !== 'object' || !eventPreferences) {
-      return [];
+      return;
     }
 
-    return Object.entries(eventPreferences).flatMap(([eventId, value]) => {
-      if (!eventIds.has(eventId) || (value !== 'Y' && value !== 'N')) {
-        return [];
+    Object.entries(eventPreferences).forEach(([eventId, value]) => {
+      const state = normalizePreferenceState(value);
+      if (!eventIds.has(eventId) || !state || state === PREFERENCE_STATES.NEUTRAL) {
+        return;
       }
-
-      const score = value === 'Y' ? 1 : -1;
-      return requirements
-        .filter((requirement) => requirement.eventId === eventId)
-        .map((requirement) => ({
+      requirements.filter((requirement) => requirement.eventId === eventId).forEach((requirement) => {
+        const assignment = {
           itemId: personId,
           destinationId: createDestinationId(requirement.eventId, requirement.groupTypeId),
-          score,
-        }));
+        };
+        if (state === PREFERENCE_STATES.UNAVAILABLE) forbiddenAssignments.push(assignment);
+        else scores.push({ ...assignment, score: state === PREFERENCE_STATES.PREFER ? 1 : -1 });
+      });
     });
   });
+  return { scores, forbiddenAssignments };
 }
 
 function createPersonAssignmentUpperBounds({ people, requirements, globalLimits, availableGroupTypeIds }) {
@@ -332,6 +345,7 @@ function createSoftItemCountTargets(people, requirements, availableGroupTypeIds,
 }
 
 export function transformEventStaffingProject(domainProject = {}) {
+  domainProject = migrateEventStaffingProject(domainProject);
   const events = sortEventsByOrder(toArray(domainProject.events).filter((event) => toNonEmptyString(event?.id)));
   const groupTypes = toArray(domainProject.groupTypes)
     .filter((groupType) => toNonEmptyString(groupType?.id))
@@ -350,7 +364,7 @@ export function transformEventStaffingProject(domainProject = {}) {
   const requirements = toArray(domainProject.requirements)
     .map((requirement) => ({
       ...requirement,
-      eventId: toNonEmptyString(requirement?.eventId),
+      eventId: toNonEmptyString(requirement?.slotId ?? requirement?.eventId),
       groupTypeId: toNonEmptyString(requirement?.groupTypeId),
     }))
     .filter((requirement) => {
@@ -367,7 +381,8 @@ export function transformEventStaffingProject(domainProject = {}) {
   const destinationIdsByEventId = buildDestinationIdsByEventId(requirements);
   const destinationIdsByEventAndGroupType = buildDestinationIdsByEventAndGroupType(requirements);
   const groupTypeLabelById = new Map(groupTypes.map((groupType) => [groupType.id, groupType.label ?? groupType.id]));
-  const eventLabelById = new Map(orderedEvents.map((event) => [event.id, event.label ?? event.id]));
+  const eventById = new Map(orderedEvents.map((event) => [event.id, event]));
+  const preferenceTerms = createEventPreferenceTerms(domainProject.preferences, requirements, orderedEvents);
 
   return createEmptyProject({
     title: domainProject.title ?? 'Event staffing planner',
@@ -376,7 +391,7 @@ export function transformEventStaffingProject(domainProject = {}) {
     assignmentMode: ASSIGNMENT_MODES.CONTAINER,
     assignmentMultiplicity: 'multiple',
     items: createPeopleItems(people),
-    containers: createRequirementContainers(requirements, groupTypeLabelById, eventLabelById),
+    containers: createRequirementContainers(requirements, groupTypeLabelById, eventById),
     assignmentExclusions: createCooldownAssignmentExclusions({
       cooldownRules: toArray(domainProject.cooldownRules),
       orderedEvents,
@@ -397,8 +412,9 @@ export function transformEventStaffingProject(domainProject = {}) {
     forbiddenAssignments: [
       ...createEligibilityForbiddenAssignments({ people, groupTypes, requirements }),
       ...createForcedAssignments(domainProject.forbiddenAssignments),
+      ...preferenceTerms.forbiddenAssignments,
     ],
-    softAssignmentScores: createEventPreferenceScores(domainProject.preferences, requirements, orderedEvents),
+    softAssignmentScores: preferenceTerms.scores,
     softItemCountTargets: createSoftItemCountTargets(
       people,
       requirements,

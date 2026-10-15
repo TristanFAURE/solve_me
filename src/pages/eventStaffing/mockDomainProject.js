@@ -1,5 +1,6 @@
 export function createMockDomainProject() {
   return {
+    modelVersion: 2,
     title: 'Event staffing planner',
     events: [],
     groupTypes: [],

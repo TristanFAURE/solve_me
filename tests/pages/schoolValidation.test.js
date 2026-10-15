@@ -3,6 +3,8 @@ import { CONSTRAINT_KINDS } from '../../src/core/model/constraints.js';
 import { createContainer, createGroup, createItem } from '../../src/core/model/nodes.js';
 import { createEmptyProject } from '../../src/core/model/project.js';
 import { createContainmentRelation, createEntityRef } from '../../src/core/model/relations.js';
+import { PREFERENCE_KINDS } from '../../src/core/model/preferences.js';
+import { addSchoolPreference } from '../../src/pages/school/index.js';
 import { validateSchoolProject } from '../../src/pages/school/validateSchoolProject.js';
 
 function buildSchoolProject() {
@@ -65,5 +67,46 @@ describe('school validation', () => {
 
     const validation = validateSchoolProject(project);
     expect(validation.warnings.some((issue) => issue.code === 'school-student-multiple-levels')).toBe(true);
+  });
+
+  it('accepts aggregate capacity when a class is unlimited', () => {
+    const project = buildSchoolProject();
+    project.containers[0].metadata.maxCapacity = null;
+
+    const validation = validateSchoolProject(project);
+
+    expect(validation.errors.some((issue) => issue.code === 'school-capacity-too-small')).toBe(false);
+  });
+
+  it('still reports insufficient aggregate capacity when all classes are limited', () => {
+    const project = buildSchoolProject();
+    project.items.push(createItem({ id: 'student-2', label: 'Bob', metadata: { schoolRole: 'student' } }));
+    project.containments.push(
+      createContainmentRelation(createEntityRef('group', 'level-1'), createEntityRef('item', 'student-2')),
+    );
+
+    const validation = validateSchoolProject(project);
+
+    expect(validation.errors.some((issue) => issue.code === 'school-capacity-too-small')).toBe(true);
+  });
+
+  it('does not author a general preference unsupported by the active solver', () => {
+    const project = buildSchoolProject();
+    const state = {
+      schoolPage: {
+        project,
+        editor: {
+          activeSolutionIndex: 0,
+          draftPreferenceKind: PREFERENCE_KINDS.PREFER_SHARE_CONTAINER,
+          draftPreferenceLeftId: 'student-1',
+          draftPreferenceRightId: 'teacher-1',
+          draftPreferenceWeight: '4',
+        },
+        message: '',
+      },
+    };
+
+    expect(() => addSchoolPreference(state)).not.toThrow();
+    expect(project.preferences).toEqual([]);
   });
 });
