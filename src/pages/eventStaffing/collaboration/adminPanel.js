@@ -81,7 +81,9 @@ export function bindCollaborationAdminPanel(root, state, rerender) {
         admin.manifest = (await repository.loadManifest(folder)).manifest;
         applyCollaborationConfiguration(state.eventStaffingPage.domainProject, admin.manifest);
         clearDerivedState(state);
-        admin.message = 'Collaboration session loaded.';
+        admin.message = admin.manifest.configuration
+          ? 'Collaboration session and administrator configuration loaded.'
+          : 'Legacy collaboration session loaded without administrator configuration. The current setup was retained; use Start Collaboration to publish it.';
       }
       admin.candidates = [];
       await refresh(state, rerender);
