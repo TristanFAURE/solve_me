@@ -27,7 +27,11 @@ export async function solveWorkerRequest(request, dependencies = {}) {
   const runHighs = dependencies.runHighsSolveService ?? runHighsSolveService;
   const runJs = dependencies.runSolveService ?? runSolveService;
   const hooks = dependencies.hooks ?? {};
-  if (!shouldUseHighs(request.model, request.options)) return runJs(request.model, request.options, hooks);
+  hooks.onProgress?.({ phase: 'starting-worker', elapsedMs: 0 });
+  if (!shouldUseHighs(request.model, request.options)) {
+    hooks.onProgress?.({ phase: 'searching', elapsedMs: Math.round(performance.now() - startedAt) });
+    return runJs(request.model, request.options, hooks);
+  }
 
   let highs;
   try {

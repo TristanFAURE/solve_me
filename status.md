@@ -104,6 +104,7 @@ Preserve these project rules:
 - added automatic Worker-hosted HiGHS WASM solving with sparse assignment variables, verified greedy incumbents, hard cancellation, and honest best-found/canonical ranking metadata
 - measured the 180-day x 10-slot x 200-doctor lower bound at 360,000 theoretical pairs: a verified partial schedule is returned locally, while optimality remains unproved within a 20-second budget
 - added a shared accessible solve progress panel with Worker phase, elapsed budget, node/solution metrics, and cancellation
+- fixed the progress panel's initial stalled appearance with immediate Worker phase updates and an indeterminate active-work indicator
 
 See `docs/status/05-recent-work-and-next-steps.md` and `docs/status/06-ranked-solutions-and-ui-plan.md` for implementation detail and residual risks.
 

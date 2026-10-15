@@ -68,9 +68,9 @@ describe('shared validation lifecycle panels', () => {
     });
 
     expect(html).toContain('Loading WASM optimization engine');
-    expect(html).toContain('aria-label="Solve time budget"');
-    expect(html).toContain('max="5000" value="1250"');
-    expect(html).toContain('1250 of 5000 ms time budget used');
+    expect(html).toContain('aria-label="Solver is working"');
+    expect(html).not.toContain('value=');
+    expect(html).toContain('5000 ms time budget; latest Worker update at 1250 ms');
     expect(html).toContain('Cancel solve');
   });
 

@@ -22,6 +22,7 @@ The ranked-solutions and shared-workflow implementation milestone is complete:
 - moved XLSX parsing into a dedicated browser Worker while retaining preflight and post-parse bounds
 - added 23 Playwright tests for all page workflows, keyboard tabs, persistence, Worker solving, and 360/768/1024/1440 px layouts
 - added an accessible time-budget progress bar with loading, model-building, incumbent, search, and optimization phases
+- made the active progress bar indeterminate and emitted an immediate Worker phase so CPU-bound searches no longer appear stuck at startup
 
 The local large-model solver uses exact-pinned `highs@1.15.3` (MIT) and emits a 3.53 MB WASM asset. Playwright `1.64.1` remains the exact-pinned Apache-2.0 browser-test development dependency.
 

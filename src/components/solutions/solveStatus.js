@@ -11,6 +11,7 @@ export function renderSolveStatus(execution, cancelAttribute = 'data-action="can
     ? execution.timeLimitMs
     : null;
   const phaseLabels = {
+    'starting-worker': 'Starting solver Worker',
     'loading-wasm': 'Loading WASM optimization engine',
     'building-model': 'Building optimization model',
     'preparing-incumbent': 'Preparing a feasible schedule',
@@ -19,15 +20,15 @@ export function renderSolveStatus(execution, cancelAttribute = 'data-action="can
   };
   const phase = phaseLabels[progress?.phase] ?? 'Starting solver Worker';
   const budgetLabel = timeLimitMs === null
-    ? `${elapsedMs} ms elapsed`
-    : `${elapsedMs} of ${timeLimitMs} ms time budget used`;
+    ? `${elapsedMs} ms reported elapsed time`
+    : `${timeLimitMs} ms time budget; latest Worker update at ${elapsedMs} ms`;
 
   return `
     <section class="solve-status" role="status" aria-live="polite">
       <div class="solve-status-details">
         <strong>${escapeHtml(phase)}...</strong>
         <span>${progress && Number.isFinite(progress.exploredNodes) ? ` Explored ${escapeHtml(progress.exploredNodes)} nodes, pruned ${escapeHtml(progress.prunedNodes ?? 0)}, found ${escapeHtml(progress.solutionCount ?? 0)} solution(s).` : ''}</span>
-        <progress aria-label="Solve time budget"${timeLimitMs === null ? '' : ` max="${timeLimitMs}" value="${Math.min(elapsedMs, timeLimitMs)}"`}></progress>
+        <progress aria-label="Solver is working"></progress>
         <small>${escapeHtml(budgetLabel)}</small>
       </div>
       <button type="button" class="command-bar-button command-bar-button-danger" ${cancelAttribute}>Cancel solve</button>
