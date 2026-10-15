@@ -9,6 +9,7 @@ import { syncSelectedEventDrafts } from '../../src/pages/eventStaffing/eventBrow
 import {
   addPerson,
   addRequirementToSelectedEvent,
+  syncRequirementDraftFromControls,
   beginEditPerson,
   buildDeleteEventsConfirmationMessage,
   buildRemoveAllRequirementsConfirmationMessage,
@@ -157,6 +158,34 @@ describe('event staffing planner workflow', () => {
     const bulkRemoveMessage = bulkRemoveGroupFromSelectedEvents(domainProject, editor);
     expect(bulkRemoveMessage).toContain('Removed');
     expect(domainProject.requirements.some((requirement) => requirement.groupTypeId === 'G2' && ['E1', 'E2'].includes(requirement.eventId))).toBe(false);
+  });
+
+  it('submits requirement values from the visible controls instead of stale editor state', () => {
+    const domainProject = buildValidDomainProject();
+    const editor = buildEditorState();
+    editor.draftRequirementGroupTypeId = 'G1';
+    editor.draftRequirementMin = '0';
+    editor.draftRequirementMax = '0';
+    const values = {
+      'select[name="draftRequirementGroupTypeId"]': 'G2',
+      'input[name="draftRequirementMin"]': '2',
+      'input[name="draftRequirementMax"]': '4',
+    };
+    const root = {
+      querySelector(selector) {
+        return Object.hasOwn(values, selector) ? { value: values[selector] } : null;
+      },
+    };
+
+    syncRequirementDraftFromControls(root, editor);
+    addRequirementToSelectedEvent(domainProject, editor);
+
+    expect(domainProject.requirements).toContainEqual({
+      eventId: editor.selectedEventId,
+      groupTypeId: 'G2',
+      min: 2,
+      max: 4,
+    });
   });
 
   it('supports copy-from-focused and remove-all bulk requirement tools', () => {

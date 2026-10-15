@@ -605,6 +605,15 @@ export function addRequirementToSelectedEvent(domainProject, editor) {
     : 'Updated the existing requirement on the selected event.';
 }
 
+export function syncRequirementDraftFromControls(root, editor) {
+  const groupType = root.querySelector('select[name="draftRequirementGroupTypeId"]');
+  const minimum = root.querySelector('input[name="draftRequirementMin"]');
+  const maximum = root.querySelector('input[name="draftRequirementMax"]');
+  if (groupType) editor.draftRequirementGroupTypeId = groupType.value;
+  if (minimum) editor.draftRequirementMin = minimum.value;
+  if (maximum) editor.draftRequirementMax = maximum.value;
+}
+
 export function removeRequirementFromSelectedEvent(domainProject, editor, requirementIndex) {
   const eventId = editor.selectedEventId;
   const eventRequirements = domainProject.requirements
@@ -1850,6 +1859,7 @@ function bindInteractions(root, state) {
   const addRequirementButton = root.querySelector('[data-event-staffing-action="add-requirement"]');
   if (addRequirementButton) {
     addRequirementButton.addEventListener('click', () => {
+      syncRequirementDraftFromControls(root, editor);
       state.eventStaffingPage.message = addRequirementToSelectedEvent(domainProject, editor);
       refreshValidation(state);
       rerender();

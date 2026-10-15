@@ -89,6 +89,7 @@ Preserve these project rules:
 
 ## Latest update
 
+- fixed Event Staffing requirement submission so the selected group and visible min/max values are read atomically when Add is clicked
 - implemented the reliability fixes, ranked weighted solving, diverse top-K alternatives, and explicit completeness/optimality metadata
 - moved browser solving to a module Web Worker with progress, cancellation, timeout, partial results, and search guidance
 - migrated Generic, School, Wedding, and Event Staffing to the shared Setup/Data/Rules/Review/Results workflow

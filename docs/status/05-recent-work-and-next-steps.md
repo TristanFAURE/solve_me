@@ -4,6 +4,7 @@
 
 The ranked-solutions and shared-workflow implementation milestone is complete:
 
+- fixed Event Staffing requirement submission so visible group/min/max controls cannot be replaced by stale editor state
 - fixed school preference creation, unlimited aggregate capacity, two-seat wedding adjacency, and cascading wedding-table deletion
 - added validated `first`, `topK`, and `optimize` solve options
 - added configurable weighted assignment, target-deviation, and equity scoring
@@ -32,7 +33,7 @@ Final automated verification must include:
 - `git diff --check`
 - review for credentials, tokens, internal URLs, and database secrets
 
-Final unit verification passed 250 tests with 89.17% line coverage, the production build emitted the Worker and 3.53 MB WASM assets, and `git diff --check` passed. The 23 Playwright tests are discovered correctly but cannot execute in the current container because Chromium's required OS libraries, beginning with `libglib-2.0.so.0`, are unavailable. GitHub Actions installs those dependencies and runs the browser suite before deployment.
+Final unit verification passed 251 tests, the production build emitted the Worker and 3.53 MB WASM assets, and `git diff --check` passed. The 23 Playwright tests are discovered correctly but cannot execute in the current container because Chromium's required OS libraries, beginning with `libglib-2.0.so.0`, are unavailable. GitHub Actions installs those dependencies and runs the browser suite before deployment.
 
 ## Event Staffing scale result
 
