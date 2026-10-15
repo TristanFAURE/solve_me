@@ -23,6 +23,42 @@ export function collaborationGroups(project) {
   }));
 }
 
+export function collaborationConfiguration(project) {
+  return {
+    modelVersion: project?.modelVersion,
+    title: text(project?.title),
+    description: text(project?.description),
+    events: structuredClone(Array.isArray(project?.events) ? project.events : []),
+    groupTypes: structuredClone(Array.isArray(project?.groupTypes) ? project.groupTypes : []),
+    requirements: structuredClone(Array.isArray(project?.requirements) ? project.requirements : []),
+    cooldownRules: structuredClone(Array.isArray(project?.cooldownRules) ? project.cooldownRules : []),
+    globalLimits: structuredClone(project?.globalLimits && typeof project.globalLimits === 'object' ? project.globalLimits : {}),
+  };
+}
+
+export function applyCollaborationConfiguration(project, manifest) {
+  validateCollaborationManifest(manifest);
+  if (!manifest.configuration) return project;
+  const configuration = structuredClone(manifest.configuration);
+  const slotIds = new Set(configuration.events.map((event) => event.id));
+  const dayKeys = new Set(configuration.events.map((event) => String(event.dateKey ?? event.date ?? '').trim()).filter(Boolean));
+  const groupIds = new Set(configuration.groupTypes.map((group) => group.id));
+  const preferences = (project?.preferences ?? []).map((preference) => ({
+    ...preference,
+    slotPreferences: Object.fromEntries(Object.entries(preference.slotPreferences ?? preference.eventPreferences ?? {}).filter(([slotId]) => slotIds.has(slotId))),
+    slotGroupPreferences: Object.fromEntries(Object.entries(preference.slotGroupPreferences ?? {}).filter(([slotId]) => slotIds.has(slotId)).map(([slotId, values]) => [slotId, Object.fromEntries(Object.entries(values ?? {}).filter(([groupId]) => groupIds.has(groupId)))])),
+    dayPreferences: Object.fromEntries(Object.entries(preference.dayPreferences ?? {}).filter(([dayKey]) => dayKeys.has(dayKey))),
+    dayGroupPreferences: Object.fromEntries(Object.entries(preference.dayGroupPreferences ?? {}).filter(([dayKey]) => dayKeys.has(dayKey)).map(([dayKey, values]) => [dayKey, Object.fromEntries(Object.entries(values ?? {}).filter(([groupId]) => groupIds.has(groupId)))])),
+  }));
+  Object.assign(project, configuration, {
+    people: Array.isArray(project?.people) ? project.people : [],
+    preferences,
+    forcedAssignments: [],
+    forbiddenAssignments: [],
+  });
+  return project;
+}
+
 export function createCollaborationManifest(project, options = {}) {
   const now = options.now ?? new Date().toISOString();
   const random = text(options.random ?? globalThis.crypto?.randomUUID?.().replaceAll('-', ''));
@@ -42,6 +78,7 @@ export function createCollaborationManifest(project, options = {}) {
     revision: 1,
     dateKeys: collaborationDateKeys(project),
     groups: collaborationGroups(project),
+    configuration: collaborationConfiguration(project),
     createdAt: now,
     updatedAt: now,
   };
@@ -60,6 +97,15 @@ export function validateCollaborationManifest(value) {
   if (new Set(value.dateKeys).size !== value.dateKeys.length) throw new Error('Collaboration manifest dates must be unique.');
   if (!Array.isArray(value.groups) || value.groups.some((group) => !text(group?.id) || !text(group?.label))) throw new Error('Collaboration manifest groups are invalid.');
   if (new Set(value.groups.map(({ id }) => id)).size !== value.groups.length) throw new Error('Collaboration manifest groups must be unique.');
+  if (value.configuration !== undefined) {
+    const configuration = value.configuration;
+    if (!configuration || typeof configuration !== 'object' || Array.isArray(configuration)
+      || !Array.isArray(configuration.events) || !Array.isArray(configuration.groupTypes)
+      || !Array.isArray(configuration.requirements) || !Array.isArray(configuration.cooldownRules)
+      || !configuration.globalLimits || typeof configuration.globalLimits !== 'object' || Array.isArray(configuration.globalLimits)) {
+      throw new Error('Collaboration manifest configuration is invalid.');
+    }
+  }
   return value;
 }
 

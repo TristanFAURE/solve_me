@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  applyCollaborationConfiguration,
+  collaborationConfiguration,
   closeCollaborationManifest,
   createCollaborationManifest,
   reopenCollaborationManifest,
@@ -46,8 +48,42 @@ describe('collaboration data modules', () => {
     expect(manifest).toMatchObject({ version: 1, folder: 'autumn-gala--0123456789abcdef', revision: 1, status: 'open' });
     expect(manifest.dateKeys).toEqual(['2026-10-15', '2026-10-16']);
     expect(manifest.groups).toEqual([{ id: 'welcome', label: 'Welcome' }, { id: 'food', label: 'Food' }]);
+    expect(manifest.configuration).toMatchObject({
+      title: 'Autumn Gala',
+      events: project().events,
+      groupTypes: project().groupTypes,
+      requirements: [],
+      cooldownRules: [],
+      globalLimits: {},
+    });
+    expect(manifest.configuration).not.toHaveProperty('people');
+    expect(manifest.configuration).not.toHaveProperty('preferences');
     expect(reopenCollaborationManifest(closeCollaborationManifest(manifest, '2026-10-15T11:00:00.000Z'), '2026-10-15T12:00:00.000Z'))
       .toMatchObject({ folder: manifest.folder, sessionId: manifest.sessionId, revision: 3, status: 'open' });
+  });
+
+  it('restores administrator configuration while preserving people and relevant preferences', () => {
+    const source = project();
+    source.requirements = [{ eventId: 'S1', groupTypeId: 'welcome', min: 1, max: 2 }];
+    source.cooldownRules = [{ triggerGroupTypes: 'ANY', blockedGroupTypes: 'ANY', blockedNextEventCount: 1 }];
+    source.globalLimits = { maxAssignmentsPerPerson: 2 };
+    const manifest = createCollaborationManifest(source, { random: '0123456789abcdef', now: '2026-10-15T09:00:00.000Z' });
+    const target = {
+      title: 'Old', events: [{ id: 'old', dateKey: 'old' }], groupTypes: [{ id: 'old-group', label: 'Old' }], requirements: [], cooldownRules: [], globalLimits: {},
+      people: [{ id: 'p1', name: 'Person', email: 'p@example.org' }],
+      preferences: [{ personId: 'p1', slotPreferences: { old: 'prefer', S1: 'preferNot' }, dayPreferences: { old: 'prefer', '2026-10-15': 'neutral' }, dayGroupPreferences: { '2026-10-15': { welcome: 'prefer', missing: 'prefer' } } }],
+      forcedAssignments: [{ personId: 'p1', eventId: 'old', groupTypeId: 'old-group' }], forbiddenAssignments: [],
+    };
+    applyCollaborationConfiguration(target, manifest);
+    expect(target).toMatchObject({
+      title: 'Autumn Gala', events: source.events, groupTypes: source.groupTypes, requirements: source.requirements,
+      cooldownRules: source.cooldownRules, globalLimits: source.globalLimits, people: [{ id: 'p1', name: 'Person', email: 'p@example.org' }],
+      forcedAssignments: [], forbiddenAssignments: [],
+    });
+    expect(target.preferences[0].slotPreferences).toEqual({ S1: 'preferNot' });
+    expect(target.preferences[0].dayPreferences).toEqual({ '2026-10-15': 'neutral' });
+    expect(target.preferences[0].dayGroupPreferences).toEqual({ '2026-10-15': { welcome: 'prefer' } });
+    expect(collaborationConfiguration(source)).not.toHaveProperty('people');
   });
 
   it('models identity precisely and hashes normalized email into the encrypted path', async () => {

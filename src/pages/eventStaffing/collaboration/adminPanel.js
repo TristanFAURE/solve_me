@@ -1,4 +1,4 @@
-import { collaborationDateKeys, collaborationGroups, slugifyCollaborationTitle } from './collaborationManifest.js';
+import { applyCollaborationConfiguration, collaborationConfiguration, collaborationDateKeys, collaborationGroups, slugifyCollaborationTitle } from './collaborationManifest.js';
 import { buildParticipantCollaborationUrl } from './collaborationMode.js';
 import { applyCollaborationResponses, previewCollaborationResponses } from './responseMerge.js';
 import { createCollaborationSessionRepository } from './sessionRepository.js';
@@ -14,6 +14,15 @@ function service(collaboration, password) {
 function reportGrid(report) {
   if (!report) return '';
   return `<dl class="summary-grid compact-summary-grid">${Object.entries(report).filter(([, value]) => typeof value === 'number').map(([key, value]) => `<div><dt>${escapeHtml(key)}</dt><dd>${value}</dd></div>`).join('')}</dl>`;
+}
+
+function clearDerivedState(state) {
+  state.eventStaffingPage.lastValidation = null;
+  state.eventStaffingPage.lastGenericValidation = null;
+  state.eventStaffingPage.lastTransformedProject = null;
+  state.eventStaffingPage.lastNormalizedProject = null;
+  state.eventStaffingPage.lastSolverResult = null;
+  state.eventStaffingPage.activeSolutionIndex = 0;
 }
 
 export function renderCollaborationAdminPanel(state) {
@@ -70,6 +79,8 @@ export function bindCollaborationAdminPanel(root, state, rerender) {
       } else {
         const folder = admin.selectedFolder || candidates[0].folder;
         admin.manifest = (await repository.loadManifest(folder)).manifest;
+        applyCollaborationConfiguration(state.eventStaffingPage.domainProject, admin.manifest);
+        clearDerivedState(state);
         admin.message = 'Collaboration session loaded.';
       }
       admin.candidates = [];
@@ -85,9 +96,7 @@ export function bindCollaborationAdminPanel(root, state, rerender) {
     if (!admin.preview?.canApply || !globalThis.confirm?.('Apply the previewed participant responses?')) return;
     try {
       applyCollaborationResponses(state.eventStaffingPage.domainProject, admin.preview);
-      state.eventStaffingPage.lastValidation = null;
-      state.eventStaffingPage.lastNormalizedProject = null;
-      state.eventStaffingPage.lastSolverResult = null;
+      clearDerivedState(state);
       admin.message = 'Participant responses applied.';
       admin.preview = null;
     } catch (error) {
@@ -103,6 +112,7 @@ export function bindCollaborationAdminPanel(root, state, rerender) {
         status: 'open',
         dateKeys: collaborationDateKeys(state.eventStaffingPage.domainProject),
         groups: collaborationGroups(state.eventStaffingPage.domainProject),
+        configuration: collaborationConfiguration(state.eventStaffingPage.domainProject),
       });
       admin.generatedUrl = buildParticipantCollaborationUrl({ location: globalThis.location, ...collaboration.repository, session: admin.manifest.folder, token: collaboration.mode.token, password: admin.password });
       admin.message = 'A new collaboration revision was published.';

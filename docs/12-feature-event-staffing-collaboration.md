@@ -31,7 +31,7 @@ No name, email, or PIN appears in a repository path. GitHub folders are virtual 
 
 ## Manifest and revisions
 
-The encrypted manifest contains the immutable session ID/folder, display title, open/closed status, revision, actual configured Event Staffing date keys, stable group IDs/labels, and timestamps. Publishing collaboration after date/group changes creates a new revision. Responses from another session or revision are reported as stale and cannot be applied.
+The encrypted manifest contains the immutable session ID/folder, display title, open/closed status, revision, timestamps, and the administrator-owned Event Staffing configuration: title/description, events, groups, requirements, cooldown rules, and global limits. People, preferences, and person-specific forced/forbidden assignments are excluded. Loading an existing session restores this configuration while preserving current participant records and still-relevant preference values. Publishing collaboration after configuration changes creates a new revision. Responses from another session or revision are reported as stale and cannot be applied.
 
 ## Participant workflow
 
