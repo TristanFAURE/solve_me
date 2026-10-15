@@ -27,6 +27,7 @@ import { downloadJsonConfiguration, readJsonConfigurationFile, renderJsonConfigu
 import { confirmProjectReplacement } from '../../app/dataSafety.js';
 import { renderShareEditSetup } from '../../components/common/workflowSetup.js';
 import { applyEventStaffingShareEditPreview, exportEventStaffingPersonalWorkbook, exportEventStaffingShareEditWorkbook, previewEventStaffingShareEditWorkbookFile } from './shareEditWorkbook.js';
+import { bindCollaborationAdminPanel, renderCollaborationAdminPanel } from './collaboration/adminPanel.js';
 import { movePreferenceMatrixDay, movePreferenceMatrixPerson, renderPreferenceMatrix, setDayAvailability, setDayGroupPreference, setSlotGroupPreference, setSlotPreference } from './preferenceMatrix.js';
 import { addAssignmentRule, addCooldownRule, renderRuleEditors } from './ruleEditors.js';
 import {
@@ -783,8 +784,9 @@ function renderBody(domainProject, state) {
     selection.groupTypeLabelsById,
   )}
       </div>
-    </section>${renderSupportSections(domainProject, selection.groupTypeLabelsById, editor)}`;
+    </section>${renderSupportSections(domainProject, selection.groupTypeLabelsById, editor, { peopleReadOnly: Boolean(state.eventStaffingPage.collaboration?.mode?.enabled && !state.eventStaffingPage.collaboration.mode.userMode) })}`;
   return `
+    ${renderCollaborationAdminPanel(state)}
     <section class="hero-card event-staffing-hero-card">
       <div>
         <p class="eyebrow">Event staffing planner</p>
@@ -1464,6 +1466,7 @@ function bindInteractions(root, state) {
   const domainProject = state.eventStaffingPage.domainProject;
   const browserState = getEventBrowserState(state);
   const selection = selectVisibleEvent(domainProject, browserState);
+  const peopleLocked = Boolean(state.eventStaffingPage.collaboration?.mode?.enabled && !state.eventStaffingPage.collaboration.mode.userMode);
 
   bindWorkflowTabs(root, (tabId) => {
     if (!isWorkflowTab(tabId)) return;
@@ -1494,6 +1497,7 @@ function bindInteractions(root, state) {
     rerender();
   });
   root.querySelector('[data-action="import-event-staffing-json"]')?.addEventListener('change', async (event) => {
+    if (peopleLocked) { state.eventStaffingPage.message = 'Configuration replacement is disabled while collaborative people are authoritative.'; event.target.value = ''; rerender(); return; }
     const file = event.target.files?.[0];
     if (!file) return;
     try {
@@ -1540,6 +1544,7 @@ function bindInteractions(root, state) {
     rerender();
   });
   root.querySelector('[data-action="import-event-staffing-share-edit"]')?.addEventListener('change', async (event) => {
+    if (peopleLocked) { state.eventStaffingPage.message = 'Stakeholder workbook import is disabled in GitHub collaborative mode.'; event.target.value = ''; rerender(); return; }
     const file = event.target.files?.[0];
     if (!file) return;
     state.eventStaffingPage.shareEditImport = { status: 'busy', error: '', preview: null, fileName: file.name };
@@ -1554,6 +1559,7 @@ function bindInteractions(root, state) {
     rerender();
   });
   root.querySelector('[data-action="apply-event-staffing-share-edit"]')?.addEventListener('click', () => {
+    if (peopleLocked) return;
     const preview = state.eventStaffingPage.shareEditImport.preview;
     if (!preview?.canApply || !globalThis.confirm?.('Apply the previewed Event Staffing stakeholder changes?')) return;
     try {
@@ -1571,6 +1577,7 @@ function bindInteractions(root, state) {
     rerender();
   });
   root.querySelector('[name="eventStaffingWorkbookFile"]')?.addEventListener('change', async (event) => {
+    if (peopleLocked) { state.eventStaffingPage.message = 'Configuration workbook import is disabled while collaborative people are authoritative.'; event.target.value = ''; rerender(); return; }
     const file = event.target.files?.[0];
     if (!file) return;
     state.eventStaffingPage.workbookImport = { status: 'busy', error: '', preview: null };
@@ -1584,6 +1591,7 @@ function bindInteractions(root, state) {
     rerender();
   });
   root.querySelector('[data-event-staffing-action="replace-configuration-preview"]')?.addEventListener('click', () => {
+    if (peopleLocked) return;
     const confirmFn = globalThis.confirm;
     const confirmed = typeof confirmFn === 'function' && confirmFn.call(globalThis, 'Replace the full Event Staffing configuration? All current slots, categories, requirements, people, preferences, cooldowns, forced/forbidden assignments, limits, and solved results will be replaced.');
     if (!confirmed) return;
@@ -2551,6 +2559,7 @@ export function renderEventStaffingPage(root, state) {
   });
 
   bindInteractions(root, state);
+  bindCollaborationAdminPanel(root, state, () => renderEventStaffingPage(root, state));
   bindJsonCopyButtons(root);
   bindPageDraftAutosave(root, state.draftStorage, 'event-staffing', () => state.eventStaffingPage.domainProject, state.eventStaffingPage.persistence);
 }
