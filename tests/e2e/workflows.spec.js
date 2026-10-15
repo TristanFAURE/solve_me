@@ -128,7 +128,7 @@ test('Generic project changes persist across reload', async ({ page }) => {
 
 test('Event Staffing completes a deterministic HiGHS WASM solve in a Worker', async ({ page }) => {
   const project = {
-    modelVersion: 2,
+    modelVersion: 3,
     title: 'Worker fixture',
     events: [{
       id: 'morning',

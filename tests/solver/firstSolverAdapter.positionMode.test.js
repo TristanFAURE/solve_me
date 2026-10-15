@@ -10,6 +10,7 @@ import {
   notInSameContainer,
 } from '../helpers/solverAssertions.js';
 import { solve } from '../helpers/solverScenario.js';
+import { FirstSolverAdapter } from '../../src/solver/adapters/firstSolverAdapter.js';
 
 describe('FirstSolverAdapter - position mode', () => {
   it('enforces must-be-adjacent across all returned solutions', () => {
@@ -218,5 +219,60 @@ describe('FirstSolverAdapter - position mode', () => {
     expectSolved(result);
     expect(result.solutions).toHaveLength(10);
     expect(result.truncatedByLimit).toBe(true);
+  });
+
+  it('enforces minimum container capacity in position mode', () => {
+    const project = scenario()
+      .positionMode()
+      .items('A', 'B', 'C')
+      .containers({ T1: ['P1', 'P2'], T2: ['P3', 'P4'] })
+      .buildNormalized();
+    project.containers.find(({ id }) => id === 'T1').metadata.minCapacity = 2;
+
+    const result = solve(project);
+
+    expectSolved(result);
+    expect(result.solutions.every((solution) => solution.assignments.filter((assignment) => assignment.containerRef?.id === 'T1').length >= 2)).toBe(true);
+  });
+
+  it('returns unsat when all position-mode container minimums cannot be met', () => {
+    const project = scenario()
+      .positionMode()
+      .items('A')
+      .containers({ T1: ['P1'], T2: ['P2'] })
+      .buildNormalized();
+    project.containers.forEach((container) => { container.metadata.minCapacity = 1; });
+
+    expectUnsat(solve(project));
+  });
+
+  it('keeps a compact Wedding-like second table at or above its minimum', () => {
+    const project = scenario()
+      .positionMode()
+      .items('A', 'B', 'C', 'D', 'E')
+      .containers({ Bapteme: ['B1', 'B2', 'B3', 'B4'], T2: ['T1', 'T2', 'T3'] })
+      .buildNormalized();
+    project.containers.find(({ id }) => id === 'T2').metadata.minCapacity = 2;
+
+    const result = solve(project);
+
+    expectSolved(result);
+    expect(result.solutions.every((solution) => solution.assignments.filter((assignment) => assignment.containerRef?.id === 'T2').length >= 2)).toBe(true);
+  });
+
+  it('never returns an underfilled position solution from a bounded search', () => {
+    const project = scenario()
+      .positionMode()
+      .items('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H')
+      .containers({ T1: ['P1', 'P2', 'P3', 'P4'], T2: ['P5', 'P6', 'P7', 'P8'] })
+      .buildNormalized();
+    project.containers.forEach((container) => { container.metadata.minCapacity = 3; });
+
+    const result = new FirstSolverAdapter().solve(project, { mode: 'topK', maxSolutions: 1000, timeLimitMs: 5 });
+
+    expect(['solved', 'partial']).toContain(result.status);
+    expect(result.solutions.every((solution) => ['T1', 'T2'].every((containerId) => (
+      solution.assignments.filter((assignment) => assignment.containerRef?.id === containerId).length >= 3
+    )))).toBe(true);
   });
 });

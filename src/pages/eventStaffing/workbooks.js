@@ -11,8 +11,9 @@ import { applyWorksheetLayout } from '../../workbooks/layout.js';
 import { transformEventStaffingProject } from '../../core/transform/eventStaffingProject.js';
 import { normalizeProject } from '../../core/normalize/normalizeProject.js';
 import { validateProject } from '../../core/validate/validateProject.js';
-import { getDayGroupPreferenceMap, getDayPreferenceMap, getEffectiveSlotPreference, getPreferenceMap, getSlotDayKey, migrateEventStaffingProject, normalizePreferenceState, PREFERENCE_STATES } from './migration.js';
+import { getDayGroupPreferenceMap, getDayPreferenceMap, getEffectiveSlotPreference, getPreferenceMap, getSlotDayKey, getSlotGroupPreferenceMap, migrateEventStaffingProject, normalizePreferenceState, PREFERENCE_STATES } from './migration.js';
 import { validateEventStaffingProject } from './validateEventStaffingProject.js';
+import { appendWorkbookLegend, EVENT_STAFFING_WORKBOOK_LEGEND } from '../../workbooks/legend.js';
 
 const IDENTITY_HEADERS = new Set(['Person ID', 'Name', 'Email']);
 export const EVENT_STAFFING_WORKBOOK_DOMAIN = 'event-staffing';
@@ -118,6 +119,7 @@ export function createEventStaffingPreferenceWorkbook(domainProject) {
   XLSX.utils.book_append_sheet(workbook, applyWorksheetLayout(XLSX.utils.aoa_to_sheet(neutralizeMatrix(instructions)), [24, 100], { autoFilter: false }), 'Instructions');
   XLSX.utils.book_append_sheet(workbook, createPreferenceSheet(project, columns), 'Preferences');
   XLSX.utils.book_append_sheet(workbook, applyWorksheetLayout(XLSX.utils.json_to_sheet(neutralizeRows(slotRows), { header: ['Preference column key', 'Preference column position', 'Slot ID', 'Date', 'Slot label', 'Category coverage'] }), [34, 26, 20, 14, 22, 40]), 'Slots');
+  appendWorkbookLegend(workbook, 'Event Staffing preference legend', EVENT_STAFFING_WORKBOOK_LEGEND);
   return workbook;
 }
 
@@ -159,7 +161,7 @@ export function createEventStaffingConfigurationWorkbook(domainProject, options 
 }
 
 export function exportEventStaffingConfigurationWorkbook(domainProject) {
-  XLSX.writeFile(createEventStaffingConfigurationWorkbook(domainProject), `${safeFilename(domainProject?.title, 'event-staffing')}-configuration.xlsx`);
+  XLSX.writeFile(createEventStaffingConfigurationWorkbook(domainProject), 'event-staffing-configuration.xlsx');
 }
 
 function findSheet(workbook, name) {
@@ -370,11 +372,12 @@ export function applyEventStaffingPreferencePreview(domainProject, preview) {
     slotPreferences: { ...getPreferenceMap(entry) },
     dayPreferences: { ...getDayPreferenceMap(entry) },
     dayGroupPreferences: structuredClone(getDayGroupPreferenceMap(entry)),
+    slotGroupPreferences: structuredClone(getSlotGroupPreferenceMap(entry)),
   }]));
   const slotsById = new Map((domainProject.events ?? []).map((slot) => [slot.id, slot]));
   const replacedDaysByPerson = new Map();
   preview.changes.forEach(({ personId, slotId, state }) => {
-    const entry = preferencesByPersonId.get(personId) ?? { personId, slotPreferences: {}, dayPreferences: {}, dayGroupPreferences: {} };
+    const entry = preferencesByPersonId.get(personId) ?? { personId, slotPreferences: {}, slotGroupPreferences: {}, dayPreferences: {}, dayGroupPreferences: {} };
     const dayKey = getSlotDayKey(slotsById.get(slotId));
     const replacedDays = replacedDaysByPerson.get(personId) ?? new Set();
     if (!replacedDays.has(dayKey)) {
@@ -432,10 +435,11 @@ export function createEventStaffingSolutionWorkbook(domainProject, solverResult,
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(neutralizeRows(scheduleRows)), 'Schedule');
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(neutralizeRows(peopleRows)), 'People summary');
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(neutralizeMatrix(metadata)), 'Solution metadata');
+  appendWorkbookLegend(workbook, 'Event Staffing solution legend', EVENT_STAFFING_WORKBOOK_LEGEND);
   return workbook;
 }
 
 export function exportEventStaffingSolutionWorkbook(domainProject, solverResult, solutionIndex = 0) {
   const workbook = createEventStaffingSolutionWorkbook(domainProject, solverResult, solutionIndex);
-  XLSX.writeFile(workbook, `${safeFilename(domainProject?.title, 'event-staffing')}-solution-${solutionIndex + 1}.xlsx`);
+  XLSX.writeFile(workbook, `event-staffing-solution-${solutionIndex + 1}.xlsx`);
 }

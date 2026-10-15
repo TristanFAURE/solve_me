@@ -15,6 +15,15 @@ This feature includes:
 - validation of imported project data
 - compatibility handling for future schema evolution
 - shared persistence rules that coexist with separate domain-facing spreadsheet exports for operational use
+- distinct Share & Edit, Configuration backup, and Solution workbook purposes for School, Wedding, and Event Staffing
+
+## Implemented Share & Edit contract
+
+School, Wedding, and Event Staffing each expose one self-contained `Share & Edit` sheet. The sheet includes project/purpose/revision/identity metadata, localized English or French instructions and headers, a hidden canonical-header row, hidden stable IDs, filters, frozen headers, and formula-neutralized values. Identity may use full name, email, or administrator code; stable IDs take precedence during matching and unmatched visible keys create participants.
+
+Imports are parsed through the bounded XLSX Worker, validated into an immutable preview, and applied only after administrator confirmation. Duplicate identities, ambiguous matches, self-relations, contradictory columns, stale slot mappings, invalid values, and unknown administrator-owned references block application. Omitted participant rows remain unchanged; deleting a row never deletes a participant.
+
+School and Wedding use semicolon-separated relationship lists. Hard outcomes are deduplicated symmetrically, while soft votes retain directional provenance and aggregate their solver weight. Event Staffing uses one row per person/group, dynamic slot columns, explicit blank-to-neutral replacement, new-person creation, and personalized participant exports. Existing Configuration and Solution workbook formats remain separate and compatible.
 
 ## Out of scope
 

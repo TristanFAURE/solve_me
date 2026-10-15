@@ -40,8 +40,10 @@ Implemented features include:
 - versioned local autosave and draft recovery
 - full-fidelity configuration workbook export/import with replacement preview
 - validated full-configuration JSON export/import in Setup
+- localized Share & Edit workbook with stable guest matching, guest creation, symmetric hard relations, and directional preference votes
 - one-edge topology generation for two-seat tables
 - cascading normal table deletion so generated seats cannot become orphaned
+- hard table minimum occupancy enforcement in seat-aware position mode, including pre-solve seat-count and aggregate guest validation
 
 ## Topology model
 

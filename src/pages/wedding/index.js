@@ -38,7 +38,7 @@ import { exportWeddingConfigurationWorkbook, previewWeddingWorkbookFile } from '
 import { confirmProjectReplacement } from '../../app/dataSafety.js';
 import { bindPageDraftAutosave, persistPageDraft } from '../../storage/localDrafts.js';
 import { bindWorkflowTabs, isWorkflowTab, renderWorkflowPanel, renderWorkflowTabs, WORKFLOW_TABS_WITH_DISPLAY } from '../../components/common/workflowTabs.js';
-import { buildWorkflowSolveOptions, createWorkflowSolveDraft, renderAdvancedDiagnostics, renderSolveConfiguration, renderWorkbookSetup, solveOptionIssues } from '../../components/common/workflowSetup.js';
+import { buildWorkflowSolveOptions, createWorkflowSolveDraft, renderAdvancedDiagnostics, renderShareEditSetup, renderSolveConfiguration, renderWorkbookSetup, solveOptionIssues } from '../../components/common/workflowSetup.js';
 import { validateSolveOptions } from '../../solver/solveOptions.js';
 import { parseBulkLabels } from '../../components/common/bulkEntry.js';
 import { renderFieldLabel } from '../../components/common/fieldHelp.js';
@@ -46,6 +46,7 @@ import { bindJsonCopyButtons } from '../../components/common/jsonBlock.js';
 import { downloadJsonConfiguration, readJsonConfigurationFile, renderJsonConfigurationSetup } from '../../components/common/jsonConfiguration.js';
 import { migrateProjectModel } from '../../storage/modelVersioning.js';
 import { renderWeddingSolutionDisplay } from './weddingSolutionDisplay.js';
+import { applyWeddingShareEditPreview, exportWeddingShareEditWorkbook, previewWeddingShareEditWorkbookFile } from './shareEditWorkbook.js';
 
 const REPLACE_WEDDING_MESSAGE = 'This will replace your current non-empty wedding plan. Continue?';
 
@@ -56,6 +57,8 @@ function createWeddingEditorState() {
     bulkGuestLabels: '',
     bulkGuestGroupId: '',
     draftGuestLabel: '',
+    weddingShareLanguage: 'en',
+    weddingShareIdentity: 'fullName',
     draftGroupLabel: '',
     draftTableLabel: '',
     draftTableMinCapacity: '0',
@@ -117,6 +120,7 @@ function ensureWeddingProject(state) {
   }
   state.weddingPage.solveExecution ??= createSolveExecutionState();
   state.weddingPage.workbookImport ??= { status: 'idle', error: '', preview: null };
+  state.weddingPage.shareEditImport ??= { status: 'idle', error: '', preview: null };
   if (!isWorkflowTab(state.weddingPage.activeWorkflowTab, WORKFLOW_TABS_WITH_DISPLAY)) state.weddingPage.activeWorkflowTab = 'setup';
 }
 
@@ -1855,6 +1859,62 @@ function bindActions(root, state) {
       return;
     }
 
+    if (action === 'export-wedding-share-edit') {
+      element.addEventListener('click', () => {
+        try {
+          exportWeddingShareEditWorkbook(state.weddingPage.project, { language: state.weddingPage.editor.weddingShareLanguage, identityType: state.weddingPage.editor.weddingShareIdentity, filename: 'wedding-share-edit.xlsx' });
+          state.weddingPage.message = 'Wedding Share & Edit workbook downloaded.';
+        } catch (error) {
+          state.weddingPage.message = error instanceof Error ? `Share & Edit export failed: ${error.message}` : 'Share & Edit export failed.';
+        }
+        renderWeddingPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'import-wedding-share-edit') {
+      element.addEventListener('change', async (event) => {
+        const [file] = Array.from(event.target.files ?? []);
+        if (!file) return;
+        state.weddingPage.shareEditImport = { status: 'busy', error: '', preview: null, fileName: file.name };
+        renderWeddingPage(root, state);
+        try {
+          const preview = await previewWeddingShareEditWorkbookFile(file, state.weddingPage.project);
+          state.weddingPage.shareEditImport = { status: 'ready', error: '', preview, fileName: file.name };
+        } catch (error) {
+          state.weddingPage.shareEditImport = { status: 'error', error: error instanceof Error ? error.message : 'Stakeholder workbook import failed.', preview: null, fileName: file.name };
+        }
+        event.target.value = '';
+        renderWeddingPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'apply-wedding-share-edit') {
+      element.addEventListener('click', () => {
+        const preview = state.weddingPage.shareEditImport.preview;
+        if (!preview?.canApply || !globalThis.confirm?.('Apply the previewed Wedding stakeholder changes?')) return;
+        try {
+          state.weddingPage.project = applyWeddingShareEditPreview(state.weddingPage.project, preview);
+          state.weddingPage.shareEditImport = { status: 'idle', error: '', preview: null };
+          resetWeddingDerivedState(state);
+          state.weddingPage.message = 'Wedding stakeholder changes applied.';
+        } catch (error) {
+          state.weddingPage.shareEditImport.error = error instanceof Error ? error.message : 'Stakeholder changes could not be applied.';
+        }
+        renderWeddingPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'cancel-wedding-share-edit') {
+      element.addEventListener('click', () => {
+        state.weddingPage.shareEditImport = { status: 'idle', error: '', preview: null };
+        renderWeddingPage(root, state);
+      });
+      return;
+    }
+
     if (action === 'import-wedding-json') {
       element.addEventListener('change', async (event) => {
         const [file] = Array.from(event.target.files ?? []);
@@ -2018,7 +2078,7 @@ export function renderWeddingPage(root, state) {
   persistPageDraft(state.draftStorage, 'wedding', state.weddingPage.project, state.weddingPage.persistence);
   const preferencePolicy = getGeneralPreferenceAuthoringPolicy(new FirstSolverAdapter().getCapabilities());
   const activeTab = state.weddingPage.activeWorkflowTab;
-  const setupContent = `${renderMetadataPanel(state.weddingPage.project)}${renderSolveConfiguration(state.weddingPage.editor, 'wedding')}${renderJsonConfigurationSetup({ prefix: 'wedding', domainLabel: 'Wedding' })}${renderWorkbookSetup(state.weddingPage.workbookImport, 'wedding', 'wedding plan')}`;
+  const setupContent = `${renderMetadataPanel(state.weddingPage.project)}${renderSolveConfiguration(state.weddingPage.editor, 'wedding')}${renderJsonConfigurationSetup({ prefix: 'wedding', domainLabel: 'Wedding' })}${renderShareEditSetup(state.weddingPage.shareEditImport, 'wedding', 'Wedding', { language: state.weddingPage.editor.weddingShareLanguage, identityType: state.weddingPage.editor.weddingShareIdentity })}${renderWorkbookSetup(state.weddingPage.workbookImport, 'wedding', 'wedding plan')}`;
   const dataContent = `${renderWeddingDataTools(state.weddingPage.project, state.weddingPage.editor)}${renderCreateCards(state.weddingPage.project, state.weddingPage.editor)}<section class="workspace-columns two-up">${renderGuestsPanel(state.weddingPage.project, state.weddingPage.editor)}${renderGroupsPanel(state.weddingPage.project, state.weddingPage.editor)}</section>${renderTablesPanel(state.weddingPage.project, state.weddingPage.editor)}<details class="card advanced-diagnostics"><summary>Advanced seat topology by table</summary>${renderSeatsPanel(state.weddingPage.project, state.weddingPage.editor)}</details>`;
   const reviewContent = `${renderCommandBar(state.weddingPage.lastSolverResult, state.weddingPage.commandBarExpanded !== false)}${renderSolveStatus(state.weddingPage.solveExecution)}${renderValidationPanel(state.weddingPage.lastValidation, { hasComputedSolution: Boolean(state.weddingPage.lastSolverResult), expanded: state.weddingPage.validationPanelExpanded })}${renderAdvancedDiagnostics(state.weddingPage.project, state.weddingPage.lastNormalizedProject)}`;
   const resultsContent = `${renderSolutionPanel(state.weddingPage.lastNormalizedProject ?? state.weddingPage.project, state.weddingPage.lastSolverResult, state.weddingPage.editor.activeSolutionIndex, renderWeddingSolutionPanelOptions())}${state.weddingPage.lastSolverResult?.solutions?.length ? '<div class="button-row top-gap"><button type="button" data-action="export-wedding-solution">Export selected solved seating plan</button></div>' : ''}`;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getEffectiveAssignmentPreference, migrateEventStaffingProject, moveSlotDayPreferences, PREFERENCE_STATES } from '../../src/pages/eventStaffing/migration.js';
-import { movePreferenceMatrixDay, movePreferenceMatrixPerson, renderPreferenceMatrix, setDayAvailability, setDayGroupPreference } from '../../src/pages/eventStaffing/preferenceMatrix.js';
+import { movePreferenceMatrixDay, movePreferenceMatrixPerson, renderPreferenceMatrix, setDayAvailability, setDayGroupPreference, setSlotGroupPreference } from '../../src/pages/eventStaffing/preferenceMatrix.js';
 import { validateEventStaffingProject } from '../../src/pages/eventStaffing/validateEventStaffingProject.js';
 import { transformEventStaffingProject } from '../../src/core/transform/eventStaffingProject.js';
 
@@ -23,6 +23,21 @@ describe('Event Staffing slot migration', () => {
     expect(migrated.requirements[0]).toMatchObject({ eventId: 'E1', slotId: 'E1' });
     expect(migrated.preferences[0].slotPreferences.E1).toBe(PREFERENCE_STATES.UNAVAILABLE);
     expect(migrated.preferences[0].dayPreferences).toEqual({});
+    expect(migrated.preferences[0].slotGroupPreferences).toEqual({});
+    expect(migrated.modelVersion).toBe(3);
+  });
+
+  it('compiles slot/group preferences independently for categories in one slot', () => {
+    const project = migrateEventStaffingProject(legacyProject());
+    project.preferences = [{
+      personId: 'P1',
+      dayPreferences: { '2026-10-14': 'preferNot' },
+      slotGroupPreferences: { E1: { G1: 'unavailable', G2: 'prefer' } },
+    }];
+    const transformed = transformEventStaffingProject(project);
+    expect(transformed.forbiddenAssignments).toContainEqual(expect.objectContaining({ itemId: 'P1', destinationId: 'event:E1::group:G1' }));
+    expect(transformed.forbiddenAssignments).not.toContainEqual(expect.objectContaining({ itemId: 'P1', destinationId: 'event:E1::group:G2' }));
+    expect(transformed.softAssignmentScores).toContainEqual({ itemId: 'P1', destinationId: 'event:E1::group:G2', score: 1 });
   });
 
   it('supports person-centric whole-day preferences with group overrides', () => {
@@ -44,14 +59,17 @@ describe('Event Staffing slot migration', () => {
 
     setDayAvailability(project, 'P1', '2026-10-14', 'unavailable');
     setDayGroupPreference(project, 'P1', '2026-10-14', 'G1', 'prefer');
-    expect(getEffectiveAssignmentPreference(project.preferences[0], project.events[0], 'G1')).toBe(PREFERENCE_STATES.UNAVAILABLE);
-    expect(getEffectiveAssignmentPreference(project.preferences[0], project.events[1], 'G1')).toBe(PREFERENCE_STATES.UNAVAILABLE);
+    expect(getEffectiveAssignmentPreference(project.preferences[0], project.events[0], 'G1')).toBe(PREFERENCE_STATES.PREFER);
+    expect(getEffectiveAssignmentPreference(project.preferences[0], project.events[1], 'G1')).toBe(PREFERENCE_STATES.PREFER);
 
     setDayAvailability(project, 'P1', '2026-10-14', 'prefer');
     setDayGroupPreference(project, 'P1', '2026-10-14', 'G1', 'unavailable');
     expect(getEffectiveAssignmentPreference(project.preferences[0], project.events[0], 'G1')).toBe(PREFERENCE_STATES.UNAVAILABLE);
     expect(getEffectiveAssignmentPreference(project.preferences[0], project.events[1], 'G1')).toBe(PREFERENCE_STATES.UNAVAILABLE);
     expect(getEffectiveAssignmentPreference(project.preferences[0], project.events[0], 'G2')).toBe(PREFERENCE_STATES.PREFER);
+    setSlotGroupPreference(project, 'P1', 'E1', 'G1', 'neutral');
+    expect(getEffectiveAssignmentPreference(project.preferences[0], project.events[0], 'G1')).toBe(PREFERENCE_STATES.NEUTRAL);
+    expect(getEffectiveAssignmentPreference(project.preferences[0], project.events[1], 'G1')).toBe(PREFERENCE_STATES.UNAVAILABLE);
 
     const html = renderPreferenceMatrix(project, 'P1');
     expect(html).toContain('Person availability calendar');
@@ -61,6 +79,7 @@ describe('Event Staffing slot migration', () => {
     expect(html).toContain('<th>Welcome</th>');
     expect(html).toContain('<th>Setup</th>');
     expect(html).toContain('data-day-group-preference');
+    expect(html).toContain('data-slot-group-preference');
     expect(html).toContain('Previous availability date');
     expect(html).toContain('Next availability date');
     expect(html).toContain('Previous availability person');

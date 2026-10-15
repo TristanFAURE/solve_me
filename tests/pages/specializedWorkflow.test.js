@@ -40,6 +40,8 @@ describe('specialized shared workflows', () => {
     expect(root.innerHTML).toContain('aria-labelledby="workflow-tab-display"');
     expect(root.innerHTML).toContain('Advanced diagnostics');
     expect(root.innerHTML).toContain('value="5000"');
+    expect(root.innerHTML).toContain('Share &amp; Edit workbook');
+    expect(root.innerHTML).toContain(`data-action="export-${_name}-share-edit"`);
   });
 
   it('routes invalid School solves to Review and successful solves to Results', () => {

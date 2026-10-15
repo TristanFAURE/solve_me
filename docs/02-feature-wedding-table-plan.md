@@ -16,6 +16,7 @@ This feature includes:
 - solver execution for seating plans
 - display of one or more seating solutions through the shared solution display layer
 - export of seating results to an easy-to-read spreadsheet format suitable for wedding planners
+- a one-row-per-guest Share & Edit sheet for stakeholder same-table/different-table hard rules and directional soft votes
 - export and import of a complete editable wedding configuration workbook before solving
 
 ## Out of scope

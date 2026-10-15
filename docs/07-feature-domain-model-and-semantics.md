@@ -276,10 +276,12 @@ Semantics in position mode:
 
 - container capacity is typically implied by the number of positions it contains
 - explicit capacity may still be kept for validation consistency checks
+- `minCapacity` is an unconditional hard lower bound on assignments to positions belonging to that container
+- every returned solved or partial solution satisfies every container minimum
+- a minimum greater than the number of contained positions is rejected before solving
 
 Optional future extension:
 
-- minimum capacity
 - exact capacity
 - weighted capacity
 

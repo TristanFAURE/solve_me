@@ -5,6 +5,7 @@ import {
   getContainedGroupIdsForItem,
 } from '../../core/transform/domainMappings.js';
 import { neutralizeMatrix, neutralizeRows } from '../../workbooks/safety.js';
+import { appendWorkbookLegend, SCHOOL_WORKBOOK_LEGEND } from '../../workbooks/legend.js';
 
 function getSolutionAssignments(solution) {
   return Array.isArray(solution?.assignments) ? solution.assignments : [];
@@ -135,11 +136,12 @@ export function exportSchoolSolutionWorkbook(project, solverResult, solutionInde
   XLSX.utils.book_append_sheet(workbook, classesSheet, 'Classes');
   XLSX.utils.book_append_sheet(workbook, studentsSheet, 'Students');
   XLSX.utils.book_append_sheet(workbook, teachersSheet, 'Teachers');
+  appendWorkbookLegend(workbook, 'School solution legend', SCHOOL_WORKBOOK_LEGEND);
 
   const safeTitle = String(project?.title || 'school-solution')
     .trim()
     .replaceAll(/[^a-z0-9-_]+/gi, '-')
     .replaceAll(/^-+|-+$/g, '') || 'school-solution';
 
-  XLSX.writeFile(workbook, `${safeTitle}-solution-${clampedSolutionIndex + 1}.xlsx`);
+  XLSX.writeFile(workbook, `school-solution-${clampedSolutionIndex + 1}.xlsx`);
 }

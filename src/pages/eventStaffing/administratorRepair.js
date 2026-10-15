@@ -1,6 +1,7 @@
 import {
   getDayGroupPreferenceMap,
   getDayPreferenceMap,
+  getEffectiveAssignmentPreferenceWithSource,
   getPreferenceMap,
   getSlotDayKey,
   normalizePreferenceState,
@@ -74,44 +75,27 @@ export function buildAdministratorRepairCandidates(domainProject, normalizedProj
 
   people.forEach((person) => {
     const preference = (domainProject.preferences ?? []).find((entry) => entry.personId === person.id);
-    const dayUnavailable = normalizePreferenceState(getDayPreferenceMap(preference)[dateKey]) === PREFERENCE_STATES.UNAVAILABLE;
-    if (dayUnavailable) {
-      addForbiddenCandidate(candidates, {
-        id: candidateId(dateKey, 'day', person.id),
-        type: 'whole-day-unavailability',
-        itemId: person.id,
-        destinationIds: destinationsFor(domainProject, events),
-        label: `${person.name ?? person.id}: whole-day unavailability on ${dateScopeLabel}`,
-      });
-    } else {
-      groupTypes.forEach((group) => {
-        const groupUnavailable = normalizePreferenceState(getDayGroupPreferenceMap(preference)[dateKey]?.[group.id]) === PREFERENCE_STATES.UNAVAILABLE;
-        if (groupUnavailable) {
-          addForbiddenCandidate(candidates, {
-            id: candidateId(dateKey, 'day-group', person.id, group.id),
-            type: 'group-unavailability',
-            itemId: person.id,
-            destinationIds: destinationsFor(domainProject, events, group.id),
-            label: `${person.name ?? person.id}: unavailable for ${groupLabels.get(group.id) ?? group.id} on ${dateScopeLabel}`,
-          });
-        }
-      });
-      events.forEach((event) => {
-        if (normalizePreferenceState(getPreferenceMap(preference)[event.id]) !== PREFERENCE_STATES.UNAVAILABLE) return;
-        const blockedDestinations = destinationsFor(domainProject, [event]).filter((destinationId) => {
-          const groupTypeId = destinationId.split('::group:')[1];
-          return normalizePreferenceState(getDayGroupPreferenceMap(preference)[dateKey]?.[groupTypeId]) !== PREFERENCE_STATES.UNAVAILABLE
-            && !Object.hasOwn(getDayGroupPreferenceMap(preference)[dateKey] ?? {}, groupTypeId);
-        });
-        addForbiddenCandidate(candidates, {
-          id: candidateId(dateKey, 'slot', person.id, event.id),
-          type: 'slot-unavailability',
-          itemId: person.id,
-          destinationIds: blockedDestinations,
-          label: `${person.name ?? person.id}: slot / legacy slot unavailability at ${eventLabels.get(event.id)} on ${dateLabel}`,
-        });
-      });
-    }
+    const unavailableBySource = new Map();
+    events.forEach((event) => (domainProject.requirements ?? [])
+      .filter((requirement) => requirement.eventId === event.id)
+      .forEach((requirement) => {
+        const effective = getEffectiveAssignmentPreferenceWithSource(preference, event, requirement.groupTypeId);
+        if (effective.state !== PREFERENCE_STATES.UNAVAILABLE) return;
+        const key = effective.source === 'day' ? 'day'
+          : effective.source === 'dayGroup' ? `dayGroup:${requirement.groupTypeId}`
+            : effective.source === 'slot' ? `slot:${event.id}`
+              : `slotGroup:${event.id}:${requirement.groupTypeId}`;
+        const ids = unavailableBySource.get(key) ?? [];
+        ids.push(createEventStaffingDestinationId(event.id, requirement.groupTypeId));
+        unavailableBySource.set(key, ids);
+      }));
+    unavailableBySource.forEach((destinationIds, key) => {
+      const [source, slotId, groupTypeId] = key.split(':');
+      if (source === 'day') addForbiddenCandidate(candidates, { id: candidateId(dateKey, 'day', person.id), type: 'whole-day-unavailability', itemId: person.id, destinationIds, label: `${person.name ?? person.id}: whole-day unavailability on ${dateScopeLabel}` });
+      if (source === 'dayGroup') addForbiddenCandidate(candidates, { id: candidateId(dateKey, 'day-group', person.id, slotId), type: 'group-unavailability', itemId: person.id, destinationIds, label: `${person.name ?? person.id}: unavailable for ${groupLabels.get(slotId) ?? slotId} on ${dateScopeLabel}` });
+      if (source === 'slot') addForbiddenCandidate(candidates, { id: candidateId(dateKey, 'slot', person.id, slotId), type: 'slot-unavailability', itemId: person.id, destinationIds, label: `${person.name ?? person.id}: slot unavailability at ${eventLabels.get(slotId)} on ${dateLabel}` });
+      if (source === 'slotGroup') addForbiddenCandidate(candidates, { id: candidateId(dateKey, 'slot-group', person.id, slotId, groupTypeId), type: 'slot-group-unavailability', itemId: person.id, destinationIds, label: `${person.name ?? person.id}: unavailable for ${groupLabels.get(groupTypeId) ?? groupTypeId} at ${eventLabels.get(slotId)} on ${dateLabel}` });
+    });
 
     const allowed = Array.isArray(person.allowedGroupTypeIds) ? person.allowedGroupTypeIds : [];
     const forbidden = Array.isArray(person.forbiddenGroupTypeIds) ? person.forbiddenGroupTypeIds : [];

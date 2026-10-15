@@ -9,6 +9,7 @@ import { neutralizeMatrix, neutralizeRows, readWorkbookFile, WorkbookSafetyError
 import { importWeddingWorkbookFromWorkbook } from './importWeddingWorkbook.js';
 import { getSeatTableId } from './tableTopology.js';
 import { validateWeddingProject } from './validateWeddingProject.js';
+import { appendWorkbookLegend, WEDDING_WORKBOOK_LEGEND } from '../../workbooks/legend.js';
 
 export const WEDDING_WORKBOOK_DOMAIN = 'wedding';
 
@@ -57,11 +58,12 @@ export function createWeddingConfigurationWorkbook(project, options = {}) {
   appendRows('Preferences', (project.preferences ?? []).map((entry) => ({ 'First guest or group': guestLabels.get(entry.leftRef?.id) ?? groupLabels.get(entry.leftRef?.id) ?? entry.leftRef?.id ?? '', Preference: weddingRuleLabel(entry.kind), 'Second guest or group': guestLabels.get(entry.rightRef?.id) ?? groupLabels.get(entry.rightRef?.id) ?? entry.rightRef?.id ?? '', Weight: entry.weight ?? '' })), [32, 38, 32, 12], ['First guest or group', 'Preference', 'Second guest or group', 'Weight']);
   appendRows('Seats', seats.map((seat) => ({ Seat: seat.label, Table: tableLabels.get(getSeatTableId(project, seat.id)) ?? getSeatTableId(project, seat.id) ?? '', Index: seat.metadata?.seatIndex ?? '', Generated: seat.metadata?.generated ?? false, 'Seat ID': seat.id })), [28, 28, 12, 12, 20], ['Seat', 'Table', 'Index', 'Generated', 'Seat ID']);
   appendRows('Topology', (project.topologies ?? []).map((entry) => ({ 'First seat': seatLabels.get(entry.from?.id) ?? entry.from?.id ?? '', 'Second seat': seatLabels.get(entry.to?.id) ?? entry.to?.id ?? '', Relation: entry.kind ?? '' })), [28, 28, 20], ['First seat', 'Second seat', 'Relation']);
+  appendWorkbookLegend(workbook, 'Wedding workbook legend', WEDDING_WORKBOOK_LEGEND);
   return appendConfigurationEnvelope(workbook, WEDDING_WORKBOOK_DOMAIN, project, options);
 }
 
 export function exportWeddingConfigurationWorkbook(project) {
-  XLSX.writeFile(createWeddingConfigurationWorkbook(project), `${safeFilename(project?.title)}-configuration.xlsx`);
+  XLSX.writeFile(createWeddingConfigurationWorkbook(project), 'wedding-configuration.xlsx');
 }
 
 function validateFullProject(project) {

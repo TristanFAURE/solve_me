@@ -1032,6 +1032,8 @@ function searchPositionAssignments({
   mustNotBeAdjacentMap,
   adjacencyMap,
   positionToContainerMap,
+  containerIds,
+  containerLoads,
   solutions,
   maxSolutions,
   itemLookup,
@@ -1055,7 +1057,15 @@ function searchPositionAssignments({
   searchState.exploredNodes += 1;
 
   if (itemIndex >= itemIds.length) {
-    pushRankedSolution(solutions, buildPositionAssignmentSolution(assignmentsByItemId, itemLookup, positionLookup, containerLookup, positionToContainerMap), model, maxSolutions, searchState);
+    if (allContainerMinCapacitiesSatisfied(containerLoads, containerIds, containerLookup)) {
+      pushRankedSolution(solutions, buildPositionAssignmentSolution(assignmentsByItemId, itemLookup, positionLookup, containerLookup, positionToContainerMap), model, maxSolutions, searchState);
+    }
+    return;
+  }
+
+  const remainingItemCount = itemIds.length - itemIndex;
+  if (!canStillSatisfyRemainingMinCapacities(containerLoads, containerIds, containerLookup, remainingItemCount)) {
+    searchState.prunedNodes += 1;
     return;
   }
 
@@ -1094,41 +1104,49 @@ function searchPositionAssignments({
 
     assignmentsByItemId.set(itemId, positionId);
     assignedPositionIds.add(positionId);
-    searchPositionAssignments({
-      itemIds,
-      itemIndex: itemIndex + 1,
-      candidatePositionIdsByItemId,
-      assignmentsByItemId,
-      assignedPositionIds,
-      mustShareMap,
-      mustNotShareMap,
-      mustBeAdjacentMap,
-      mustNotBeAdjacentMap,
-      adjacencyMap,
-      positionToContainerMap,
-      solutions,
-      maxSolutions,
-      itemLookup,
-      positionLookup,
-      containerLookup,
-      allowedContainerMap,
-      forbiddenContainerMap,
-      fixedAssignmentMap,
-      forbiddenAssignmentMap,
-      assignmentExclusionMap,
-      assignmentCountUpperBoundMap,
-      model,
-      assignmentScoreMap,
-      targetScoreMap,
-      preferencePairMap,
-      suffixUpperBounds,
-      currentScore: currentScore
-        + getIncrementalScoreForDestination(itemId, positionId, assignmentScoreMap, targetScoreMap)
-        + getIncrementalRelationPreferenceScore({ itemId, positionId, assignmentsByItemId, preferencePairMap, positionToContainerMap, adjacencyMap }),
-      searchState,
-    });
-    assignedPositionIds.delete(positionId);
-    assignmentsByItemId.delete(itemId);
+    const containerId = positionToContainerMap.get(positionId);
+    containerLoads.set(containerId, (containerLoads.get(containerId) ?? 0) + 1);
+    try {
+      searchPositionAssignments({
+        itemIds,
+        itemIndex: itemIndex + 1,
+        candidatePositionIdsByItemId,
+        assignmentsByItemId,
+        assignedPositionIds,
+        mustShareMap,
+        mustNotShareMap,
+        mustBeAdjacentMap,
+        mustNotBeAdjacentMap,
+        adjacencyMap,
+        positionToContainerMap,
+        containerIds,
+        containerLoads,
+        solutions,
+        maxSolutions,
+        itemLookup,
+        positionLookup,
+        containerLookup,
+        allowedContainerMap,
+        forbiddenContainerMap,
+        fixedAssignmentMap,
+        forbiddenAssignmentMap,
+        assignmentExclusionMap,
+        assignmentCountUpperBoundMap,
+        model,
+        assignmentScoreMap,
+        targetScoreMap,
+        preferencePairMap,
+        suffixUpperBounds,
+        currentScore: currentScore
+          + getIncrementalScoreForDestination(itemId, positionId, assignmentScoreMap, targetScoreMap)
+          + getIncrementalRelationPreferenceScore({ itemId, positionId, assignmentsByItemId, preferencePairMap, positionToContainerMap, adjacencyMap }),
+        searchState,
+      });
+    } finally {
+      containerLoads.set(containerId, (containerLoads.get(containerId) ?? 0) - 1);
+      assignedPositionIds.delete(positionId);
+      assignmentsByItemId.delete(itemId);
+    }
   }
 }
 
@@ -1491,6 +1509,8 @@ export class FirstSolverAdapter extends SolverAdapter {
 
       const perItemSoftScoreUpperBounds = getPerItemSoftScoreUpperBounds(model.items, assignmentScoreMap, targetScoreMap);
       const suffixUpperBounds = buildSuffixUpperBounds(itemIds, perItemSoftScoreUpperBounds);
+      const containerIds = model.containers.map((container) => container.id);
+      const containerLoads = new Map(containerIds.map((containerId) => [containerId, 0]));
 
       searchPositionAssignments({
         itemIds,
@@ -1504,6 +1524,8 @@ export class FirstSolverAdapter extends SolverAdapter {
         mustNotBeAdjacentMap,
         adjacencyMap,
         positionToContainerMap,
+        containerIds,
+        containerLoads,
         solutions,
         maxSolutions,
         itemLookup,

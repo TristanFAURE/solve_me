@@ -24,6 +24,7 @@ This feature includes:
 - spreadsheet export of solved class distributions in a format that teachers or school staff can read easily
 - spreadsheet export of the complete editable school configuration before solving
 - spreadsheet import of school-authored `.xlsx` workbooks using the same teacher-facing sheet vocabulary as the export baseline
+- a scalable one-row-per-participant Share & Edit sheet for students, teachers, levels, class restrictions, and directional relationship votes
 - reopening imported projects in the school page when the saved project metadata indicates the school view
 
 ## Out of scope

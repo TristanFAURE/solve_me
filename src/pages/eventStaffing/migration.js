@@ -1,4 +1,4 @@
-export const EVENT_STAFFING_MODEL_VERSION = 2;
+export const EVENT_STAFFING_MODEL_VERSION = 3;
 
 export const PREFERENCE_STATES = Object.freeze({
   PREFER: 'prefer',
@@ -78,8 +78,15 @@ export function migrateEventStaffingProject(project = {}) {
         normalizePreferenceState(value) ?? value,
       ])),
     ]));
+    const slotGroupPreferences = Object.fromEntries(Object.entries(entry?.slotGroupPreferences ?? entry?.eventGroupPreferences ?? {}).map(([slotId, valuesByGroup]) => [
+      slotId,
+      Object.fromEntries(Object.entries(valuesByGroup && typeof valuesByGroup === 'object' ? valuesByGroup : {}).map(([groupTypeId, value]) => [
+        groupTypeId,
+        normalizePreferenceState(value) ?? value,
+      ])),
+    ]));
     const { dayAvailability: _legacyDayAvailability, ...migratedEntry } = entry ?? {};
-    return { ...migratedEntry, slotPreferences, dayPreferences, dayGroupPreferences };
+    return { ...migratedEntry, slotPreferences, slotGroupPreferences, dayPreferences, dayGroupPreferences };
   });
 
   return {
@@ -109,6 +116,10 @@ export function getDayGroupPreferenceMap(entry) {
   return entry?.dayGroupPreferences ?? {};
 }
 
+export function getSlotGroupPreferenceMap(entry) {
+  return entry?.slotGroupPreferences ?? entry?.eventGroupPreferences ?? {};
+}
+
 export function getEffectiveSlotPreference(entry, slot) {
   const dayState = normalizePreferenceState(getDayPreferenceMap(entry)[getSlotDayKey(slot)]) ?? PREFERENCE_STATES.NEUTRAL;
   if (dayState === PREFERENCE_STATES.UNAVAILABLE) {
@@ -121,16 +132,26 @@ export function getEffectiveSlotPreference(entry, slot) {
 }
 
 export function getEffectiveAssignmentPreference(entry, slot, groupTypeId) {
-  const dayState = normalizePreferenceState(getDayPreferenceMap(entry)[getSlotDayKey(slot)]) ?? PREFERENCE_STATES.NEUTRAL;
-  if (dayState === PREFERENCE_STATES.UNAVAILABLE) return PREFERENCE_STATES.UNAVAILABLE;
+  return getEffectiveAssignmentPreferenceWithSource(entry, slot, groupTypeId).state;
+}
+
+export function getEffectiveAssignmentPreferenceWithSource(entry, slot, groupTypeId) {
+  const slotGroups = getSlotGroupPreferenceMap(entry)[slot?.id] ?? {};
+  if (Object.hasOwn(slotGroups, groupTypeId)) {
+    return { state: normalizePreferenceState(slotGroups[groupTypeId]) ?? PREFERENCE_STATES.NEUTRAL, source: 'slotGroup' };
+  }
   const valuesByGroup = getDayGroupPreferenceMap(entry)[getSlotDayKey(slot)] ?? {};
   if (Object.hasOwn(valuesByGroup, groupTypeId)) {
-    return normalizePreferenceState(valuesByGroup[groupTypeId]) ?? PREFERENCE_STATES.NEUTRAL;
+    return { state: normalizePreferenceState(valuesByGroup[groupTypeId]) ?? PREFERENCE_STATES.NEUTRAL, source: 'dayGroup' };
   }
   if (Object.hasOwn(getPreferenceMap(entry), slot?.id)) {
-    return normalizePreferenceState(getPreferenceMap(entry)[slot.id]) ?? PREFERENCE_STATES.NEUTRAL;
+    return { state: normalizePreferenceState(getPreferenceMap(entry)[slot.id]) ?? PREFERENCE_STATES.NEUTRAL, source: 'slot' };
   }
-  return dayState;
+  const dayKey = getSlotDayKey(slot);
+  if (Object.hasOwn(getDayPreferenceMap(entry), dayKey)) {
+    return { state: normalizePreferenceState(getDayPreferenceMap(entry)[dayKey]) ?? PREFERENCE_STATES.NEUTRAL, source: 'day' };
+  }
+  return { state: PREFERENCE_STATES.NEUTRAL, source: 'neutral' };
 }
 
 export function moveSlotDayPreferences(domainProject, slotId, oldDayKey, newDayKey) {

@@ -62,6 +62,7 @@ This lets the current generic container-mode solver enforce school eligibility h
 - versioned local autosave and draft recovery
 - full-fidelity configuration workbook export/import with replacement preview
 - validated full-configuration JSON export/import in Setup
+- localized Share & Edit workbook with stable identity matching, participant creation, class/level fields, and directional relationship votes
 - regression fixes for preference creation and aggregate capacity when a class is unlimited
 
 ## Workbook import/export baseline

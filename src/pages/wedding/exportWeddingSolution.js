@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { getContainedGroupIdsForItem } from '../../core/transform/domainMappings.js';
 import { neutralizeMatrix, neutralizeRows } from '../../workbooks/safety.js';
+import { appendWorkbookLegend, WEDDING_WORKBOOK_LEGEND } from '../../workbooks/legend.js';
 
 function getSolutionAssignments(solution) {
   return Array.isArray(solution?.assignments) ? solution.assignments : [];
@@ -200,11 +201,12 @@ export function exportWeddingSolutionWorkbook(project, solverResult, solutionInd
   XLSX.utils.book_append_sheet(workbook, guestsSheet, 'Guests');
   XLSX.utils.book_append_sheet(workbook, groupsSheet, 'Groups');
   XLSX.utils.book_append_sheet(workbook, tablesSheet, 'Tables');
+  appendWorkbookLegend(workbook, 'Wedding solution legend', WEDDING_WORKBOOK_LEGEND);
 
   const safeTitle = String(project?.title || 'wedding-plan')
     .trim()
     .replaceAll(/[^a-z0-9-_]+/gi, '-')
     .replaceAll(/^-+|-+$/g, '') || 'wedding-plan';
 
-  XLSX.writeFile(workbook, `${safeTitle}-solution-${clampedSolutionIndex + 1}.xlsx`);
+  XLSX.writeFile(workbook, `wedding-solution-${clampedSolutionIndex + 1}.xlsx`);
 }

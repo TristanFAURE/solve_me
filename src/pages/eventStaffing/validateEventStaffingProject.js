@@ -3,6 +3,7 @@ import {
   getDayPreferenceMap,
   getEffectiveAssignmentPreference,
   getPreferenceMap,
+  getSlotGroupPreferenceMap,
   getSlotDayKey,
   migrateEventStaffingProject,
   normalizePreferenceState,
@@ -278,6 +279,20 @@ export function validateEventStaffingProject(domainProject = {}) {
       if (!state) {
         errors.push({ level: 'error', code: 'event-staffing-invalid-preference-value', message: `Preference value for person "${preference.personId}" and slot "${eventId}" is invalid.`, path: `preferences[${index}].slotPreferences.${eventId}` });
       }
+    });
+
+    Object.entries(getSlotGroupPreferenceMap(preference)).forEach(([eventId, valuesByGroup]) => {
+      if (!eventIds.has(eventId)) {
+        errors.push({ level: 'error', code: 'event-staffing-unknown-slot-group-preference-slot', message: `Slot/group preferences for person "${preference.personId}" reference unknown slot "${eventId}".`, path: `preferences[${index}].slotGroupPreferences.${eventId}` });
+      }
+      if (!valuesByGroup || typeof valuesByGroup !== 'object' || Array.isArray(valuesByGroup)) {
+        errors.push({ level: 'error', code: 'event-staffing-invalid-slot-group-preference-map', message: `Slot/group preferences for person "${preference.personId}" and slot "${eventId}" must be an object.`, path: `preferences[${index}].slotGroupPreferences.${eventId}` });
+        return;
+      }
+      Object.entries(valuesByGroup).forEach(([groupTypeId, value]) => {
+        if (!groupTypeIds.has(groupTypeId)) errors.push({ level: 'error', code: 'event-staffing-unknown-slot-group-preference-group', message: `Slot/group preferences for person "${preference.personId}" reference unknown group "${groupTypeId}".`, path: `preferences[${index}].slotGroupPreferences.${eventId}.${groupTypeId}` });
+        if (!normalizePreferenceState(value)) errors.push({ level: 'error', code: 'event-staffing-invalid-slot-group-preference', message: `Slot/group preference for person "${preference.personId}", slot "${eventId}", and group "${groupTypeId}" is invalid.`, path: `preferences[${index}].slotGroupPreferences.${eventId}.${groupTypeId}` });
+      });
     });
 
     Object.entries(getDayPreferenceMap(preference)).forEach(([dayKey, value]) => {

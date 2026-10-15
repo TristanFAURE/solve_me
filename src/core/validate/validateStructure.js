@@ -225,11 +225,20 @@ function validatePositionCapacityConsistency(project, nodeIndex) {
     });
 
   project.containers.forEach((container, index) => {
+    const minCapacity = container.metadata?.minCapacity ?? 0;
     const maxCapacity = container.metadata?.maxCapacity ?? null;
     const positionCount = (positionsByContainer.get(container.id) ?? []).length;
 
     if (project.assignmentMode === ASSIGNMENT_MODES.POSITION && positionCount === 0) {
       errors.push(createError('container-without-positions', `Container '${container.id}' must contain positions in position mode.`, `containers[${index}]`));
+    }
+
+    if (project.assignmentMode === ASSIGNMENT_MODES.POSITION && Number.isInteger(minCapacity) && minCapacity > positionCount) {
+      errors.push(createError(
+        'minimum-capacity-exceeds-positions',
+        `Container '${container.id}' has minimum capacity ${minCapacity} but only ${positionCount} positions.`,
+        `containers[${index}].metadata.minCapacity`,
+      ));
     }
 
     if (project.assignmentMode === ASSIGNMENT_MODES.POSITION && maxCapacity !== null && positionCount > 0 && maxCapacity !== positionCount) {

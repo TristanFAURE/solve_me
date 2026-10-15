@@ -30,7 +30,7 @@ import { validateSchoolProject } from './validateSchoolProject.js';
 import { confirmProjectReplacement } from '../../app/dataSafety.js';
 import { bindPageDraftAutosave, persistPageDraft } from '../../storage/localDrafts.js';
 import { bindWorkflowTabs, isWorkflowTab, renderWorkflowPanel, renderWorkflowTabs, WORKFLOW_TABS_WITH_DISPLAY } from '../../components/common/workflowTabs.js';
-import { buildWorkflowSolveOptions, createWorkflowSolveDraft, renderAdvancedDiagnostics, renderSolveConfiguration, renderWorkbookSetup, solveOptionIssues } from '../../components/common/workflowSetup.js';
+import { buildWorkflowSolveOptions, createWorkflowSolveDraft, renderAdvancedDiagnostics, renderShareEditSetup, renderSolveConfiguration, renderWorkbookSetup, solveOptionIssues } from '../../components/common/workflowSetup.js';
 import { validateSolveOptions } from '../../solver/solveOptions.js';
 import { parseBulkLabels } from '../../components/common/bulkEntry.js';
 import { renderFieldLabel } from '../../components/common/fieldHelp.js';
@@ -39,6 +39,7 @@ import { downloadJsonConfiguration, readJsonConfigurationFile, renderJsonConfigu
 import { migrateProjectModel } from '../../storage/modelVersioning.js';
 import { renderSchoolSolutionDisplay } from './schoolSolutionDisplay.js';
 import { assignTeachersToSchoolResult } from './teacherAssignment.js';
+import { applySchoolShareEditPreview, exportSchoolShareEditWorkbook, previewSchoolShareEditWorkbookFile } from './shareEditWorkbook.js';
 
 const REPLACE_SCHOOL_MESSAGE = 'This will replace your current non-empty school scenario. Continue?';
 
@@ -50,6 +51,8 @@ function createSchoolEditorState() {
     bulkStudentLevelId: '',
     draftStudentLabel: '',
     draftTeacherLabel: '',
+    schoolShareLanguage: 'en',
+    schoolShareIdentity: 'fullName',
     draftLevelLabel: '',
     draftClassLabel: '',
     draftClassMinCapacity: '0',
@@ -112,6 +115,7 @@ function ensureSchoolProject(state) {
   }
   state.schoolPage.solveExecution ??= createSolveExecutionState();
   state.schoolPage.workbookImport ??= { status: 'idle', error: '', preview: null };
+  state.schoolPage.shareEditImport ??= { status: 'idle', error: '', preview: null };
   if (!isWorkflowTab(state.schoolPage.activeWorkflowTab, WORKFLOW_TABS_WITH_DISPLAY)) state.schoolPage.activeWorkflowTab = 'setup';
 }
 
@@ -1508,6 +1512,62 @@ function bindActions(root, state) {
       return;
     }
 
+    if (action === 'export-school-share-edit') {
+      element.addEventListener('click', () => {
+        try {
+          exportSchoolShareEditWorkbook(state.schoolPage.project, { language: state.schoolPage.editor.schoolShareLanguage, identityType: state.schoolPage.editor.schoolShareIdentity, filename: 'school-share-edit.xlsx' });
+          state.schoolPage.message = 'School Share & Edit workbook downloaded.';
+        } catch (error) {
+          state.schoolPage.message = error instanceof Error ? `Share & Edit export failed: ${error.message}` : 'Share & Edit export failed.';
+        }
+        renderSchoolPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'import-school-share-edit') {
+      element.addEventListener('change', async (event) => {
+        const [file] = Array.from(event.target.files ?? []);
+        if (!file) return;
+        state.schoolPage.shareEditImport = { status: 'busy', error: '', preview: null, fileName: file.name };
+        renderSchoolPage(root, state);
+        try {
+          const preview = await previewSchoolShareEditWorkbookFile(file, state.schoolPage.project);
+          state.schoolPage.shareEditImport = { status: 'ready', error: '', preview, fileName: file.name };
+        } catch (error) {
+          state.schoolPage.shareEditImport = { status: 'error', error: error instanceof Error ? error.message : 'Stakeholder workbook import failed.', preview: null, fileName: file.name };
+        }
+        event.target.value = '';
+        renderSchoolPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'apply-school-share-edit') {
+      element.addEventListener('click', () => {
+        const preview = state.schoolPage.shareEditImport.preview;
+        if (!preview?.canApply || !globalThis.confirm?.('Apply the previewed School stakeholder changes?')) return;
+        try {
+          state.schoolPage.project = applySchoolShareEditPreview(state.schoolPage.project, preview);
+          state.schoolPage.shareEditImport = { status: 'idle', error: '', preview: null };
+          resetSchoolDerivedState(state);
+          state.schoolPage.message = 'School stakeholder changes applied.';
+        } catch (error) {
+          state.schoolPage.shareEditImport.error = error instanceof Error ? error.message : 'Stakeholder changes could not be applied.';
+        }
+        renderSchoolPage(root, state);
+      });
+      return;
+    }
+
+    if (action === 'cancel-school-share-edit') {
+      element.addEventListener('click', () => {
+        state.schoolPage.shareEditImport = { status: 'idle', error: '', preview: null };
+        renderSchoolPage(root, state);
+      });
+      return;
+    }
+
     if (action === 'import-school-json') {
       element.addEventListener('change', async (event) => {
         const [file] = Array.from(event.target.files ?? []);
@@ -1667,6 +1727,7 @@ export function renderSchoolPage(root, state) {
     </div></section>
     ${renderSolveConfiguration(state.schoolPage.editor, 'school')}
     ${renderJsonConfigurationSetup({ prefix: 'school', domainLabel: 'School' })}
+    ${renderShareEditSetup(state.schoolPage.shareEditImport, 'school', 'School', { language: state.schoolPage.editor.schoolShareLanguage, identityType: state.schoolPage.editor.schoolShareIdentity })}
     ${renderWorkbookSetup(state.schoolPage.workbookImport, 'school', 'school scenario')}`;
   const dataContent = `${renderSchoolDataTools(state.schoolPage.project, state.schoolPage.editor)}${renderCreateCards(state.schoolPage.project, state.schoolPage.editor)}
     <section class="workspace-columns two-up">${renderStudentsPanel(state.schoolPage.project, state.schoolPage.editor)}${renderTeachersPanel(state.schoolPage.project, state.schoolPage.editor)}</section>

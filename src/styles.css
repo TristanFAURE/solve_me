@@ -181,6 +181,21 @@ body {
   background: #1d4ed8;
 }
 
+.button-row button:disabled,
+.command-bar-button:disabled {
+  border-color: #cbd5e1;
+  background: #e2e8f0;
+  color: #64748b;
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+.button-row button:disabled:hover,
+.command-bar-button:disabled:hover {
+  background: #e2e8f0;
+}
+
 .command-bar-card {
   position: sticky;
   top: 12px;

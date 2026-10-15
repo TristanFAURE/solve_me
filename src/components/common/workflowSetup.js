@@ -64,11 +64,11 @@ export function renderWorkbookSetup(importState, prefix, domainLabel) {
   const preview = importState?.preview;
   return `
     <section class="card">
-      <h2>Configuration workbook</h2>
-      <p class="muted-text">Export the editable configuration, or preview a full configuration or legacy workbook before replacing this draft.</p>
+      <h2>Configuration backup</h2>
+      <p class="muted-text">Export or restore the lossless administrator configuration. Stakeholder edits belong in the separate Share & Edit workbook.</p>
       <div class="button-row">
-        <button type="button" data-action="export-${prefix}-configuration">Export configuration workbook</button>
-        <label class="command-bar-button command-bar-file-button">Preview workbook<input type="file" data-action="import-${prefix}-workbook" accept=".xlsx,.xls" hidden /></label>
+        <button type="button" data-action="export-${prefix}-configuration">Export configuration backup</button>
+        <label class="command-bar-button command-bar-file-button">Import configuration backup<input type="file" data-action="import-${prefix}-workbook" accept=".xlsx" hidden /></label>
       </div>
       ${importState?.status === 'busy' ? '<p role="status">Reading workbook...</p>' : ''}
       ${importState?.error ? `<p role="alert" class="command-bar-feedback command-bar-feedback-error">${escapeHtml(importState.error)}</p>` : ''}
@@ -82,6 +82,14 @@ export function renderWorkbookSetup(importState, prefix, domainLabel) {
           <button type="button" data-action="cancel-${prefix}-workbook">Cancel import</button>
         </div>` : ''}
     </section>`;
+}
+
+export function renderShareEditSetup(importState, prefix, domainLabel, options = {}) {
+  const report = importState?.preview?.report;
+  const countEntries = report ? Object.entries(report.counts ?? report)
+    .filter(([, value]) => typeof value === 'number') : [];
+  const participants = options.participants ?? [];
+  return `<section class="card"><h2>Share &amp; Edit workbook</h2><p class="muted-text">Export one stakeholder-friendly editable sheet, then preview and confirm changes before they are applied atomically.</p><div class="form-grid ${options.personalized ? 'three-columns' : 'two-columns'} compact-form-grid"><label>Workbook language<select name="${prefix}ShareLanguage"><option value="en"${options.language !== 'fr' ? ' selected' : ''}>English</option><option value="fr"${options.language === 'fr' ? ' selected' : ''}>Français</option></select></label><label>Identity type<select name="${prefix}ShareIdentity"><option value="fullName"${options.identityType === 'fullName' ? ' selected' : ''}>Full name</option><option value="email"${options.identityType === 'email' ? ' selected' : ''}>Email</option><option value="externalKey"${options.identityType === 'externalKey' ? ' selected' : ''}>Administrator code</option></select></label>${options.personalized ? `<label>Personalized participant<select name="${prefix}SharePersonId"><option value="">Select participant</option>${participants.map((participant) => `<option value="${escapeHtml(participant.id)}"${participant.id === options.personId ? ' selected' : ''}>${escapeHtml(participant.name ?? participant.label)}</option>`).join('')}</select></label>` : ''}</div><div class="button-row top-gap"><button type="button" data-action="export-${prefix}-share-edit">Export Share &amp; Edit workbook</button>${options.personalized ? `<button type="button" data-action="export-${prefix}-personalized"${options.personId ? '' : ' disabled'}>Export personalized workbook</button>` : ''}<label class="command-bar-button command-bar-file-button">Import stakeholder workbook<input type="file" data-action="import-${prefix}-share-edit" accept=".xlsx" hidden /></label></div>${importState?.status === 'busy' ? '<p role="status">Reading stakeholder workbook...</p>' : ''}${importState?.error ? `<p role="alert" class="command-bar-feedback command-bar-feedback-error">${escapeHtml(importState.error)}</p>` : ''}${report ? `<section class="workspace-panel top-gap"><h3>Import preview</h3><p><strong>Source:</strong> ${escapeHtml(importState.preview.revision || importState.fileName || 'Share & Edit workbook')}</p>${countEntries.length ? `<dl class="summary-grid compact-summary-grid">${countEntries.map(([key, value]) => `<div><dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl>` : ''}${(report.warnings ?? []).length ? `<ul class="issue-list compact-issue-list">${report.warnings.map((message) => `<li class="issue-list-item warning">${escapeHtml(message)}</li>`).join('')}</ul>` : ''}${(report.errors ?? []).length ? `<ul class="issue-list compact-issue-list">${report.errors.map((message) => `<li class="issue-list-item error">${escapeHtml(message)}</li>`).join('')}</ul>` : ''}<div class="button-row"><button type="button" data-action="apply-${prefix}-share-edit"${importState.preview.canApply ? '' : ' disabled'}>Apply stakeholder changes</button><button type="button" data-action="cancel-${prefix}-share-edit">Cancel preview</button></div></section>` : ''}</section>`;
 }
 
 export function renderAdvancedDiagnostics(project, normalizedProject) {

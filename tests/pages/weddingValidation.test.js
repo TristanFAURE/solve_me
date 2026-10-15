@@ -65,4 +65,30 @@ describe('wedding validation', () => {
     const validation = validateWeddingProject(project);
     expect(validation.warnings.some((issue) => issue.code === 'wedding-seat-capacity-mismatch')).toBe(true);
   });
+
+  it('rejects a table minimum greater than its defined seat count', () => {
+    const project = buildWeddingProject();
+    project.containers[0].metadata.minCapacity = 3;
+    const validation = validateWeddingProject(project);
+    expect(validation.errors).toContainEqual(expect.objectContaining({ code: 'wedding-minimum-capacity-exceeds-seats' }));
+  });
+
+  it('accepts minimum zero and a minimum equal to the seat count', () => {
+    const zero = buildWeddingProject();
+    zero.containers[0].metadata.minCapacity = 0;
+    expect(validateWeddingProject(zero).valid).toBe(true);
+    const exact = buildWeddingProject();
+    exact.containers[0].metadata.minCapacity = 2;
+    expect(validateWeddingProject(exact).valid).toBe(true);
+  });
+
+  it('rejects aggregate table minimums above the guest count', () => {
+    const project = buildWeddingProject();
+    project.containers.push(createContainer({ id: 'table-2', label: 'Table 2', minCapacity: 1, maxCapacity: 1 }));
+    project.positions.push(createPosition({ id: 'seat-3', label: 'Seat 3' }));
+    project.containments.push(createContainmentRelation(createEntityRef('container', 'table-2'), createEntityRef('position', 'seat-3')));
+    project.containers[0].metadata.minCapacity = 2;
+    const validation = validateWeddingProject(project);
+    expect(validation.errors).toContainEqual(expect.objectContaining({ code: 'wedding-minimum-capacity-exceeds-guests' }));
+  });
 });

@@ -83,6 +83,19 @@ describe('Event Staffing administrator repair', () => {
     expect(candidates.map((candidate) => candidate.type)).not.toContain('category-workload-maximum');
   });
 
+  it('offers only effective slot/group unavailability when broader values are overridden', () => {
+    const domain = project();
+    domain.preferences = [{
+      personId: 'P1',
+      dayPreferences: { '2026-10-15': 'unavailable' },
+      slotGroupPreferences: { S1: { A: 'unavailable', B: 'neutral' } },
+    }];
+    const candidates = buildAdministratorRepairCandidates(domain, normalized(domain), '2026-10-15');
+    expect(candidates).toContainEqual(expect.objectContaining({ type: 'slot-group-unavailability', destinationIds: ['event:S1::group:A'] }));
+    expect(candidates.filter((candidate) => candidate.type === 'whole-day-unavailability')
+      .every((candidate) => !candidate.destinationIds.includes('event:S1::group:B'))).toBe(true);
+  });
+
   it('supports select all, clear, and individual selection as pure operations', () => {
     const candidates = [{ id: 'a' }, { id: 'b' }];
     expect(selectAllRepairCandidates(candidates)).toEqual(['a', 'b']);

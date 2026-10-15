@@ -77,6 +77,7 @@ export function validateWeddingProject(project) {
   const assignmentMode = project?.assignmentMode;
   const totalCapacity = tables.reduce((sum, table) => sum + (getTableCapacity(table) ?? 0), 0);
   const hasUnlimitedCapacity = tables.some((table) => getTableCapacity(table) == null);
+  const totalMinimumCapacity = tables.reduce((sum, table) => sum + (Number.isInteger(table?.metadata?.minCapacity) ? table.metadata.minCapacity : 0), 0);
 
   if (!project?.title?.trim()) {
     warnings.push(createIssue('warning', 'wedding-missing-title', 'Add an event name so the seating plan is easier to identify.', ['title']));
@@ -92,6 +93,10 @@ export function validateWeddingProject(project) {
 
   if (tables.length > 0 && !hasUnlimitedCapacity && totalCapacity < guests.length) {
     errors.push(createIssue('error', 'wedding-not-enough-seats', `The current tables only provide ${totalCapacity} seats for ${guests.length} guests. Increase table capacities before solving.`, ['containers']));
+  }
+
+  if (totalMinimumCapacity > guests.length) {
+    errors.push(createIssue('error', 'wedding-minimum-capacity-exceeds-guests', `The tables require at least ${totalMinimumCapacity} assigned guests, but only ${guests.length} guests exist.`, ['containers']));
   }
 
   for (const guest of guests) {
@@ -111,9 +116,14 @@ export function validateWeddingProject(project) {
       const capacity = getTableCapacity(table);
       const shape = getWeddingTableShape(table);
       const generationMode = getTableGenerationMode(table);
+      const minimumCapacity = Number.isInteger(table?.metadata?.minCapacity) ? table.metadata.minCapacity : 0;
 
       if (seats.length === 0) {
         warnings.push(createIssue('warning', 'wedding-table-without-seats', `${table.label} has no seats yet, so guests cannot be placed there in seat-aware mode.`, ['positions', table.id]));
+      }
+
+      if (minimumCapacity > seats.length) {
+        errors.push(createIssue('error', 'wedding-minimum-capacity-exceeds-seats', `${table.label} requires at least ${minimumCapacity} guests but has only ${seats.length} seats.`, ['containers', table.id, 'metadata', 'minCapacity']));
       }
 
       if (Number.isFinite(capacity) && seats.length > 0 && capacity !== seats.length) {

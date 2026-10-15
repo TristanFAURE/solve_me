@@ -8,6 +8,7 @@ import { applyWorksheetLayout } from '../../workbooks/layout.js';
 import { neutralizeMatrix, neutralizeRows, readWorkbookFile, WorkbookSafetyError } from '../../workbooks/safety.js';
 import { importSchoolWorkbookFromWorkbook } from './importSchoolWorkbook.js';
 import { validateSchoolProject } from './validateSchoolProject.js';
+import { appendWorkbookLegend, SCHOOL_WORKBOOK_LEGEND } from '../../workbooks/legend.js';
 
 export const SCHOOL_WORKBOOK_DOMAIN = 'school';
 
@@ -49,11 +50,12 @@ export function createSchoolConfigurationWorkbook(project, options = {}) {
   appendRows('Classes', classes.map((entry) => ({ Class: entry.label, Teachers: labels(getContainerTeacherIds(entry), teachers), 'Accepted levels': labels(getContainerAcceptedLevelIds(entry), levels), 'Min capacity': entry.metadata?.minCapacity ?? entry.minCapacity ?? 0, 'Max capacity': entry.metadata?.maxCapacity ?? entry.maxCapacity ?? '', 'Class ID': entry.id })), [28, 32, 32, 14, 14, 20], ['Class', 'Teachers', 'Accepted levels', 'Min capacity', 'Max capacity', 'Class ID']);
   appendRows('Rules', (project.constraints ?? []).map((entry) => ({ 'First participant': participantById.get(entry.leftRef?.id) ?? entry.leftRef?.id ?? '', Rule: schoolRuleLabel(entry.kind), 'Second participant': participantById.get(entry.rightRef?.id) ?? entry.rightRef?.id ?? '' })), [30, 36, 30], ['First participant', 'Rule', 'Second participant']);
   appendRows('Preferences', (project.preferences ?? []).map((entry) => ({ 'First participant': participantById.get(entry.leftRef?.id) ?? entry.leftRef?.id ?? '', Preference: schoolRuleLabel(entry.kind), 'Second participant': participantById.get(entry.rightRef?.id) ?? entry.rightRef?.id ?? '', Weight: entry.weight ?? '' })), [30, 36, 30, 12], ['First participant', 'Preference', 'Second participant', 'Weight']);
+  appendWorkbookLegend(workbook, 'School workbook legend', SCHOOL_WORKBOOK_LEGEND);
   return appendConfigurationEnvelope(workbook, SCHOOL_WORKBOOK_DOMAIN, project, options);
 }
 
 export function exportSchoolConfigurationWorkbook(project) {
-  XLSX.writeFile(createSchoolConfigurationWorkbook(project), `${safeFilename(project?.title)}-configuration.xlsx`);
+  XLSX.writeFile(createSchoolConfigurationWorkbook(project), 'school-configuration.xlsx');
 }
 
 function validateFullProject(project) {

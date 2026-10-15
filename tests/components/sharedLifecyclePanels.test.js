@@ -252,6 +252,14 @@ describe('shared validation lifecycle panels', () => {
     expect(root.innerHTML).toContain('class="command-bar-button command-bar-file-button"');
   });
 
+  it('offers shared and personalized stakeholder workbooks for Event Staffing', () => {
+    const root = createRoot();
+    renderEventStaffingPage(root, createAppState({ storage: null }));
+    expect(root.innerHTML).toContain('data-action="export-event-staffing-share-edit"');
+    expect(root.innerHTML).toContain('data-action="export-event-staffing-personalized"');
+    expect(root.innerHTML).toContain('data-action="import-event-staffing-share-edit"');
+  });
+
   it.each([
     ['Generic', 'genericPage', renderGenericPage, 'validate', 'solve', null, null],
     ['School', 'schoolPage', renderSchoolPage, 'validate-school', 'solve-school', null, null],

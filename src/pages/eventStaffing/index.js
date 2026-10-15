@@ -20,12 +20,14 @@ import { renderSolveStatus, updateSolveStatus } from '../../components/solutions
 import { cancelSolveExecution, createSolveExecutionState, discardSolveExecution, startSolveExecution } from '../../solver/solveExecution.js';
 import { bindPageDraftAutosave, persistPageDraft } from '../../storage/localDrafts.js';
 import { bindWorkflowTabs, isWorkflowTab, renderWorkflowPanel as renderTabPanel, renderWorkflowTabs } from '../../components/common/workflowTabs.js';
-import { getDayGroupPreferenceMap, getDayPreferenceMap, getEffectiveAssignmentPreference, getSlotDayKey, migrateEventStaffingProject, moveSlotDayPreferences, getPreferenceMap, normalizePreferenceState, PREFERENCE_STATES } from './migration.js';
+import { getDayGroupPreferenceMap, getDayPreferenceMap, getEffectiveAssignmentPreference, getSlotDayKey, getSlotGroupPreferenceMap, migrateEventStaffingProject, moveSlotDayPreferences, getPreferenceMap, normalizePreferenceState, PREFERENCE_STATES } from './migration.js';
 import { renderFieldLabel } from '../../components/common/fieldHelp.js';
 import { bindJsonCopyButtons, renderJsonBlock } from '../../components/common/jsonBlock.js';
 import { downloadJsonConfiguration, readJsonConfigurationFile, renderJsonConfigurationSetup } from '../../components/common/jsonConfiguration.js';
 import { confirmProjectReplacement } from '../../app/dataSafety.js';
-import { movePreferenceMatrixDay, movePreferenceMatrixPerson, renderPreferenceMatrix, setDayAvailability, setDayGroupPreference, setSlotPreference } from './preferenceMatrix.js';
+import { renderShareEditSetup } from '../../components/common/workflowSetup.js';
+import { applyEventStaffingShareEditPreview, exportEventStaffingPersonalWorkbook, exportEventStaffingShareEditWorkbook, previewEventStaffingShareEditWorkbookFile } from './shareEditWorkbook.js';
+import { movePreferenceMatrixDay, movePreferenceMatrixPerson, renderPreferenceMatrix, setDayAvailability, setDayGroupPreference, setSlotGroupPreference, setSlotPreference } from './preferenceMatrix.js';
 import { addAssignmentRule, addCooldownRule, renderRuleEditors } from './ruleEditors.js';
 import {
   applyEventStaffingPreferencePreview,
@@ -599,7 +601,11 @@ function describeDeleteImpact(domainProject, eventIdsToDelete) {
   const forcedCount = domainProject.forcedAssignments.filter((assignment) => idsToDelete.has(assignment.eventId)).length;
   const forbiddenCount = domainProject.forbiddenAssignments.filter((assignment) => idsToDelete.has(assignment.eventId)).length;
   const preferenceCount = domainProject.preferences.reduce(
-    (total, preference) => total + Object.keys(getPreferenceMap(preference)).filter((eventId) => idsToDelete.has(eventId)).length,
+    (total, preference) => total
+      + Object.keys(getPreferenceMap(preference)).filter((eventId) => idsToDelete.has(eventId)).length
+      + Object.entries(getSlotGroupPreferenceMap(preference))
+        .filter(([eventId]) => idsToDelete.has(eventId))
+        .reduce((count, [, valuesByGroup]) => count + Object.keys(valuesByGroup ?? {}).length, 0),
     0,
   );
 
@@ -742,6 +748,7 @@ function renderSetupPanel(domainProject, state) {
       </div>
     </section>
     ${renderJsonConfigurationSetup({ prefix: 'event-staffing', domainLabel: 'Event Staffing' })}
+    ${renderShareEditSetup(state.eventStaffingPage.shareEditImport, 'event-staffing', 'Event Staffing', { language: state.eventStaffingPage.editor.eventStaffingShareLanguage, identityType: state.eventStaffingPage.editor.eventStaffingShareIdentity, personalized: true, participants: domainProject.people, personId: state.eventStaffingPage.editor.eventStaffingSharePersonId })}
     <section class="panel">
       <h2>Configuration workbook</h2>
       <p class="muted-text">Export the complete editable setup at any time. Import previews either a full configuration replacement or a compatible preferences-only merge.</p>
@@ -1073,6 +1080,7 @@ function sanitizePersonEventPreferences(eventPreferences = {}) {
     if (state === PREFERENCE_STATES.PREFER) sanitized[eventId] = 'Y';
     if (state === PREFERENCE_STATES.PREFER_NOT) sanitized[eventId] = 'N';
     if (state === PREFERENCE_STATES.UNAVAILABLE) sanitized[eventId] = 'U';
+    if (state === PREFERENCE_STATES.NEUTRAL) sanitized[eventId] = PREFERENCE_STATES.NEUTRAL;
   });
 
   return sanitized;
@@ -1180,6 +1188,10 @@ export function removeGroupType(domainProject, groupTypeIndex, editor) {
       dayKey,
       Object.fromEntries(Object.entries(valuesByGroup).filter(([groupTypeId]) => groupTypeId !== groupType.id)),
     ]).filter(([, valuesByGroup]) => Object.keys(valuesByGroup).length > 0)),
+    slotGroupPreferences: Object.fromEntries(Object.entries(getSlotGroupPreferenceMap(preference)).map(([slotId, valuesByGroup]) => [
+      slotId,
+      Object.fromEntries(Object.entries(valuesByGroup).filter(([groupTypeId]) => groupTypeId !== groupType.id)),
+    ]).filter(([, valuesByGroup]) => Object.keys(valuesByGroup).length > 0)),
   }));
 
   if (editor.draftRequirementGroupTypeId === groupType.id) {
@@ -1236,16 +1248,18 @@ export function addPerson(domainProject, editor) {
   const existingPreferenceEntry = domainProject.preferences.find((preference) => preference.personId === id);
   const dayPreferences = { ...getDayPreferenceMap(existingPreferenceEntry) };
   const dayGroupPreferences = structuredClone(getDayGroupPreferenceMap(existingPreferenceEntry));
+  const slotGroupPreferences = structuredClone(getSlotGroupPreferenceMap(existingPreferenceEntry));
 
   if (editingPersonIndex !== null && currentPerson) {
     domainProject.people[editingPersonIndex] = nextPerson;
     domainProject.preferences = domainProject.preferences.filter((preference) => preference.personId !== id);
-    if (Object.keys(sanitizedEventPreferences).length > 0 || Object.keys(dayPreferences).length > 0 || Object.keys(dayGroupPreferences).length > 0) {
+    if (Object.keys(sanitizedEventPreferences).length > 0 || Object.keys(dayPreferences).length > 0 || Object.keys(dayGroupPreferences).length > 0 || Object.keys(slotGroupPreferences).length > 0) {
       domainProject.preferences.push({
         personId: id,
         eventPreferences: sanitizedEventPreferences,
         ...(Object.keys(dayPreferences).length > 0 ? { dayPreferences } : {}),
         ...(Object.keys(dayGroupPreferences).length > 0 ? { dayGroupPreferences } : {}),
+        ...(Object.keys(slotGroupPreferences).length > 0 ? { slotGroupPreferences } : {}),
       });
     }
     resetPersonEditor(editor);
@@ -1253,13 +1267,14 @@ export function addPerson(domainProject, editor) {
   }
 
   domainProject.people.push(nextPerson);
-  if (Object.keys(sanitizedEventPreferences).length > 0 || Object.keys(dayPreferences).length > 0 || Object.keys(dayGroupPreferences).length > 0) {
+  if (Object.keys(sanitizedEventPreferences).length > 0 || Object.keys(dayPreferences).length > 0 || Object.keys(dayGroupPreferences).length > 0 || Object.keys(slotGroupPreferences).length > 0) {
     domainProject.preferences = domainProject.preferences.filter((preference) => preference.personId !== id);
     domainProject.preferences.push({
       personId: id,
       eventPreferences: sanitizedEventPreferences,
       ...(Object.keys(dayPreferences).length > 0 ? { dayPreferences } : {}),
       ...(Object.keys(dayGroupPreferences).length > 0 ? { dayGroupPreferences } : {}),
+      ...(Object.keys(slotGroupPreferences).length > 0 ? { slotGroupPreferences } : {}),
     });
   }
   resetPersonEditor(editor);
@@ -1393,6 +1408,9 @@ export function deleteEvents(domainProject, eventIdsToDelete, editor) {
     slotPreferences: Object.fromEntries(
       Object.entries(getPreferenceMap(preference)).filter(([eventId]) => !idsToDelete.has(eventId)),
     ),
+    slotGroupPreferences: Object.fromEntries(
+      Object.entries(getSlotGroupPreferenceMap(preference)).filter(([eventId]) => !idsToDelete.has(eventId)),
+    ),
     dayPreferences: Object.fromEntries(
       Object.entries(getDayPreferenceMap(preference)).filter(([dayKey]) => remainingDayKeys.has(dayKey)),
     ),
@@ -1497,6 +1515,61 @@ function bindInteractions(root, state) {
     event.target.value = '';
     rerender();
   });
+  root.querySelector('[name="event-staffingShareLanguage"]')?.addEventListener('change', (event) => { editor.eventStaffingShareLanguage = event.target.value; rerender(); });
+  root.querySelector('[name="event-staffingShareIdentity"]')?.addEventListener('change', (event) => { editor.eventStaffingShareIdentity = event.target.value; rerender(); });
+  root.querySelector('[name="event-staffingSharePersonId"]')?.addEventListener('change', (event) => {
+    editor.eventStaffingSharePersonId = event.target.value;
+    rerender();
+  });
+  root.querySelector('[data-action="export-event-staffing-share-edit"]')?.addEventListener('click', () => {
+    try {
+      exportEventStaffingShareEditWorkbook(domainProject, { language: editor.eventStaffingShareLanguage, identityType: editor.eventStaffingShareIdentity, filename: 'event-staffing-share-edit.xlsx' });
+      state.eventStaffingPage.message = 'Event Staffing Share & Edit workbook downloaded.';
+    } catch (error) {
+      state.eventStaffingPage.message = error instanceof Error ? `Share & Edit export failed: ${error.message} Use personalized files for oversized projects.` : 'Share & Edit export failed.';
+    }
+    rerender();
+  });
+  root.querySelector('[data-action="export-event-staffing-personalized"]')?.addEventListener('click', () => {
+    try {
+      exportEventStaffingPersonalWorkbook(domainProject, editor.eventStaffingSharePersonId, { language: editor.eventStaffingShareLanguage, identityType: editor.eventStaffingShareIdentity });
+      state.eventStaffingPage.message = 'Personalized Event Staffing workbook downloaded.';
+    } catch (error) {
+      state.eventStaffingPage.message = error instanceof Error ? `Personalized export failed: ${error.message}` : 'Personalized export failed.';
+    }
+    rerender();
+  });
+  root.querySelector('[data-action="import-event-staffing-share-edit"]')?.addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    state.eventStaffingPage.shareEditImport = { status: 'busy', error: '', preview: null, fileName: file.name };
+    rerender();
+    try {
+      const preview = await previewEventStaffingShareEditWorkbookFile(file, state.eventStaffingPage.domainProject);
+      state.eventStaffingPage.shareEditImport = { status: 'ready', error: '', preview, fileName: file.name };
+    } catch (error) {
+      state.eventStaffingPage.shareEditImport = { status: 'error', error: error instanceof Error ? error.message : 'Stakeholder workbook import failed.', preview: null, fileName: file.name };
+    }
+    event.target.value = '';
+    rerender();
+  });
+  root.querySelector('[data-action="apply-event-staffing-share-edit"]')?.addEventListener('click', () => {
+    const preview = state.eventStaffingPage.shareEditImport.preview;
+    if (!preview?.canApply || !globalThis.confirm?.('Apply the previewed Event Staffing stakeholder changes?')) return;
+    try {
+      state.eventStaffingPage.domainProject = applyEventStaffingShareEditPreview(state.eventStaffingPage.domainProject, preview);
+      state.eventStaffingPage.shareEditImport = { status: 'idle', error: '', preview: null };
+      state.eventStaffingPage.message = 'Event Staffing stakeholder changes applied.';
+      refreshValidation(state);
+    } catch (error) {
+      state.eventStaffingPage.shareEditImport.error = error instanceof Error ? error.message : 'Stakeholder changes could not be applied.';
+    }
+    rerender();
+  });
+  root.querySelector('[data-action="cancel-event-staffing-share-edit"]')?.addEventListener('click', () => {
+    state.eventStaffingPage.shareEditImport = { status: 'idle', error: '', preview: null };
+    rerender();
+  });
   root.querySelector('[name="eventStaffingWorkbookFile"]')?.addEventListener('change', async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1592,6 +1665,13 @@ function bindInteractions(root, state) {
         select.dataset.groupTypeId,
         select.value,
       );
+      refreshValidation(state);
+      rerender();
+    });
+  });
+  root.querySelectorAll('[data-slot-group-preference]').forEach((select) => {
+    select.addEventListener('change', () => {
+      setSlotGroupPreference(domainProject, select.dataset.personId, select.dataset.slotId, select.dataset.groupTypeId, select.value);
       refreshValidation(state);
       rerender();
     });
@@ -2442,6 +2522,9 @@ function bindInteractions(root, state) {
 export function renderEventStaffingPage(root, state) {
   state.eventStaffingPage = state.eventStaffingPage ?? {};
   state.eventStaffingPage.editor = state.eventStaffingPage.editor ?? {};
+  state.eventStaffingPage.editor.eventStaffingShareLanguage ??= 'en';
+  state.eventStaffingPage.editor.eventStaffingShareIdentity ??= 'fullName';
+  state.eventStaffingPage.editor.eventStaffingSharePersonId ??= '';
 
   const domainProject = migrateEventStaffingProject(state.eventStaffingPage.domainProject ?? createMockDomainProject());
   state.eventStaffingPage.domainProject = domainProject;
@@ -2457,6 +2540,7 @@ export function renderEventStaffingPage(root, state) {
   state.eventStaffingPage.activeWorkflowTab = isWorkflowTab(state.eventStaffingPage.activeWorkflowTab) ? state.eventStaffingPage.activeWorkflowTab : 'setup';
   state.eventStaffingPage.solveOptions ??= { mode: 'topK', maxSolutions: 10, timeLimitMs: 5000, includeScoreDetails: true, scoreWeights: { equity: 100, preferences: 10, targets: 20 }, diversity: { enabled: true, minimumAssignmentDistance: 2 } };
   state.eventStaffingPage.workbookImport ??= { status: 'idle', error: '', preview: null };
+  state.eventStaffingPage.shareEditImport ??= { status: 'idle', error: '', preview: null };
   persistPageDraft(state.draftStorage, 'event-staffing', domainProject, state.eventStaffingPage.persistence);
   root.innerHTML = renderPageShell({
     activeRoute: '/event-staffing',

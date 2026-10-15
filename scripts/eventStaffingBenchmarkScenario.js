@@ -116,7 +116,7 @@ export function createEventStaffingBenchmarkScenario({
   const feasibleRoster = createFeasibleRoster(events, people, categories);
 
   return {
-    modelVersion: 2,
+    modelVersion: 3,
     title: `Deterministic ${id} event roster`,
     description: 'Synthetic benchmark data with no real people or event details.',
     events,

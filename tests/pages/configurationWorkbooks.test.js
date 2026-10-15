@@ -38,12 +38,12 @@ function weddingProject() {
 
 function staffingProject() {
   return {
-    title: '=Staffing', modelVersion: 2,
+    title: '=Staffing', modelVersion: 3,
     events: [{ id: 'slot-1', label: 'Morning', slotLabel: 'Morning', date: '2026-10-14', dateKey: '2026-10-14', orderIndex: 0 }],
     groupTypes: [{ id: 'category-1', label: '+Welcome' }],
     requirements: [{ eventId: 'slot-1', slotId: 'slot-1', groupTypeId: 'category-1', min: 1, max: 1 }],
     people: [{ id: 'person-1', name: '@Alex', email: 'alex@example.test', maxAssignments: 1, targetAssignments: 1, maxAssignmentsPerGroupType: { 'category-1': 1 }, targetAssignmentsPerGroupType: {}, allowedGroupTypeIds: [], forbiddenGroupTypeIds: [] }],
-    preferences: [{ personId: 'person-1', slotPreferences: { 'slot-1': 'prefer' } }],
+    preferences: [{ personId: 'person-1', slotPreferences: { 'slot-1': 'prefer' }, slotGroupPreferences: { 'slot-1': { 'category-1': 'preferNot' } } }],
     cooldownRules: [], forcedAssignments: [], forbiddenAssignments: [], globalLimits: { maxAssignmentsPerPerson: 1 },
   };
 }
@@ -52,6 +52,7 @@ describe('specialized configuration workbooks', () => {
   it('round-trips School rules and neutralizes readable formulas', async () => {
     const project = schoolProject();
     const workbook = createSchoolConfigurationWorkbook(project);
+    expect(workbook.SheetNames).toContain('Legend');
     expect(workbook.Sheets.Students.A2.v).toBe("'=Alice");
     expect(XLSX.utils.sheet_to_json(workbook.Sheets.Students, { header: 1 })[0]).toEqual(['Student', 'Levels', 'Student ID']);
     expect(XLSX.utils.sheet_to_json(workbook.Sheets.Rules, { header: 1 })[0]).toEqual(['First participant', 'Rule', 'Second participant']);
@@ -63,6 +64,7 @@ describe('specialized configuration workbooks', () => {
   it('round-trips Wedding positions and topology metadata', async () => {
     const project = weddingProject();
     const workbook = createWeddingConfigurationWorkbook(project);
+    expect(workbook.SheetNames).toContain('Legend');
     expect(workbook.Sheets.Guests.A2.v).toBe("'@Alex");
     expect(workbook.SheetNames.indexOf('Seats')).toBeGreaterThan(workbook.SheetNames.indexOf('Rules'));
     expect(XLSX.utils.sheet_to_json(workbook.Sheets.Guests, { header: 1 })[0]).toEqual(['Guest', 'Groups', 'Guest ID']);
@@ -76,6 +78,7 @@ describe('specialized configuration workbooks', () => {
   it('round-trips complete Event Staffing configuration and retains preference-only compatibility', async () => {
     const project = staffingProject();
     const workbook = createEventStaffingConfigurationWorkbook(project);
+    expect(workbook.SheetNames).toContain('Legend');
     expect(workbook.SheetNames.slice(0, 2)).toEqual(['Instructions', 'Preferences']);
     expect(workbook.SheetNames).toEqual(expect.arrayContaining(['Slots', 'Categories', 'Requirements', 'People', 'Preferences', 'Cooldowns', 'Forced assignments', 'Forbidden assignments', 'Limits', '_Configuration']));
     expect(workbook.Workbook.Sheets.find((sheet) => sheet.name === '_Configuration').Hidden).toBe(1);
@@ -83,6 +86,7 @@ describe('specialized configuration workbooks', () => {
     const fullPreview = await previewEventStaffingWorkbookFile(asFile(workbook, 'staffing.xlsx'), project);
     expect(fullPreview.kind).toBe('configuration');
     expect(fullPreview.project).toEqual(readConfigurationEnvelope(workbook, 'event-staffing').configuration);
+    expect(fullPreview.project.preferences[0].slotGroupPreferences).toEqual({ 'slot-1': { 'category-1': 'preferNot' } });
 
     const preferencesSheet = workbook.Sheets.Preferences;
     delete workbook.Sheets.Preferences;
