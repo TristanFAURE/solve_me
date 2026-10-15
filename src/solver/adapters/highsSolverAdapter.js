@@ -525,7 +525,9 @@ export class HighsSolverAdapter extends SolverAdapter {
     const normalized = validation.options;
     const returnReserveMs = normalized.timeLimitMs === null ? 0 : Math.min(100, Math.floor(normalized.timeLimitMs * 0.02));
     const searchDeadlineMs = normalized.timeLimitMs === null ? null : normalized.timeLimitMs - returnReserveMs;
+    try { runtimeHooks.onProgress?.({ phase: 'building-model', elapsedMs: 0 }); } catch { /* Diagnostic hooks cannot affect solving. */ }
     const { compiled, data } = compileModel(this.highs, model, normalized);
+    try { runtimeHooks.onProgress?.({ phase: 'preparing-incumbent', elapsedMs: Math.round(performance.now() - startedAt) }); } catch { /* Diagnostic hooks cannot affect solving. */ }
     const seedValues = buildGreedyStart(compiled, model);
     const seedSolution = seedValues
       ? rankUniqueSolutions([buildSolution(seedValues, compiled, model)], model, normalized)[0]
@@ -537,6 +539,7 @@ export class HighsSolverAdapter extends SolverAdapter {
           exploredNodes: 0,
           prunedNodes: 0,
           solutionCount: 1,
+          phase: 'preparing-incumbent',
           elapsedMs: Math.round(performance.now() - startedAt),
           bestSolution: seedSolution,
         });
@@ -572,7 +575,7 @@ export class HighsSolverAdapter extends SolverAdapter {
       try { runtimeHooks.onSearchStart?.(); } catch { /* Diagnostic hooks cannot affect solving. */ }
       if (seedValues && typeof runtimeHooks.onProgress === 'function') {
         try {
-          runtimeHooks.onProgress({ exploredNodes: 0, prunedNodes: 0, solutionCount: 1, elapsedMs: Math.round(performance.now() - startedAt), bestSolution: seedSolution });
+          runtimeHooks.onProgress({ phase: 'optimizing', exploredNodes: 0, prunedNodes: 0, solutionCount: 1, elapsedMs: Math.round(performance.now() - startedAt), bestSolution: seedSolution });
         } catch { /* Progress observers are diagnostic only. */ }
       }
       const solveCount = normalized.mode === SOLVE_MODES.TOP_K ? requested + 1 : 1;
@@ -592,7 +595,7 @@ export class HighsSolverAdapter extends SolverAdapter {
             if (typeof runtimeHooks.onProgress === 'function') {
               const ranked = rankUniqueSolutions([buildSolution(latestIncumbent, compiled, model)], model, normalized)[0];
               try {
-                runtimeHooks.onProgress({ exploredNodes, prunedNodes: 0, solutionCount: solutions.length + 1, elapsedMs: Math.round(performance.now() - startedAt), bestSolution: ranked });
+                runtimeHooks.onProgress({ phase: 'optimizing', exploredNodes, prunedNodes: 0, solutionCount: solutions.length + 1, elapsedMs: Math.round(performance.now() - startedAt), bestSolution: ranked });
               } catch { /* Progress observers are diagnostic only. */ }
             }
           },

@@ -31,7 +31,9 @@ export async function solveWorkerRequest(request, dependencies = {}) {
 
   let highs;
   try {
+    hooks.onProgress?.({ phase: 'loading-wasm', elapsedMs: 0 });
     highs = await loadRuntime();
+    hooks.onProgress?.({ phase: 'building-model', elapsedMs: Math.round(performance.now() - startedAt) });
   } catch (error) {
     if ((request.options.engine ?? SOLVER_ENGINES.AUTO) === SOLVER_ENGINES.HIGHS) {
       const detail = error instanceof Error ? error.message : 'unknown initialization error';

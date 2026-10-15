@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createAppState } from '../../src/app/state.js';
 import { renderSolutionPanel } from '../../src/components/solutions/solutionPanel.js';
+import { renderSolveStatus } from '../../src/components/solutions/solveStatus.js';
 import { renderValidationPanel } from '../../src/components/solutions/validationPanel.js';
 import { createContainer, createItem } from '../../src/core/model/nodes.js';
 import { createEmptyProject } from '../../src/core/model/project.js';
@@ -58,6 +59,21 @@ function buildResult(status, solutions = []) {
 }
 
 describe('shared validation lifecycle panels', () => {
+  it('renders an accessible phase and time-budget progress bar while solving', () => {
+    const html = renderSolveStatus({
+      status: 'solving',
+      elapsedMs: 1250,
+      timeLimitMs: 5000,
+      progress: { phase: 'loading-wasm' },
+    });
+
+    expect(html).toContain('Loading WASM optimization engine');
+    expect(html).toContain('aria-label="Solve time budget"');
+    expect(html).toContain('max="5000" value="1250"');
+    expect(html).toContain('1250 of 5000 ms time budget used');
+    expect(html).toContain('Cancel solve');
+  });
+
   it('renders an explicit state before validation has run', () => {
     const html = renderValidationPanel(null);
 

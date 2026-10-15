@@ -121,6 +121,18 @@ body {
   background: #eff6ff;
 }
 
+.solve-status-details {
+  display: grid;
+  flex: 1;
+  gap: 0.3rem;
+}
+
+.solve-status progress {
+  width: min(32rem, 100%);
+  height: 0.7rem;
+  accent-color: #2563eb;
+}
+
 .solve-status span { margin-left: 8px; }
 
 @media (max-width: 640px) {

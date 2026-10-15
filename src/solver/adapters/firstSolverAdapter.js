@@ -154,6 +154,7 @@ function reportProgress(searchState, incumbentFound = false) {
   searchState.lastProgressAt = now;
   searchState.hasReportedProgress = true;
   const snapshot = {
+    phase: 'searching',
     exploredNodes: searchState.exploredNodes,
     prunedNodes: searchState.prunedNodes,
     solutionCount: searchState.qualifyingSolutions,
