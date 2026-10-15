@@ -2549,7 +2549,9 @@ export function renderEventStaffingPage(root, state) {
   state.eventStaffingPage.solveOptions ??= { mode: 'topK', maxSolutions: 10, timeLimitMs: 5000, includeScoreDetails: true, scoreWeights: { equity: 100, preferences: 10, targets: 20 }, diversity: { enabled: true, minimumAssignmentDistance: 2 } };
   state.eventStaffingPage.workbookImport ??= { status: 'idle', error: '', preview: null };
   state.eventStaffingPage.shareEditImport ??= { status: 'idle', error: '', preview: null };
-  persistPageDraft(state.draftStorage, 'event-staffing', domainProject, state.eventStaffingPage.persistence);
+  if (state.draftsEnabled !== false) {
+    persistPageDraft(state.draftStorage, 'event-staffing', domainProject, state.eventStaffingPage.persistence);
+  }
   root.innerHTML = renderPageShell({
     activeRoute: '/event-staffing',
     title: 'Event Staffing',
@@ -2561,5 +2563,7 @@ export function renderEventStaffingPage(root, state) {
   bindInteractions(root, state);
   bindCollaborationAdminPanel(root, state, () => renderEventStaffingPage(root, state));
   bindJsonCopyButtons(root);
-  bindPageDraftAutosave(root, state.draftStorage, 'event-staffing', () => state.eventStaffingPage.domainProject, state.eventStaffingPage.persistence);
+  if (state.draftsEnabled !== false) {
+    bindPageDraftAutosave(root, state.draftStorage, 'event-staffing', () => state.eventStaffingPage.domainProject, state.eventStaffingPage.persistence);
+  }
 }

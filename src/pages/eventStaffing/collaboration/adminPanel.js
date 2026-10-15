@@ -25,6 +25,12 @@ function clearDerivedState(state) {
   state.eventStaffingPage.activeSolutionIndex = 0;
 }
 
+export function consolidateCollaborationResponses(project, manifest, responses) {
+  const preview = previewCollaborationResponses(project, manifest, responses);
+  if (preview.canApply) applyCollaborationResponses(project, preview);
+  return preview;
+}
+
 export function renderCollaborationAdminPanel(state) {
   const collaboration = state.eventStaffingPage.collaboration;
   if (!collaboration?.mode?.enabled || collaboration.mode.userMode || collaboration.status !== 'verified') return '';
@@ -43,8 +49,14 @@ async function refresh(state, rerender) {
   try {
     const repository = service(collaboration, admin.password);
     admin.responses = await repository.loadResponses(admin.manifest);
-    admin.preview = previewCollaborationResponses(state.eventStaffingPage.domainProject, admin.manifest, admin.responses);
-    admin.message = `Loaded ${admin.responses.filter(({ response }) => response).length} participant response(s).`;
+    admin.preview = consolidateCollaborationResponses(state.eventStaffingPage.domainProject, admin.manifest, admin.responses);
+    const responseCount = admin.responses.filter(({ response }) => response).length;
+    if (admin.preview.canApply) {
+      clearDerivedState(state);
+      admin.message = `Loaded and consolidated ${responseCount} participant response(s).`;
+    } else {
+      admin.message = `Loaded ${responseCount} participant response(s), but participant data was not applied because the response set has blocking errors.`;
+    }
   } catch (error) {
     admin.error = error instanceof Error ? error.message : 'Unable to refresh responses.';
   }

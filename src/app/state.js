@@ -190,8 +190,12 @@ function resolveStorage(options) {
 }
 
 export function createAppState(options = {}) {
-  const draftStorage = resolveStorage(options);
-  const generic = recoverPageDraft({
+  const draftsEnabled = options?.draftsEnabled !== false;
+  const draftStorage = draftsEnabled ? resolveStorage(options) : null;
+  const recoverDraft = draftsEnabled
+    ? recoverPageDraft
+    : ({ fallback }) => ({ data: fallback, persistence: { status: 'idle', message: '' } });
+  const generic = recoverDraft({
     storage: draftStorage,
     pageId: 'generic',
     fallback: createEmptyProject({ viewHint: VIEW_HINTS.GENERIC }),
@@ -199,21 +203,21 @@ export function createAppState(options = {}) {
     migrate: migrateProjectModel,
     legacyKey: LEGACY_GENERIC_DRAFT_KEY,
   });
-  const school = recoverPageDraft({
+  const school = recoverDraft({
     storage: draftStorage,
     pageId: 'school',
     fallback: createEmptyProject({ viewHint: VIEW_HINTS.SCHOOL, title: 'School scenario' }),
     validate: isProject,
     migrate: migrateProjectModel,
   });
-  const wedding = recoverPageDraft({
+  const wedding = recoverDraft({
     storage: draftStorage,
     pageId: 'wedding',
     fallback: createEmptyProject({ viewHint: VIEW_HINTS.WEDDING, title: 'Wedding plan' }),
     validate: isProject,
     migrate: migrateProjectModel,
   });
-  const eventStaffing = recoverPageDraft({
+  const eventStaffing = recoverDraft({
     storage: draftStorage,
     pageId: 'event-staffing',
     fallback: createMockDomainProject(),
@@ -289,5 +293,6 @@ export function createAppState(options = {}) {
   };
 
   Object.defineProperty(state, 'draftStorage', { value: draftStorage });
+  Object.defineProperty(state, 'draftsEnabled', { value: draftsEnabled });
   return state;
 }

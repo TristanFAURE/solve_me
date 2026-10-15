@@ -4,6 +4,8 @@
 
 Event Staffing supports an opt-in static collaboration mode when the page query contains `collab=true`. Normal application routes are unchanged. Administrator mode retains the Event Staffing workflow but makes people read-only and adds a GitHub collaboration panel. `user=true` renders a participant-only identity and availability page without application navigation.
 
+Collaborative mode does not read from or write to normal `localStorage` drafts. Its in-memory Event Staffing project starts empty and is built only from the encrypted session manifest and participant response files in the collaboration folder. Collaboration credentials continue to use `sessionStorage` as described below.
+
 ## Repository and credentials
 
 GitHub Pages deployments infer the owner/repository from the Pages URL. Localhost reads non-secret `VITE_GITHUB_OWNER` and `VITE_GITHUB_REPO` values. Generated participant links contain only mode flags, the session folder, token, and encryption password; dates, groups, events, requirements, and repository coordinates are loaded from the encrypted manifest or deployment configuration. The repository default branch is read through the GitHub API.
@@ -31,7 +33,7 @@ No name, email, or PIN appears in a repository path. GitHub folders are virtual 
 
 ## Manifest and revisions
 
-The encrypted manifest contains the immutable session ID/folder, display title, open/closed status, revision, timestamps, and the administrator-owned Event Staffing configuration: title/description, events, groups, requirements, people and their limits/eligibility rules, cooldown rules, global limits, and person-specific forced/forbidden assignments. Participant availability preferences remain in response files. Loading an existing session restores the saved configuration, preserves newer local participant records, and keeps still-relevant preference values. Legacy manifests without saved people remain supported. Publishing collaboration after configuration changes creates a new revision. Responses from another session or revision are reported as stale and cannot be applied.
+The encrypted manifest contains only session-owned data: the immutable session ID/folder, display title, open/closed status, revision, timestamps, and administrator-owned Event Staffing configuration such as title/description, events, groups, requirements, cooldown rules, and global limits. Participant identities and availability rules exist only in their encrypted response files; they are not duplicated in the manifest. Loading or refreshing a session validates the complete response set and atomically consolidates valid people and preferences into the administrator's in-memory project by normalized email. Repeated refreshes replace represented session values and do not duplicate people or preferences. Responses from another session or revision are reported as stale and none of the response set is applied.
 
 ## Participant workflow
 
@@ -41,7 +43,7 @@ The table contains actual configured dates only, with a whole-day row and one ro
 
 ## Administrator workflow
 
-Administrators create/load a named encrypted session, manually refresh responses, inspect identity/change/stale/error counts, explicitly reveal individual encrypted PINs, and atomically apply valid previews. Matching uses case-insensitive email, creates new people, updates names, replaces represented session date/group values, and preserves non-session values and unmatched existing people. Duplicate emails or malformed/decryption failures block application.
+Administrators create/load a named encrypted session, manually refresh responses, inspect identity/change/stale/error counts, and explicitly reveal individual encrypted PINs. A valid refresh is atomically consolidated into memory. Matching uses case-insensitive email, creates new people, updates names, replaces represented session date/group values, and preserves non-session values and unmatched existing people. Duplicate emails or malformed/decryption failures block the complete refresh from being applied.
 
 Deleting a participant response is an explicit confirmed operation and removes the repository-derived person and related Event Staffing references. Closing a session publishes a new closed manifest revision; reads remain possible and participant saves are rejected.
 

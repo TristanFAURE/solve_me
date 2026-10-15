@@ -16,12 +16,14 @@ import {
 class FakeStorage {
   constructor(entries = {}) {
     this.entries = new Map(Object.entries(entries));
+    this.readCount = 0;
     this.writeCount = 0;
     this.failReads = false;
     this.failWrites = false;
   }
 
   getItem(key) {
+    this.readCount += 1;
     if (this.failReads) {
       throw new Error('read blocked');
     }
@@ -168,5 +170,19 @@ describe('app state draft recovery', () => {
     expect(state.genericPage.project.title).toBe('Untitled project');
     expect(state.genericPage.persistence.status).toBe('failed');
     expect(state.genericPage.persistence.message).toContain('in-memory work remains safe');
+  });
+
+  it('does not read or expose local drafts when draft persistence is disabled', () => {
+    const storage = new FakeStorage();
+    writePageDraft(storage, 'event-staffing', { ...createMockDomainProject(), title: 'Local staffing data' });
+    const readsBeforeStateCreation = storage.readCount;
+
+    const state = createAppState({ storage, draftsEnabled: false });
+
+    expect(storage.readCount).toBe(readsBeforeStateCreation);
+    expect(state.draftStorage).toBeNull();
+    expect(state.draftsEnabled).toBe(false);
+    expect(state.eventStaffingPage.domainProject.title).toBe('Event staffing planner');
+    expect(state.eventStaffingPage.persistence).toMatchObject({ status: 'idle', message: '' });
   });
 });

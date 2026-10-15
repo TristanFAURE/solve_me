@@ -8,7 +8,7 @@ import {
   sha256OpaqueId,
 } from '../../src/pages/eventStaffing/collaboration/cryptoEnvelope.js';
 import { detectGitHubRepository } from '../../src/pages/eventStaffing/collaboration/repositoryDetection.js';
-import { buildParticipantCollaborationUrl, readCollaborationMode, scrubCollaborationSecrets } from '../../src/pages/eventStaffing/collaboration/collaborationMode.js';
+import { buildParticipantCollaborationUrl, isCollaborationMode, readCollaborationMode, scrubCollaborationSecrets } from '../../src/pages/eventStaffing/collaboration/collaborationMode.js';
 import {
   createGitHubClient,
   GitHubApiError,
@@ -79,6 +79,11 @@ describe('GitHub Pages repository detection', () => {
 });
 
 describe('collaboration URL and credential handling', () => {
+  it('detects collaboration before application draft recovery', () => {
+    expect(isCollaborationMode(new URL('https://example.test/?collab=true#/event-staffing'))).toBe(true);
+    expect(isCollaborationMode(new URL('https://example.test/?collab=false#/event-staffing'))).toBe(false);
+  });
+
   it('moves sensitive query credentials into session storage and scrubs the URL', () => {
     const values = new Map();
     const storage = { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };

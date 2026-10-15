@@ -6,6 +6,11 @@ function bool(value) {
   return String(value ?? '').toLowerCase() === 'true';
 }
 
+export function isCollaborationMode(location = globalThis.location) {
+  const url = location instanceof URL ? new URL(location) : new URL(location?.href ?? String(location));
+  return bool(url.searchParams.get('collab'));
+}
+
 export function collaborationStorageKeys(owner, repo) {
   const scope = `${owner ?? 'unknown'}/${repo ?? 'unknown'}`;
   return { token: `${STORAGE_PREFIX}${scope}:token`, password: `${STORAGE_PREFIX}${scope}:password` };
@@ -20,7 +25,7 @@ export function readCollaborationMode(location = globalThis.location, storage = 
   if (tokenFromUrl) storage?.setItem(keys.token, tokenFromUrl);
   if (passwordFromUrl) storage?.setItem(keys.password, passwordFromUrl);
   return {
-    enabled: bool(url.searchParams.get('collab')),
+    enabled: isCollaborationMode(url),
     userMode: bool(url.searchParams.get('user')),
     session: url.searchParams.get('session') ?? '',
     repository,

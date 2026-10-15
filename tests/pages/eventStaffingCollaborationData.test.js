@@ -18,6 +18,7 @@ import {
   CollaborationConflictError,
   createSessionRepository,
 } from '../../src/pages/eventStaffing/collaboration/sessionRepository.js';
+import { consolidateCollaborationResponses } from '../../src/pages/eventStaffing/collaboration/adminPanel.js';
 
 const project = () => ({
   title: 'Autumn Gala',
@@ -53,49 +54,39 @@ describe('collaboration data modules', () => {
       events: project().events,
       groupTypes: project().groupTypes,
       requirements: [],
-      people: [],
       cooldownRules: [],
       globalLimits: {},
-      forcedAssignments: [],
-      forbiddenAssignments: [],
     });
+    expect(manifest.configuration).not.toHaveProperty('people');
     expect(manifest.configuration).not.toHaveProperty('preferences');
+    expect(manifest.configuration).not.toHaveProperty('forcedAssignments');
+    expect(manifest.configuration).not.toHaveProperty('forbiddenAssignments');
     expect(reopenCollaborationManifest(closeCollaborationManifest(manifest, '2026-10-15T11:00:00.000Z'), '2026-10-15T12:00:00.000Z'))
       .toMatchObject({ folder: manifest.folder, sessionId: manifest.sessionId, revision: 3, status: 'open' });
   });
 
-  it('restores administrator configuration while preserving people and relevant preferences', () => {
+  it('restores session configuration while preserving in-memory people and relevant preferences', () => {
     const source = project();
     source.requirements = [{ eventId: 'S1', groupTypeId: 'welcome', min: 1, max: 2 }];
-    source.people = [{
-      id: 'p1', name: 'Person', email: 'p@example.org', maxAssignments: 2, targetAssignments: 1,
-      maxAssignmentsPerGroupType: { welcome: 1 }, targetAssignmentsPerGroupType: { food: 1 },
-      allowedGroupTypeIds: ['welcome'], forbiddenGroupTypeIds: ['food'],
-    }];
     source.cooldownRules = [{ triggerGroupTypes: 'ANY', blockedGroupTypes: 'ANY', blockedNextEventCount: 1 }];
     source.globalLimits = { maxAssignmentsPerPerson: 2 };
-    source.forcedAssignments = [{ personId: 'p1', eventId: 'S1', groupTypeId: 'welcome' }];
-    source.forbiddenAssignments = [{ personId: 'p1', eventId: 'S2', groupTypeId: 'food' }];
     const manifest = createCollaborationManifest(source, { random: '0123456789abcdef', now: '2026-10-15T09:00:00.000Z' });
     const target = {
       title: 'Old', events: [{ id: 'old', dateKey: 'old' }], groupTypes: [{ id: 'old-group', label: 'Old' }], requirements: [], cooldownRules: [], globalLimits: {},
-      people: [{ id: 'local-p1', name: 'Local Person', email: 'P@EXAMPLE.ORG' }, { id: 'p2', name: 'New response', email: 'new@example.org' }],
+      people: [{ id: 'p1', name: 'Person', email: 'p@example.org' }],
       preferences: [{ personId: 'p1', slotPreferences: { old: 'prefer', S1: 'preferNot' }, dayPreferences: { old: 'prefer', '2026-10-15': 'neutral' }, dayGroupPreferences: { '2026-10-15': { welcome: 'prefer', missing: 'prefer' } } }],
       forcedAssignments: [{ personId: 'p1', eventId: 'old', groupTypeId: 'old-group' }], forbiddenAssignments: [],
     };
-    target.preferences[0].personId = 'local-p1';
     applyCollaborationConfiguration(target, manifest);
     expect(target).toMatchObject({
       title: 'Autumn Gala', events: source.events, groupTypes: source.groupTypes, requirements: source.requirements,
       cooldownRules: source.cooldownRules, globalLimits: source.globalLimits,
-      forcedAssignments: source.forcedAssignments, forbiddenAssignments: source.forbiddenAssignments,
+      people: [{ id: 'p1', name: 'Person', email: 'p@example.org' }], forcedAssignments: [], forbiddenAssignments: [],
     });
-    expect(target.people).toEqual([source.people[0], { id: 'p2', name: 'New response', email: 'new@example.org' }]);
-    expect(target.preferences[0].personId).toBe('p1');
     expect(target.preferences[0].slotPreferences).toEqual({ S1: 'preferNot' });
     expect(target.preferences[0].dayPreferences).toEqual({ '2026-10-15': 'neutral' });
     expect(target.preferences[0].dayGroupPreferences).toEqual({ '2026-10-15': { welcome: 'prefer' } });
-    expect(collaborationConfiguration(source).people).toEqual(source.people);
+    expect(collaborationConfiguration(source)).not.toHaveProperty('people');
   });
 
   it('models identity precisely and hashes normalized email into the encrypted path', async () => {
@@ -130,6 +121,29 @@ describe('collaboration data modules', () => {
     const duplicate = previewCollaborationResponses(project(), manifest, [response(), response({ email: 'ALEX@example.org' })]);
     expect(duplicate.canApply).toBe(false);
     expect(() => applyCollaborationResponses(project(), duplicate)).toThrow(/blocking errors/);
+  });
+
+  it('consolidates valid participant responses idempotently without storing them in the session manifest', () => {
+    const current = project();
+    const manifest = createCollaborationManifest(current, { random: '0123456789abcdef', now: '2026-10-15T09:00:00.000Z' });
+    const responses = [response(), response({
+      email: 'new@example.org', firstName: 'New', lastName: 'Person', displayName: 'New Person',
+      dayPreferences: { '2026-10-16': 'preferNot' },
+    })];
+
+    expect(consolidateCollaborationResponses(current, manifest, responses).canApply).toBe(true);
+    const consolidated = structuredClone(current);
+    expect(current.people).toHaveLength(2);
+    expect(current.preferences).toHaveLength(2);
+
+    expect(consolidateCollaborationResponses(current, manifest, responses).canApply).toBe(true);
+    expect(current).toEqual(consolidated);
+    expect(manifest.configuration).not.toHaveProperty('people');
+    expect(manifest.configuration).not.toHaveProperty('preferences');
+
+    const beforeBlockedRefresh = structuredClone(current);
+    expect(consolidateCollaborationResponses(current, manifest, [response(), response({ email: 'ALEX@example.org' })]).canApply).toBe(false);
+    expect(current).toEqual(beforeBlockedRefresh);
   });
 
   it('blocks stale revisions and unknown manifest mappings', () => {
