@@ -81,6 +81,8 @@ npx playwright install --with-deps chromium
 npm run test:e2e
 ```
 
+In CI, Chromium is installed into the project dependency tree before tests. Playwright uses the GitHub reporter and automatically stops its temporary application server after the suite; no HTML report server is launched.
+
 ### Run tests with coverage
 
 ```bash

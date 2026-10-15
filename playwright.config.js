@@ -6,7 +6,7 @@ export default defineConfig({
   workers: 4,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  reporter: 'html',
+  reporter: process.env.CI ? 'github' : [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: 'http://127.0.0.1:4173/solve_me/',
     browserName: 'chromium',

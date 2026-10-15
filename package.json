@@ -13,6 +13,7 @@
     "test:compat": "vitest run tests/integration/crossDomainCompatibility.test.js",
     "test:solver": "vitest run tests/solver",
     "test:solver:coverage": "vitest run tests/solver --coverage",
+    "test:e2e:install": "playwright install --with-deps chromium",
     "test:e2e": "playwright test",
     "bench:solver": "node scripts/solverBenchmark.js",
     "bench:staffing": "node scripts/eventStaffingBenchmark.js"
