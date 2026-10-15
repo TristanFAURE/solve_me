@@ -84,13 +84,17 @@ test('primary navigation moves between all pages', async ({ page }) => {
 
 test('Generic project changes persist across reload', async ({ page }) => {
   await openRoute(page, '/generic');
-  const title = page.getByRole('textbox', { name: 'Title', exact: true });
+  const setupPanel = page.getByRole('tabpanel', { name: 'Setup' });
+  const title = setupPanel.locator('input[name="projectTitle"]');
 
   await title.fill('Persisted browser project');
-  await expect(page.getByRole('status')).toContainText('Draft saved locally.');
+  await page.waitForFunction(() => {
+    const raw = localStorage.getItem('constraint-management:draft:v1:generic');
+    return raw && JSON.parse(raw).data?.title === 'Persisted browser project';
+  });
   await page.reload();
 
-  await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('Persisted browser project');
+  await expect(page.getByRole('tabpanel', { name: 'Setup' }).locator('input[name="projectTitle"]')).toHaveValue('Persisted browser project');
   await expect(page.getByText('Recovered local draft.')).toBeVisible();
 });
 
@@ -137,7 +141,7 @@ test('Event Staffing completes a deterministic HiGHS WASM solve in a Worker', as
     }));
   }, project);
   await openRoute(page, '/event-staffing');
-  await page.getByLabel('Maximum solutions').fill('1');
+  await page.locator('input[name="staffingMaxSolutions"]').fill('1');
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
 
   const workerStarted = page.waitForEvent('worker');

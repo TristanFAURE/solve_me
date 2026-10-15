@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test';
+import { chromium, defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -10,6 +10,9 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:4173/solve_me/',
     browserName: 'chromium',
+    launchOptions: {
+      executablePath: chromium.executablePath(),
+    },
     screenshot: 'only-on-failure',
     trace: 'on-first-retry',
   },
