@@ -1,4 +1,5 @@
 import { escapeHtml, summarizeRequirements } from './utils.js';
+import { renderFieldLabel } from '../../components/common/fieldHelp.js';
 
 function renderNoSelectedEventEmptyState(domainProject) {
   return `
@@ -82,9 +83,9 @@ export function renderSelectedEventEditor(selectedEvent, selectedRequirements, d
         <section>
           <h4>✏️ Slot details</h4>
           <div class="form-grid three-columns compact-form-grid">
-            <label>Slot label<input type="text" name="draftSelectedEventLabel" value="${escapeHtml(editor.draftSelectedEventLabel)}" /></label>
-            <label>Date<input type="date" name="draftSelectedEventDate" value="${escapeHtml(editor.draftSelectedEventDate)}" /></label>
-            <label>Order index<input type="number" name="draftSelectedEventOrderIndex" value="${escapeHtml(editor.draftSelectedEventOrderIndex)}" min="0" step="1" /></label>
+            <label>${renderFieldLabel('Slot label', 'The planner-facing name for this independently staffed time slot.')}<input type="text" name="draftSelectedEventLabel" value="${escapeHtml(editor.draftSelectedEventLabel)}" /></label>
+            <label>${renderFieldLabel('Date', 'Groups this slot with other slots on the same day in calendars and results.')}<input type="date" name="draftSelectedEventDate" value="${escapeHtml(editor.draftSelectedEventDate)}" /></label>
+            <label>${renderFieldLabel('Order index', 'Zero-based schedule position used by rest and spacing rules. It does not represent elapsed hours.')}<input type="number" name="draftSelectedEventOrderIndex" value="${escapeHtml(editor.draftSelectedEventOrderIndex)}" min="0" step="1" /></label>
           </div>
           <div class="event-staffing-inline-actions top-gap">
             <button type="button" data-event-staffing-action="save-selected-event">Save slot details</button>
@@ -97,10 +98,10 @@ export function renderSelectedEventEditor(selectedEvent, selectedRequirements, d
             <span class="section-count-pill">Around ${escapeHtml(selectedEvent.label)}</span>
           </div>
           <div class="form-grid three-columns compact-form-grid">
-            <label>Slot label<input type="text" name="draftInsertedEventLabel" value="${escapeHtml(editor.draftInsertedEventLabel)}" placeholder="New slot label" /></label>
-            <label>Date<input type="date" name="draftInsertedEventDate" value="${escapeHtml(editor.draftInsertedEventDate)}" /></label>
+            <label>${renderFieldLabel('Slot label', 'Name of the new independently staffed slot.')}<input type="text" name="draftInsertedEventLabel" value="${escapeHtml(editor.draftInsertedEventLabel)}" placeholder="New slot label" /></label>
+            <label>${renderFieldLabel('Date', 'Calendar date used to group this slot in availability views and schedule results.')}<input type="date" name="draftInsertedEventDate" value="${escapeHtml(editor.draftInsertedEventDate)}" /></label>
             <label>
-              Position
+              ${renderFieldLabel('Position', 'Insert the new slot immediately before or after the focused slot in schedule order.')}
               <select name="draftInsertedEventPosition">
                 <option value="before"${editor.draftInsertedEventPosition === 'before' ? ' selected' : ''}>Before selected event</option>
                 <option value="after"${editor.draftInsertedEventPosition === 'after' ? ' selected' : ''}>After selected event</option>
@@ -132,14 +133,14 @@ export function renderSelectedEventEditor(selectedEvent, selectedRequirements, d
           ${domainProject.groupTypes.length > 0 ? `
             <div class="form-grid four-columns compact-form-grid">
               <label>
-                Group type
+                ${renderFieldLabel('Group type', 'Reusable staffing category required in this slot.')}
                 <select name="draftRequirementGroupTypeId">
                   <option value="">Select group type</option>
                   ${domainProject.groupTypes.map((groupType) => `<option value="${escapeHtml(groupType.id)}"${editor.draftRequirementGroupTypeId === groupType.id ? ' selected' : ''}>${escapeHtml(groupType.label)}</option>`).join('')}
                 </select>
               </label>
-              <label>Min<input type="number" name="draftRequirementMin" value="${escapeHtml(editor.draftRequirementMin)}" min="0" step="1" /></label>
-              <label>Max<input type="number" name="draftRequirementMax" value="${escapeHtml(editor.draftRequirementMax)}" min="0" step="1" /></label>
+              <label>${renderFieldLabel('Min', 'Hard minimum staffing. For example, 0 makes this category optional; 3 requires at least three people in the slot.')}<input type="number" name="draftRequirementMin" value="${escapeHtml(editor.draftRequirementMin)}" min="0" step="1" /></label>
+              <label>${renderFieldLabel('Max', 'Hard staffing cap. For example, 1 allows one person; 5 allows up to five people in this category and slot.')}<input type="number" name="draftRequirementMax" value="${escapeHtml(editor.draftRequirementMax)}" min="0" step="1" /></label>
               <label class="button-label">Action<button type="button" data-event-staffing-action="add-requirement">Add to selected event</button></label>
             </div>
           ` : `

@@ -2,7 +2,7 @@ import { renderPageShell } from '../../components/common/pageShell.js';
 import { bindWorkflowTabs, isWorkflowTab, renderWorkflowPanel, renderWorkflowTabs } from '../../components/common/workflowTabs.js';
 import { getGeneralPreferenceAuthoringPolicy } from '../../components/common/preferenceAuthoringPolicy.js';
 import { renderSolutionPanel } from '../../components/solutions/solutionPanel.js';
-import { renderSolveStatus } from '../../components/solutions/solveStatus.js';
+import { renderSolveStatus, updateSolveStatus } from '../../components/solutions/solveStatus.js';
 import { renderValidationPanel } from '../../components/solutions/validationPanel.js';
 import { ASSIGNMENT_MODES } from '../../core/model/assignmentModes.js';
 import { CONSTRAINT_KINDS, createConstraint } from '../../core/model/constraints.js';
@@ -20,6 +20,7 @@ import { exportProject, importProject } from '../../storage/importExport.js';
 import { bindPageDraftAutosave, loadDraft, persistPageDraft, saveDraft } from '../../storage/localDrafts.js';
 import { getProjectVersionInfo, migrateProjectModel } from '../../storage/modelVersioning.js';
 import { confirmProjectReplacement } from '../../app/dataSafety.js';
+import { renderFieldLabel } from '../../components/common/fieldHelp.js';
 
 const REPLACE_PROJECT_MESSAGE = 'This will replace your current non-empty project. Continue?';
 
@@ -210,40 +211,40 @@ function renderSetup(project, editor, capabilities) {
       <p class="eyebrow">Model setup</p>
       <h2>Project and assignment behavior</h2>
       <div class="form-grid two-columns">
-        <label><span>Title</span><input type="text" name="projectTitle" value="${escapeHtml(project.title)}" /></label>
-        <label><span>Assignment mode</span><select name="assignmentMode">
+        <label>${renderFieldLabel('Title', 'A descriptive name used to identify this constraint project.')}<input type="text" name="projectTitle" value="${escapeHtml(project.title)}" /></label>
+        <label>${renderFieldLabel('Assignment mode', 'Container mode assigns items directly to containers. Position mode assigns items to named positions inside containers.')}<select name="assignmentMode">
           <option value="${ASSIGNMENT_MODES.CONTAINER}"${project.assignmentMode === ASSIGNMENT_MODES.CONTAINER ? ' selected' : ''}>Container</option>
           <option value="${ASSIGNMENT_MODES.POSITION}"${project.assignmentMode === ASSIGNMENT_MODES.POSITION ? ' selected' : ''}${positionModeSupported ? '' : ' disabled'}>Position</option>
         </select></label>
-        <label><span>Assignment multiplicity</span><select name="assignmentMultiplicity">
+        <label>${renderFieldLabel('Assignment multiplicity', 'Choose whether each item can have only one destination or can be assigned to several destinations.')}<select name="assignmentMultiplicity">
           <option value="single"${project.assignmentMultiplicity !== 'multiple' ? ' selected' : ''}>Single destination per item</option>
           <option value="multiple"${project.assignmentMultiplicity === 'multiple' ? ' selected' : ''}>Multiple destinations per item</option>
         </select></label>
-        <label class="full-width"><span>Description</span><textarea name="projectDescription" rows="4">${escapeHtml(project.description)}</textarea></label>
+        <label class="full-width">${renderFieldLabel('Description', 'Optional notes describing the planning goal, assumptions, or scenario.')}<textarea name="projectDescription" rows="4">${escapeHtml(project.description)}</textarea></label>
       </div>
     </section>
     <section class="card">
       <p class="eyebrow">Solver configuration</p>
       <h2>Search and scoring</h2>
       <div class="form-grid two-columns">
-        <label><span>Solve mode</span><select name="solveMode">
+        <label>${renderFieldLabel('Solve mode', 'First solution prioritizes speed, Top solutions returns alternatives, and Optimize searches for the best weighted score.')}<select name="solveMode">
           ${renderOptions([
     { value: SOLVE_MODES.FIRST, label: 'First solution' },
     { value: SOLVE_MODES.TOP_K, label: 'Top solutions' },
     { value: SOLVE_MODES.OPTIMIZE, label: 'Optimize' },
   ], editor.solveMode)}</select></label>
-        <label><span>Maximum solutions</span><input type="number" name="solveMaxSolutions" min="1" max="1000" value="${escapeHtml(editor.solveMaxSolutions)}" /></label>
-        ${renderCapabilityControl(capabilities, 'timeout', '<label><span>Time limit (ms, blank for none)</span><input type="number" name="solveTimeLimitMs" min="1" value="' + escapeHtml(editor.solveTimeLimitMs) + '" /></label>')}
-        ${renderCapabilityControl(capabilities, 'scoreDetails', `<label class="checkbox-label"><input type="checkbox" name="solveIncludeScoreDetails"${editor.solveIncludeScoreDetails ? ' checked' : ''} /><span>Include score details</span></label>`)}
+        <label>${renderFieldLabel('Maximum solutions', 'Limits returned alternatives. For example, 1 returns only the leading plan; 20 explores and returns more choices but can take longer.')}<input type="number" name="solveMaxSolutions" min="1" max="1000" value="${escapeHtml(editor.solveMaxSolutions)}" /></label>
+        ${renderCapabilityControl(capabilities, 'timeout', `<label>${renderFieldLabel('Time limit (ms, blank for none)', 'For example, 1000 gives a fast one-second search that may be partial; 30000 allows up to 30 seconds to improve or prove the result. Leave blank for no explicit page-level limit.')}<input type="number" name="solveTimeLimitMs" min="1" value="${escapeHtml(editor.solveTimeLimitMs)}" /></label>`)}
+        ${renderCapabilityControl(capabilities, 'scoreDetails', `<label class="checkbox-label"><input type="checkbox" name="solveIncludeScoreDetails"${editor.solveIncludeScoreDetails ? ' checked' : ''} />${renderFieldLabel('Include score details', 'Include the preference, target, and equity contribution breakdown in each returned solution.')}</label>`)}
         ${renderCapabilityControl(capabilities, 'scoreWeights', `
-          <label><span>Preference weight</span><input type="number" name="solvePreferenceWeight" value="${escapeHtml(editor.solvePreferenceWeight)}" /></label>
-          <label><span>Target weight</span><input type="number" name="solveTargetWeight" value="${escapeHtml(editor.solveTargetWeight)}" /></label>
-          <label><span>Equity weight</span><input type="number" name="solveEquityWeight" value="${escapeHtml(editor.solveEquityWeight)}" /></label>
-          <label><span>Equity eligible items</span><select class="multi-select" name="solveEquityEligibleItemIds" multiple>${renderEntityMultiOptions(project, [NODE_KINDS.ITEM], editor.solveEquityEligibleItemIds)}</select></label>
+          <label>${renderFieldLabel('Preference weight', 'Relative influence of assignment preferences. For example, 0 ignores them; 100 makes them much more important than a target weighted 10.')}<input type="number" name="solvePreferenceWeight" value="${escapeHtml(editor.solvePreferenceWeight)}" /></label>
+          <label>${renderFieldLabel('Target weight', 'Relative influence of soft assignment-count targets. For example, 0 ignores target gaps; 100 strongly favors plans close to targets.')}<input type="number" name="solveTargetWeight" value="${escapeHtml(editor.solveTargetWeight)}" /></label>
+          <label>${renderFieldLabel('Equity weight', 'Relative influence of even workloads. For example, 0 does not reward balance; 100 strongly favors similar assignment counts among eligible items.')}<input type="number" name="solveEquityWeight" value="${escapeHtml(editor.solveEquityWeight)}" /></label>
+          <label>${renderFieldLabel('Equity eligible items', 'Select the items whose assignment counts should be balanced. Use Ctrl or Command to select several.')}<select class="multi-select" name="solveEquityEligibleItemIds" multiple>${renderEntityMultiOptions(project, [NODE_KINDS.ITEM], editor.solveEquityEligibleItemIds)}</select></label>
         `)}
         ${renderCapabilityControl(capabilities, 'diversity', `
-          <label class="checkbox-label"><input type="checkbox" name="solveDiversityEnabled"${editor.solveDiversityEnabled ? ' checked' : ''} /><span>Require diverse solutions</span></label>
-          <label><span>Minimum assignment distance</span><input type="number" name="solveMinimumAssignmentDistance" min="0" value="${escapeHtml(editor.solveMinimumAssignmentDistance)}" /></label>
+          <label class="checkbox-label"><input type="checkbox" name="solveDiversityEnabled"${editor.solveDiversityEnabled ? ' checked' : ''} />${renderFieldLabel('Require diverse solutions', 'Apply a minimum assignment-distance rule so returned alternatives are meaningfully different.')}</label>
+          <label>${renderFieldLabel('Minimum assignment distance', 'Required differences between alternatives. For example, 1 permits nearly identical plans; 10 requires at least ten assignment changes and may reduce the number returned.')}<input type="number" name="solveMinimumAssignmentDistance" min="0" value="${escapeHtml(editor.solveMinimumAssignmentDistance)}" /></label>
         `)}
       </div>
     </section>
@@ -1800,6 +1801,7 @@ function runSolveFlow(state, root) {
         warnings: [...(adapterValidation.warnings ?? []), ...(solverResult.warnings ?? [])],
       };
     },
+    onProgressChange: () => updateSolveStatus(root, state.genericPage.solveExecution),
     onChange: () => renderGenericPage(root, state),
   });
 }
@@ -1938,7 +1940,6 @@ function bindActions(root, state) {
     if (action === 'solve') {
       element.addEventListener('click', () => {
         runSolveFlow(state, root);
-        renderGenericPage(root, state);
       });
       return;
     }

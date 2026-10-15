@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createAppState } from '../../src/app/state.js';
 import { renderPageShell } from '../../src/components/common/pageShell.js';
+import { renderFieldLabel } from '../../src/components/common/fieldHelp.js';
 import { renderWorkflowPanel, renderWorkflowTabs } from '../../src/components/common/workflowTabs.js';
+import { renderValidationPanel } from '../../src/components/solutions/validationPanel.js';
 import { createContainer, createItem } from '../../src/core/model/nodes.js';
 import { buildGenericSolveOptions, renderGenericPage } from '../../src/pages/generic/index.js';
 
@@ -23,6 +25,16 @@ function createActionRoot(action) {
 }
 
 describe('workflow foundation', () => {
+  it('renders keyboard-accessible field help with escaped tooltip text', () => {
+    const html = renderFieldLabel('Time limit', 'Stops after <5 seconds> & returns safely.');
+
+    expect(html).toContain('class="field-tooltip"');
+    expect(html).toContain('tabindex="0"');
+    expect(html).toContain('role="note"');
+    expect(html).toContain('data-tooltip="Stops after &lt;5 seconds&gt; &amp; returns safely."');
+    expect(html).toContain('aria-label="Time limit help:');
+  });
+
   it('renders accessible workflow tabs and panels', () => {
     const tabs = renderWorkflowTabs('rules');
     const panel = renderWorkflowPanel('rules', 'rules', '<p>Rules</p>');
@@ -38,6 +50,13 @@ describe('workflow foundation', () => {
     const html = renderPageShell({ title: 'Test', description: '', body: '', activeRoute: '/school' });
     expect(html).toContain('href="#/school" aria-current="page"');
     expect(html).not.toContain('href="#/generic" aria-current="page"');
+  });
+
+  it('supports distinct validation panel headings for layered validation', () => {
+    const html = renderValidationPanel(null, { eyebrow: 'Solver validation', title: 'Transformed model' });
+
+    expect(html).toContain('Solver validation');
+    expect(html).toContain('Transformed model');
   });
 
   it('builds explicit typed solve options from page drafts', () => {

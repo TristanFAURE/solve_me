@@ -16,11 +16,12 @@ import { normalizeProject } from '../../core/normalize/normalizeProject.js';
 import { validateProject } from '../../core/validate/validateProject.js';
 import { FirstSolverAdapter } from '../../solver/adapters/firstSolverAdapter.js';
 import { renderSearchHints, renderSolutionPanel } from '../../components/solutions/solutionPanel.js';
-import { renderSolveStatus } from '../../components/solutions/solveStatus.js';
+import { renderSolveStatus, updateSolveStatus } from '../../components/solutions/solveStatus.js';
 import { cancelSolveExecution, createSolveExecutionState, discardSolveExecution, startSolveExecution } from '../../solver/solveExecution.js';
 import { bindPageDraftAutosave, persistPageDraft } from '../../storage/localDrafts.js';
 import { bindWorkflowTabs, isWorkflowTab, renderWorkflowPanel as renderTabPanel, renderWorkflowTabs } from '../../components/common/workflowTabs.js';
 import { getDayGroupPreferenceMap, getDayPreferenceMap, getEffectiveAssignmentPreference, getSlotDayKey, migrateEventStaffingProject, moveSlotDayPreferences, getPreferenceMap, normalizePreferenceState, PREFERENCE_STATES } from './migration.js';
+import { renderFieldLabel } from '../../components/common/fieldHelp.js';
 import { movePreferenceMatrixDay, movePreferenceMatrixPerson, renderPreferenceMatrix, setDayAvailability, setDayGroupPreference, setSlotPreference } from './preferenceMatrix.js';
 import { addAssignmentRule, addCooldownRule, renderRuleEditors } from './ruleEditors.js';
 import {
@@ -421,8 +422,8 @@ export function renderStaffingScheduleView(domainProject, solverResult, activeSo
           <h3>Returned solutions</h3>
           <p class="muted-text">Use previous/next for quick browsing or jump directly to a returned solution from the picker.</p>
           <div class="event-staffing-inline-actions top-gap">
-            <button type="button" data-event-staffing-action="show-previous-solution"${scheduleSummary.clampedSolutionIndex <= 0 ? ' disabled' : ''}>Previous solution</button>
-            <button type="button" data-event-staffing-action="show-next-solution"${scheduleSummary.clampedSolutionIndex >= (solverResult.solutions.length - 1) ? ' disabled' : ''}>Next solution</button>
+            <button type="button" class="command-bar-button" data-event-staffing-action="show-previous-solution"${scheduleSummary.clampedSolutionIndex <= 0 ? ' disabled' : ''}>Previous solution</button>
+            <button type="button" class="command-bar-button" data-event-staffing-action="show-next-solution"${scheduleSummary.clampedSolutionIndex >= (solverResult.solutions.length - 1) ? ' disabled' : ''}>Next solution</button>
             <label>
               <span class="muted-text">Jump to solution</span>
               <select name="activeStaffingSolutionIndex">
@@ -452,7 +453,7 @@ export function renderStaffingScheduleView(domainProject, solverResult, activeSo
     'add-fixed-assignments': 'Fix known person-event assignments',
     'split-problem': 'Split independent event periods',
   })}
-      <div class="workspace-layout top-gap">
+      <div class="stacked-form-sections top-gap">
         <section class="workspace-panel">
           <h3>Event-centric view</h3>
           <div class="event-staffing-scroll-box top-gap">
@@ -561,24 +562,24 @@ export function renderAdministratorRepairPanel(domainProject, normalizedProject,
       <h2>Temporary administrator repair</h2>
       <p>Select narrowly scoped person restrictions on each blocking date. The repair solve uses selections from all dates, not only the date currently shown. The original project rules are unchanged; exceptions apply only to this repair solve. Coverage min/max and cooldown/rest rules always remain hard and are never available here. Relaxed prohibitions receive a strong penalty. Each selected workload-limit exception permits at most one extra assignment and is explicitly reported when used; the equity objective still controls how work is distributed.</p>
       <div class="event-staffing-inline-actions">
-        <button type="button" data-event-staffing-action="previous-repair-date"${dates.findIndex((date) => date.dateKey === dateKey) <= 0 ? ' disabled' : ''} aria-label="Previous blocking date">←</button>
+        <button type="button" class="navigation-arrow" data-event-staffing-action="previous-repair-date"${dates.findIndex((date) => date.dateKey === dateKey) <= 0 ? ' disabled' : ''} aria-label="Previous blocking date"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m12.5 4-6 6 6 6" /></svg></button>
         <label>${filteredToBlockingDates ? 'Blocking date' : 'Date to inspect'}
           <select name="administratorRepairDate">
           ${dates.map((date) => `<option value="${escapeHtml(date.dateKey)}"${date.dateKey === dateKey ? ' selected' : ''}>${escapeHtml(date.label)}</option>`).join('')}
           </select>
         </label>
-        <button type="button" data-event-staffing-action="next-repair-date"${dates.findIndex((date) => date.dateKey === dateKey) >= dates.length - 1 ? ' disabled' : ''} aria-label="Next blocking date">→</button>
+        <button type="button" class="navigation-arrow" data-event-staffing-action="next-repair-date"${dates.findIndex((date) => date.dateKey === dateKey) >= dates.length - 1 ? ' disabled' : ''} aria-label="Next blocking date"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m7.5 4 6 6-6 6" /></svg></button>
       </div>
       <div class="event-staffing-inline-actions top-gap">
-        <button type="button" data-event-staffing-action="select-all-repair-candidates"${candidates.length ? '' : ' disabled'}>Select all</button>
-        <button type="button" data-event-staffing-action="clear-repair-candidates"${selected.size ? '' : ' disabled'}>Clear all</button>
+        <button type="button" class="command-bar-button" data-event-staffing-action="select-all-repair-candidates"${candidates.length ? '' : ' disabled'}>Select all</button>
+        <button type="button" class="command-bar-button" data-event-staffing-action="clear-repair-candidates"${selected.size ? '' : ' disabled'}>Clear all</button>
       </div>
       ${candidates.length ? `<div class="event-staffing-checkbox-grid top-gap">${candidates.map((candidate) => `
         <label class="event-staffing-checkbox-option">
           <input type="checkbox" data-repair-candidate-id="${escapeHtml(candidate.id)}"${selected.has(candidate.id) ? ' checked' : ''} />
           <span>${escapeHtml(candidate.label)}</span>
         </label>`).join('')}</div>` : '<p class="muted-text top-gap">No relaxable person restrictions apply to this date. Check another date or revise hard coverage/cooldown rules directly.</p>'}
-      <button type="button" class="event-staffing-primary-button top-gap" data-event-staffing-action="solve-administrator-repair"${allSelected.length ? '' : ' disabled'}>Try with all selected temporary exceptions (${allSelected.length})</button>
+      <button type="button" class="command-bar-button command-bar-button-primary top-gap" data-event-staffing-action="solve-administrator-repair"${allSelected.length ? '' : ' disabled'}>Try with all selected temporary exceptions (${allSelected.length})</button>
     </section>`;
 }
 
@@ -664,7 +665,7 @@ function renderReviewPanel(state) {
           <h2>🧭 Validate, transform, and solve</h2>
           <p class="muted-text">${escapeHtml(state.eventStaffingPage.message || 'Use validate, transform, and solve to run the staffing planner workflow.')}</p>
         </div>
-        <button type="button" class="command-bar-button command-bar-toggle" data-event-staffing-action="toggle-workflow-command-bar">${workflowExpanded ? 'Collapse' : 'Expand'}</button>
+        <button type="button" class="command-bar-button command-bar-toggle" data-event-staffing-action="toggle-workflow-command-bar" aria-expanded="${workflowExpanded ? 'true' : 'false'}">${workflowExpanded ? 'Collapse' : 'Expand'}</button>
       </div>
       <div class="command-bar-actions">
         <button type="button" class="command-bar-button" data-event-staffing-action="validate-domain-project">Validate domain project</button>
@@ -693,11 +694,15 @@ function renderReviewPanel(state) {
     ${renderValidationPanel(state.eventStaffingPage.lastValidation, {
     expanded: state.eventStaffingPage.validationPanelExpanded,
     hasComputedSolution: Boolean(state.eventStaffingPage.lastSolverResult),
+    eyebrow: 'Staffing validation',
+    title: 'Domain rules',
   })}
 
     ${genericValidation ? renderValidationPanel(genericValidation, {
     expanded: true,
     hasComputedSolution: Boolean(state.eventStaffingPage.lastSolverResult),
+    eyebrow: 'Solver validation',
+    title: 'Transformed model',
   }) : ''}
 
     ${renderTransformedProjectSummary(normalizedProject)}
@@ -711,29 +716,32 @@ function renderSetupPanel(domainProject, state) {
   const report = workbookImport?.preview?.report;
   return `
     <section class="panel">
+      <p class="eyebrow">Planner setup</p>
       <h2>Event Staffing setup</h2>
-      <label>Project title<input type="text" name="eventStaffingTitle" value="${escapeHtml(domainProject.title)}" /></label>
+      <div class="form-grid two-columns">
+        <label>${renderFieldLabel('Project title', 'A descriptive name for this staffing schedule.')}<input type="text" name="eventStaffingTitle" value="${escapeHtml(domainProject.title)}" /></label>
+      </div>
       <h3>Solver configuration</h3>
       <div class="form-grid four-columns compact-form-grid">
-        <label>Timeout (ms)<input type="number" min="1" name="staffingTimeLimitMs" value="${escapeHtml(options.timeLimitMs)}" /></label>
-        <label>Maximum solutions<input type="number" min="1" max="1000" name="staffingMaxSolutions" value="${escapeHtml(options.maxSolutions)}" /></label>
-        <label>Equity weight<input type="number" name="staffingEquityWeight" value="${escapeHtml(options.scoreWeights.equity)}" /></label>
-        <label>Preference weight<input type="number" name="staffingPreferenceWeight" value="${escapeHtml(options.scoreWeights.preferences)}" /></label>
-        <label>Target weight<input type="number" name="staffingTargetWeight" value="${escapeHtml(options.scoreWeights.targets)}" /></label>
-        <label>Minimum changed assignments<input type="number" min="0" name="staffingDiversityDistance" value="${escapeHtml(options.diversity.minimumAssignmentDistance)}" /></label>
-        <label><span>Diverse alternatives</span><input type="checkbox" name="staffingDiversityEnabled"${options.diversity.enabled ? ' checked' : ''} /></label>
+        <label>${renderFieldLabel('Timeout (ms)', 'Maximum search time. For example, 1000 gives a fast one-second search that may be partial; 30000 allows up to 30 seconds to improve or prove the schedule.')}<input type="number" min="1" name="staffingTimeLimitMs" value="${escapeHtml(options.timeLimitMs)}" /></label>
+        <label>${renderFieldLabel('Maximum solutions', 'Maximum ranked schedules to return. For example, 1 gives one plan; 20 gives more choices but can require more search time.')}<input type="number" min="1" max="1000" name="staffingMaxSolutions" value="${escapeHtml(options.maxSolutions)}" /></label>
+        <label>${renderFieldLabel('Equity weight', 'Relative influence of balanced workloads. For example, 0 does not reward balance; 100 strongly favors similar assignment totals across people.')}<input type="number" name="staffingEquityWeight" value="${escapeHtml(options.scoreWeights.equity)}" /></label>
+        <label>${renderFieldLabel('Preference weight', 'Relative influence of availability preferences. For example, 0 ignores prefer and prefer-not choices; 100 makes them strongly affect ranking.')}<input type="number" name="staffingPreferenceWeight" value="${escapeHtml(options.scoreWeights.preferences)}" /></label>
+        <label>${renderFieldLabel('Target weight', 'Relative influence of workload targets. For example, 0 ignores target gaps; 100 strongly favors schedules close to each target.')}<input type="number" name="staffingTargetWeight" value="${escapeHtml(options.scoreWeights.targets)}" /></label>
+        <label>${renderFieldLabel('Minimum changed assignments', 'Required differences between alternatives. For example, 1 permits nearly identical schedules; 10 requires at least ten changed assignments and may return fewer schedules.')}<input type="number" min="0" name="staffingDiversityDistance" value="${escapeHtml(options.diversity.minimumAssignmentDistance)}" /></label>
+        <label class="checkbox-chip"><input type="checkbox" name="staffingDiversityEnabled"${options.diversity.enabled ? ' checked' : ''} />${renderFieldLabel('Diverse alternatives', 'Require returned schedules to differ by at least the configured number of assignments.')}</label>
       </div>
     </section>
     <section class="panel">
       <h2>Configuration workbook</h2>
       <p class="muted-text">Export the complete editable setup at any time. Import previews either a full configuration replacement or a compatible preferences-only merge.</p>
-      <div class="event-staffing-inline-actions">
-        <button type="button" data-event-staffing-action="export-configuration-workbook">Export configuration workbook</button>
-        <label>Preview workbook<input type="file" name="eventStaffingWorkbookFile" accept=".xlsx" /></label>
+      <div class="button-row">
+        <button type="button" class="command-bar-button" data-event-staffing-action="export-configuration-workbook">Export configuration workbook</button>
+        <label class="command-bar-button command-bar-file-button">Preview workbook<input type="file" name="eventStaffingWorkbookFile" accept=".xlsx" hidden /></label>
       </div>
       ${workbookImport?.status === 'busy' ? '<p role="status">Reading workbook…</p>' : ''}
       ${workbookImport?.error ? `<p role="alert" class="command-bar-feedback-error">${escapeHtml(workbookImport.error)}</p>` : ''}
-      ${report ? `${workbookImport.preview.kind === 'configuration' ? '<p><strong>Complete Event Staffing configuration found.</strong> Replacing it changes slots, categories, requirements, people, rules, preferences, and limits, and clears solved results.</p>' : '<p><strong>Preferences-only workbook found.</strong> Applying it does not replace other setup.</p>'}<dl class="summary-grid compact-summary-grid"><div><dt>Matched rows</dt><dd>${report.matchedRows}</dd></div><div><dt>Unknown rows</dt><dd>${report.unknownRows}</dd></div><div><dt>Duplicate rows</dt><dd>${report.duplicateRows}</dd></div><div><dt>Ambiguous rows</dt><dd>${report.ambiguousRows}</dd></div><div><dt>Invalid rows</dt><dd>${report.invalidRows}</dd></div><div><dt>Invalid cells</dt><dd>${report.invalidCells}</dd></div><div><dt>Unknown slot mappings</dt><dd>${report.unknownSlotMappings}</dd></div><div><dt>Preference cells</dt><dd>${report.preferenceCells}</dd></div></dl>${report.issues.length ? `<ul class="issue-list">${report.issues.map((issue) => `<li>${escapeHtml(issue)}</li>`).join('')}</ul>` : ''}<div class="event-staffing-inline-actions">${workbookImport.preview.kind === 'configuration' ? '<button type="button" data-event-staffing-action="replace-configuration-preview">Replace full configuration</button>' : ''}<button type="button" data-event-staffing-action="apply-preference-preview"${workbookImport.preview.canApply ? '' : ' disabled'}>Apply preferences only</button></div>` : ''}
+      ${report ? `${workbookImport.preview.kind === 'configuration' ? '<p><strong>Complete Event Staffing configuration found.</strong> Replacing it changes slots, categories, requirements, people, rules, preferences, and limits, and clears solved results.</p>' : '<p><strong>Preferences-only workbook found.</strong> Applying it does not replace other setup.</p>'}<dl class="summary-grid compact-summary-grid"><div><dt>Matched rows</dt><dd>${report.matchedRows}</dd></div><div><dt>Unknown rows</dt><dd>${report.unknownRows}</dd></div><div><dt>Duplicate rows</dt><dd>${report.duplicateRows}</dd></div><div><dt>Ambiguous rows</dt><dd>${report.ambiguousRows}</dd></div><div><dt>Invalid rows</dt><dd>${report.invalidRows}</dd></div><div><dt>Invalid cells</dt><dd>${report.invalidCells}</dd></div><div><dt>Unknown slot mappings</dt><dd>${report.unknownSlotMappings}</dd></div><div><dt>Preference cells</dt><dd>${report.preferenceCells}</dd></div></dl>${report.issues.length ? `<ul class="issue-list compact-issue-list">${report.issues.map((issue) => `<li class="issue-list-item warning"><div>${escapeHtml(issue)}</div></li>`).join('')}</ul>` : ''}<div class="button-row">${workbookImport.preview.kind === 'configuration' ? '<button type="button" class="command-bar-button command-bar-button-danger" data-event-staffing-action="replace-configuration-preview">Replace full configuration</button>' : ''}<button type="button" class="command-bar-button command-bar-button-primary" data-event-staffing-action="apply-preference-preview"${workbookImport.preview.canApply ? '' : ' disabled'}>Apply preferences only</button></div>` : ''}
     </section>`;
 }
 
@@ -760,12 +768,26 @@ function renderBody(domainProject, state) {
       </div>
     </section>${renderSupportSections(domainProject, selection.groupTypeLabelsById, editor)}`;
   return `
+    <section class="hero-card event-staffing-hero-card">
+      <div>
+        <p class="eyebrow">Event staffing planner</p>
+        <h2>${escapeHtml(domainProject.title || 'Staffing schedule')}</h2>
+        <p class="hero-description">Build dated staffing slots, coverage requirements, availability, workload rules, and ranked schedules in one guided workflow.</p>
+      </div>
+      <dl class="summary-grid compact-summary-grid">
+        <div><dt>Dates</dt><dd>${new Set(domainProject.events.map(getSlotDayKey)).size}</dd></div>
+        <div><dt>Slots</dt><dd>${domainProject.events.length}</dd></div>
+        <div><dt>Categories</dt><dd>${domainProject.groupTypes.length}</dd></div>
+        <div><dt>People</dt><dd>${domainProject.people.length}</dd></div>
+        <div><dt>Requirements</dt><dd>${domainProject.requirements.length}</dd></div>
+      </dl>
+    </section>
     ${renderWorkflowTabs(activeTab)}
     ${renderTabPanel('setup', activeTab, renderSetupPanel(domainProject, state))}
     ${renderTabPanel('data', activeTab, dataContent)}
     ${renderTabPanel('rules', activeTab, `${renderPreferenceMatrix(domainProject, editor)}${renderRuleEditors(domainProject, editor)}`)}
     ${renderTabPanel('review', activeTab, renderReviewPanel(state))}
-    ${renderTabPanel('results', activeTab, `${renderSolveStatus(state.eventStaffingPage.solveExecution, 'data-event-staffing-action="cancel-solve"')}${renderAdministratorRepairPanel(domainProject, state.eventStaffingPage.lastNormalizedProject, state.eventStaffingPage.lastSolverResult, { ...editor.administratorRepair, validationErrors: state.eventStaffingPage.lastValidation?.errors ?? [] })}${renderStaffingScheduleView(domainProject, state.eventStaffingPage.lastSolverResult, state.eventStaffingPage.activeSolutionIndex ?? 0)}${state.eventStaffingPage.lastSolverResult?.solutions?.length ? '<button type="button" data-event-staffing-action="export-solution-workbook">Export selected schedule workbook</button>' : ''}`)}
+    ${renderTabPanel('results', activeTab, `${renderSolveStatus(state.eventStaffingPage.solveExecution, 'data-event-staffing-action="cancel-solve"')}${renderAdministratorRepairPanel(domainProject, state.eventStaffingPage.lastNormalizedProject, state.eventStaffingPage.lastSolverResult, { ...editor.administratorRepair, validationErrors: state.eventStaffingPage.lastValidation?.errors ?? [] })}${renderStaffingScheduleView(domainProject, state.eventStaffingPage.lastSolverResult, state.eventStaffingPage.activeSolutionIndex ?? 0)}${state.eventStaffingPage.lastSolverResult?.solutions?.length ? '<div class="button-row"><button type="button" class="command-bar-button command-bar-button-primary" data-event-staffing-action="export-solution-workbook">Export selected schedule workbook</button></div>' : ''}`)}
   `;
 }
 
@@ -2087,9 +2109,9 @@ function bindInteractions(root, state) {
             : 'The staffing solve stopped without a complete result.';
           state.eventStaffingPage.activeWorkflowTab = 'results';
         },
+        onProgressChange: () => updateSolveStatus(root, state.eventStaffingPage.solveExecution),
         onChange: rerender,
       });
-      rerender();
     });
   }
 
@@ -2197,9 +2219,9 @@ function bindInteractions(root, state) {
             : 'The selected temporary exceptions did not produce a staffing plan.';
           state.eventStaffingPage.activeWorkflowTab = 'results';
         },
+        onProgressChange: () => updateSolveStatus(root, state.eventStaffingPage.solveExecution),
         onChange: rerender,
       });
-      rerender();
     });
   });
 

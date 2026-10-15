@@ -34,6 +34,7 @@ The current application already provides:
 - canonical or explicitly best-found ranked alternatives with diversity controls
 - timeout, progress, cancellation, and partial-result handling in separate module Workers
 - shared validation and solution components
+- consistent card and hero framing across all use cases, with keyboard-accessible explanatory tooltips for fields whose solver or domain semantics are not self-evident
 - static browser execution
 
 The JavaScript repeated-assignment path performs complete or explicitly bounded pair branching. Large supported staffing models use HiGHS WASM with an independently verified greedy incumbent. Target-scale optimization can remain partial or best-found within browser limits, and general relation preferences still lack optimization semantics.

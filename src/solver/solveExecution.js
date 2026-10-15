@@ -9,7 +9,7 @@ export function isBrowserRuntime() {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
 }
 
-export function startSolveExecution({ execution, model, options = {}, onResult, onChange }) {
+export function startSolveExecution({ execution, model, options = {}, onResult, onChange, onProgressChange }) {
   execution.handle?.cancel();
   execution.progress = null;
   execution.elapsedMs = 0;
@@ -19,6 +19,7 @@ export function startSolveExecution({ execution, model, options = {}, onResult, 
     const result = runSolveService(model, options);
     execution.status = 'complete';
     onResult(result);
+    onChange?.();
     return result;
   }
 
@@ -40,7 +41,8 @@ export function startSolveExecution({ execution, model, options = {}, onResult, 
     onProgress(progress) {
       execution.progress = progress;
       execution.elapsedMs = Math.max(execution.elapsedMs, progress.elapsedMs ?? 0);
-      onChange?.();
+      if (onProgressChange) onProgressChange();
+      else onChange?.();
     },
   });
   execution.handle = handle;

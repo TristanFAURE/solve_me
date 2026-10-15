@@ -32,16 +32,19 @@ body {
   margin-bottom: 24px;
 }
 
-.card {
+.card,
+.panel {
   background: white;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 16px;
   margin-bottom: 16px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
 }
 
 .nav-list {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 0;
   list-style: none;
@@ -91,6 +94,12 @@ body {
   font: inherit;
   font-weight: 700;
   cursor: pointer;
+  transition: color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.workflow-tabs [role="tab"]:hover {
+  background: rgba(255, 255, 255, 0.62);
+  color: #1d4ed8;
 }
 
 .workflow-tabs [role="tab"][aria-selected="true"] {
@@ -466,6 +475,26 @@ textarea {
   background: white;
 }
 
+.panel > label,
+.panel .event-staffing-inline-actions label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.panel > label > input,
+.panel > label > select,
+.panel > label > textarea,
+.panel .event-staffing-inline-actions label > input,
+.panel .event-staffing-inline-actions label > select {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  font: inherit;
+}
+
 .full-width {
   grid-column: 1 / -1;
 }
@@ -564,6 +593,11 @@ textarea {
   margin: 8px 0 0;
   max-width: 56ch;
   color: #475569;
+}
+
+.event-staffing-hero-card {
+  background: linear-gradient(135deg, #ffffff 0%, #eff6ff 42%, #ecfeff 100%);
+  border-color: #93c5fd;
 }
 
 .compact-summary-grid {
@@ -1080,6 +1114,13 @@ textarea {
   margin: 0;
 }
 
+.form-grid label.checkbox-chip {
+  align-self: end;
+  flex-direction: row;
+  align-items: center;
+  min-height: 42px;
+}
+
 .school-rule-grid {
   margin-top: 16px;
 }
@@ -1162,7 +1203,7 @@ textarea {
 }
 
 .wedding-panel .entity-card {
-  padding: 10px;
+  padding: 12px;
 }
 
 .wedding-panel .entity-meta-grid {
@@ -1175,12 +1216,12 @@ textarea {
 }
 
 .wedding-panel .entity-inline-input {
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .wedding-panel .entity-id {
   margin-top: 4px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .wedding-checkbox-list dd {
@@ -1450,11 +1491,12 @@ textarea {
 }
 
 .field-tooltip {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   margin: 0;
   border: 1px solid #bfdbfe;
@@ -1467,8 +1509,78 @@ textarea {
   cursor: help;
 }
 
-.field-tooltip:hover {
+.field-tooltip:hover,
+.field-tooltip:focus-visible {
   background: #dbeafe;
+}
+
+.field-tooltip::after {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 8px);
+  left: 50%;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 48px));
+  padding: 9px 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.22);
+  content: attr(data-tooltip);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -3px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.field-tooltip:hover::after,
+.field-tooltip:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.navigation-arrow {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #fff 0%, #eff6ff 100%);
+  color: #1d4ed8;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.12);
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease;
+}
+
+.navigation-arrow svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.navigation-arrow:hover:not(:disabled) {
+  background: #dbeafe;
+  box-shadow: 0 5px 12px rgba(37, 99, 235, 0.18);
+  transform: translateY(-1px);
+}
+
+.navigation-arrow:disabled {
+  background: #f8fafc;
+  color: #94a3b8;
+  box-shadow: none;
+  cursor: not-allowed;
 }
 
 .event-staffing-bulk-menu .field-tooltip {
@@ -1528,6 +1640,7 @@ textarea {
   }
 
   .command-bar-card {
+    position: static;
     padding: 14px;
   }
 
@@ -1568,6 +1681,7 @@ textarea {
   .audit-section-grid,
   .validation-panel-grid,
   .wedding-neighbor-grid,
+  .compact-seat-meta-grid,
   .wedding-group-selection-row,
   .school-preference-top-row,
   .school-rule-top-row,

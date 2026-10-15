@@ -44,6 +44,8 @@ export function buildAdministratorRepairCandidates(domainProject, normalizedProj
   const groupTypes = domainProject.groupTypes ?? [];
   const groupLabels = new Map(groupTypes.map((group) => [group.id, group.label ?? group.id]));
   const eventLabels = new Map(events.map((event) => [event.id, event.slotLabel ?? event.label ?? event.id]));
+  const dateLabel = events[0]?.date || dateKey;
+  const dateScopeLabel = `${dateLabel} (${events.map((event) => eventLabels.get(event.id)).join(', ')})`;
   const candidates = [];
 
   people.forEach((person) => {
@@ -55,7 +57,7 @@ export function buildAdministratorRepairCandidates(domainProject, normalizedProj
         type: 'whole-day-unavailability',
         itemId: person.id,
         destinationIds: destinationsFor(domainProject, events),
-        label: `${person.name ?? person.id}: whole-day unavailability`,
+        label: `${person.name ?? person.id}: whole-day unavailability on ${dateScopeLabel}`,
       });
     } else {
       groupTypes.forEach((group) => {
@@ -66,7 +68,7 @@ export function buildAdministratorRepairCandidates(domainProject, normalizedProj
             type: 'group-unavailability',
             itemId: person.id,
             destinationIds: destinationsFor(domainProject, events, group.id),
-            label: `${person.name ?? person.id}: unavailable for ${groupLabels.get(group.id) ?? group.id}`,
+            label: `${person.name ?? person.id}: unavailable for ${groupLabels.get(group.id) ?? group.id} on ${dateScopeLabel}`,
           });
         }
       });
@@ -82,7 +84,7 @@ export function buildAdministratorRepairCandidates(domainProject, normalizedProj
           type: 'slot-unavailability',
           itemId: person.id,
           destinationIds: blockedDestinations,
-          label: `${person.name ?? person.id}: slot / legacy slot unavailability at ${eventLabels.get(event.id)}`,
+          label: `${person.name ?? person.id}: slot / legacy slot unavailability at ${eventLabels.get(event.id)} on ${dateLabel}`,
         });
       });
     }
@@ -97,7 +99,7 @@ export function buildAdministratorRepairCandidates(domainProject, normalizedProj
         type: 'category-eligibility',
         itemId: person.id,
         destinationIds: destinationsFor(domainProject, events, group.id),
-        label: `${person.name ?? person.id}: category eligibility for ${groupLabels.get(group.id) ?? group.id}`,
+        label: `${person.name ?? person.id}: category eligibility for ${groupLabels.get(group.id) ?? group.id} on ${dateScopeLabel}`,
       });
     });
   });
@@ -115,7 +117,7 @@ export function buildAdministratorRepairCandidates(domainProject, normalizedProj
       type: 'explicit-forbidden-assignment',
       itemId: assignment.personId,
       destinationIds: [createEventStaffingDestinationId(assignment.eventId, assignment.groupTypeId)],
-      label: `${person?.name ?? assignment.personId}: explicit forbidden assignment at ${eventLabels.get(assignment.eventId) ?? assignment.eventId} / ${groupLabels.get(assignment.groupTypeId) ?? assignment.groupTypeId}`,
+      label: `${person?.name ?? assignment.personId}: explicit forbidden assignment at ${eventLabels.get(assignment.eventId) ?? assignment.eventId} / ${groupLabels.get(assignment.groupTypeId) ?? assignment.groupTypeId} on ${dateLabel}`,
     });
   });
 
@@ -143,7 +145,7 @@ export function buildAdministratorRepairCandidates(domainProject, normalizedProj
         type: 'total-workload-maximum', kind: 'maximum', itemId: person.id, boundIndex,
         originalMax: totalMax, destinationIds: selectedDateDestinations,
         allBoundDestinationIds: allDestinationIds,
-        label: `${person.name ?? person.id}: maximum total workload (${totalMax}, ${totalMaxSource})`,
+        label: `${person.name ?? person.id}: maximum total workload (${totalMax}, ${totalMaxSource}) on ${dateScopeLabel}`,
       });
     }
     groupTypes.forEach((group) => {
@@ -161,7 +163,7 @@ export function buildAdministratorRepairCandidates(domainProject, normalizedProj
         type: 'category-workload-maximum', kind: 'maximum', itemId: person.id, boundIndex,
         originalMax: categoryMax, destinationIds: selectedDateDestinations,
         allBoundDestinationIds: allCategoryDestinations,
-        label: `${person.name ?? person.id}: maximum ${groupLabels.get(group.id) ?? group.id} workload (${categoryMax}, ${categoryMaxSource})`,
+        label: `${person.name ?? person.id}: maximum ${groupLabels.get(group.id) ?? group.id} workload (${categoryMax}, ${categoryMaxSource}) on ${dateScopeLabel}`,
       });
     });
   });

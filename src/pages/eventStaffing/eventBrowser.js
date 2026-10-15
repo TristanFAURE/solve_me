@@ -5,6 +5,7 @@ import {
   normalizeForSearch,
   summarizeRequirements,
 } from './utils.js';
+import { renderFieldLabel } from '../../components/common/fieldHelp.js';
 
 export function getEventBrowserState(state) {
   const editor = state?.eventStaffingPage?.editor ?? {};
@@ -102,19 +103,19 @@ function renderBulkCreateEventsSection(editor) {
         <p class="muted-text">Create explicit events from a start date and end date. This helper writes concrete event rows into the domain project.</p>
         <div class="form-grid four-columns compact-form-grid top-gap">
           <label>
-            <span class="tooltip-label">Start date<button type="button" class="field-tooltip" aria-label="Start date help" title="The first day to generate an event for. Generation includes this date.">?</button></span>
+            ${renderFieldLabel('Start date', 'The first day to generate an event for. Generation includes this date.')}
             <input type="date" name="draftRangeStartDate" value="${escapeHtml(editor.draftRangeStartDate ?? '')}" />
           </label>
           <label>
-            <span class="tooltip-label">End date<button type="button" class="field-tooltip" aria-label="End date help" title="The last day to generate an event for. Generation includes this date.">?</button></span>
+            ${renderFieldLabel('End date', 'The last day to generate an event for. Generation includes this date.')}
             <input type="date" name="draftRangeEndDate" value="${escapeHtml(editor.draftRangeEndDate ?? '')}" />
           </label>
           <label>
-            <span class="tooltip-label">Label template<button type="button" class="field-tooltip" aria-label="Label template help" title="Template used to build each generated event label. Supported placeholders: {weekday}, {day}, {monthShort}, {month}, {year}.">?</button></span>
+            ${renderFieldLabel('Label template', 'Template used to build each generated event label. Supported placeholders: {weekday}, {day}, {monthShort}, {month}, {year}.')}
             <input type="text" name="draftRangeLabelTemplate" value="${escapeHtml(editor.draftRangeLabelTemplate ?? '')}" placeholder="{weekday} {day} {monthShort} {year}" />
           </label>
           <label class="button-label">
-            <span class="tooltip-label">Action<button type="button" class="field-tooltip" aria-label="Generate events help" title="Creates one event per day in the selected inclusive date range using the label template.">?</button></span>
+            ${renderFieldLabel('Action', 'Creates one event per day in the selected inclusive date range using the label template.')}
             <button type="button" data-event-staffing-action="generate-events">Generate events</button>
           </label>
         </div>
@@ -167,7 +168,7 @@ export function renderEventBrowser(domainProject, browserState, selection, edito
         </tr>
       `;
     }).join('')
-    : '<tr><td colspan="7">No events match the current filters.</td></tr>';
+    : '<tr><td colspan="8">No events match the current filters.</td></tr>';
 
   return `
     <section class="workspace-panel">
@@ -182,18 +183,18 @@ export function renderEventBrowser(domainProject, browserState, selection, edito
 
       <div class="form-grid three-columns compact-form-grid">
         <label>
-          Search
+          ${renderFieldLabel('Search', 'Filter slots by date, label, technical identifier, or staffing category.')}
           <input type="search" name="eventSearchText" value="${escapeHtml(browserState.searchText)}" placeholder="Search by date, label, id, or group type" />
         </label>
         <label>
-          Group type
+          ${renderFieldLabel('Group type', 'Show only slots that have a requirement for the selected staffing category.')}
           <select name="selectedGroupTypeId">
             <option value="all">All group types</option>
             ${domainProject.groupTypes.map((groupType) => `<option value="${escapeHtml(groupType.id)}"${browserState.selectedGroupTypeId === groupType.id ? ' selected' : ''}>${escapeHtml(groupType.label)}</option>`).join('')}
           </select>
         </label>
         <label>
-          <span>Load filter</span>
+          ${renderFieldLabel('Load filter', 'Heavy slots have a combined hard minimum staffing requirement of at least four people.')}
           <div>
             <input type="checkbox" name="onlyHeavyEvents"${browserState.onlyHeavyEvents ? ' checked' : ''} />
             <span>Only show events with total min staffing ≥ 4</span>

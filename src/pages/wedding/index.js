@@ -1,7 +1,7 @@
 import { renderPageShell } from '../../components/common/pageShell.js';
 import { getGeneralPreferenceAuthoringPolicy } from '../../components/common/preferenceAuthoringPolicy.js';
 import { renderSolutionPanel } from '../../components/solutions/solutionPanel.js';
-import { renderSolveStatus } from '../../components/solutions/solveStatus.js';
+import { renderSolveStatus, updateSolveStatus } from '../../components/solutions/solveStatus.js';
 import { renderValidationPanel } from '../../components/solutions/validationPanel.js';
 import { ASSIGNMENT_MODES } from '../../core/model/assignmentModes.js';
 import { CONSTRAINT_KINDS, createConstraint } from '../../core/model/constraints.js';
@@ -40,6 +40,7 @@ import { bindWorkflowTabs, isWorkflowTab, renderWorkflowPanel, renderWorkflowTab
 import { buildWorkflowSolveOptions, createWorkflowSolveDraft, renderAdvancedDiagnostics, renderSolveConfiguration, renderWorkbookSetup, solveOptionIssues } from '../../components/common/workflowSetup.js';
 import { validateSolveOptions } from '../../solver/solveOptions.js';
 import { parseBulkLabels } from '../../components/common/bulkEntry.js';
+import { renderFieldLabel } from '../../components/common/fieldHelp.js';
 
 const REPLACE_WEDDING_MESSAGE = 'This will replace your current non-empty wedding plan. Continue?';
 
@@ -329,6 +330,7 @@ function runWeddingSolveFlow(state, root) {
         : 'Wedding solve stopped without a complete result.';
       state.weddingPage.activeWorkflowTab = solverResult.status === 'solved' ? 'results' : 'review';
     },
+    onProgressChange: () => updateSolveStatus(root, state.weddingPage.solveExecution),
     onChange: () => renderWeddingPage(root, state),
   });
 }
@@ -390,18 +392,18 @@ function renderMetadataPanel(project) {
       <h2>💌 Wedding metadata</h2>
       <div class="form-grid two-columns">
         <label>
-          <span>Event name</span>
+          ${renderFieldLabel('Event name', 'A descriptive name for this wedding seating plan.')}
           <input type="text" name="weddingTitle" value="${escapeHtml(project.title)}" />
         </label>
         <label>
-          <span>Seating mode</span>
+          ${renderFieldLabel('Seating mode', 'Table only assigns guests to tables. Seat-aware also assigns each guest to a specific seat and enables adjacency rules.')}
           <select name="weddingAssignmentMode">
             <option value="${ASSIGNMENT_MODES.CONTAINER}"${project.assignmentMode === ASSIGNMENT_MODES.CONTAINER ? ' selected' : ''}>Table only 🍽️</option>
             <option value="${ASSIGNMENT_MODES.POSITION}"${project.assignmentMode === ASSIGNMENT_MODES.POSITION ? ' selected' : ''}>Seat-aware 🪑</option>
           </select>
         </label>
         <label class="full-width">
-          <span>Planner notes</span>
+          ${renderFieldLabel('Planner notes', 'Optional notes about the event, seating assumptions, or decisions still to make.')}
           <textarea name="weddingDescription" rows="3">${escapeHtml(project.description)}</textarea>
         </label>
       </div>
@@ -445,16 +447,16 @@ function renderCreateCards(project, editor) {
           </label>
           <div class="inline-field-grid">
             <label>
-              <span>Min</span>
+              ${renderFieldLabel('Min', 'Minimum table occupancy. For example, 0 allows the table to remain empty; 6 requires at least six guests there.')}
               <input type="number" min="0" name="draftTableMinCapacity" value="${escapeHtml(editor.draftTableMinCapacity)}" />
             </label>
             <label>
-              <span>Max</span>
+              ${renderFieldLabel('Max', 'Maximum table occupancy. For example, 6 creates an intimate table; 12 allows a larger group. Leave blank for unlimited capacity.')}
               <input type="number" min="0" name="draftTableMaxCapacity" value="${escapeHtml(editor.draftTableMaxCapacity)}" />
             </label>
           </div>
           <label>
-            <span>Shape</span>
+            ${renderFieldLabel('Shape', 'Used when generating seats and their default neighbor relationships in seat-aware mode.')}
             <select name="draftTableShape">
               <option value="${WEDDING_TABLE_SHAPES.ROUND}"${editor.draftTableShape === WEDDING_TABLE_SHAPES.ROUND ? ' selected' : ''}>Round</option>
               <option value="${WEDDING_TABLE_SHAPES.SQUARE}"${editor.draftTableShape === WEDDING_TABLE_SHAPES.SQUARE ? ' selected' : ''}>Square</option>
@@ -1817,7 +1819,6 @@ function bindActions(root, state) {
           : state.weddingPage.lastSolverResult?.status === 'unsat'
             ? 'No valid seating plan was found with the current rules and capacities. 🧠'
             : 'Wedding solve could not complete successfully.';
-        renderWeddingPage(root, state);
       });
       return;
     }
@@ -1992,7 +1993,7 @@ export function renderWeddingPage(root, state) {
     description: '💍 Build a wedding seating plan with guests, overlapping groups, tables, optional seats, and planner-friendly rules.',
     persistence: state.weddingPage.persistence,
     body: `
-      ${state.weddingPage.message ? `<section class="command-bar-feedback">${escapeHtml(state.weddingPage.message)}</section>` : ''}
+      ${state.weddingPage.message ? `<section class="command-bar-feedback" role="status" aria-live="polite">${escapeHtml(state.weddingPage.message)}</section>` : ''}
       ${renderSummary(state.weddingPage.project)}
       ${renderWorkflowTabs(activeTab)}
       ${renderWorkflowPanel('setup', activeTab, setupContent)}

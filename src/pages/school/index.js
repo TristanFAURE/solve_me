@@ -1,7 +1,7 @@
 import { renderPageShell } from '../../components/common/pageShell.js';
 import { getGeneralPreferenceAuthoringPolicy } from '../../components/common/preferenceAuthoringPolicy.js';
 import { renderSolutionPanel } from '../../components/solutions/solutionPanel.js';
-import { renderSolveStatus } from '../../components/solutions/solveStatus.js';
+import { renderSolveStatus, updateSolveStatus } from '../../components/solutions/solveStatus.js';
 import { renderValidationPanel } from '../../components/solutions/validationPanel.js';
 import { CONSTRAINT_KINDS, createConstraint } from '../../core/model/constraints.js';
 import { createId } from '../../core/model/ids.js';
@@ -32,6 +32,7 @@ import { bindWorkflowTabs, isWorkflowTab, renderWorkflowPanel, renderWorkflowTab
 import { buildWorkflowSolveOptions, createWorkflowSolveDraft, renderAdvancedDiagnostics, renderSolveConfiguration, renderWorkbookSetup, solveOptionIssues } from '../../components/common/workflowSetup.js';
 import { validateSolveOptions } from '../../solver/solveOptions.js';
 import { parseBulkLabels } from '../../components/common/bulkEntry.js';
+import { renderFieldLabel } from '../../components/common/fieldHelp.js';
 
 const REPLACE_SCHOOL_MESSAGE = 'This will replace your current non-empty school scenario. Continue?';
 
@@ -292,11 +293,11 @@ function renderCreateCards(project, editor) {
           </label>
           <div class="inline-field-grid">
             <label>
-              <span>Min</span>
+              ${renderFieldLabel('Min', 'Minimum required class size. For example, 0 allows an empty class; 20 requires at least twenty assigned students.')}
               <input type="number" min="0" name="draftClassMinCapacity" value="${escapeHtml(editor.draftClassMinCapacity)}" />
             </label>
             <label>
-              <span>Max</span>
+              ${renderFieldLabel('Max', 'Maximum class size. For example, 10 creates a small class cap; 30 allows a larger class. Leave blank for unlimited capacity.')}
               <input type="number" min="0" name="draftClassMaxCapacity" value="${escapeHtml(editor.draftClassMaxCapacity)}" />
             </label>
           </div>
@@ -917,6 +918,7 @@ function runSchoolSolveFlow(state, root) {
         : 'School solve stopped without a complete result.';
       state.schoolPage.activeWorkflowTab = solverResult.status === 'solved' ? 'results' : 'review';
     },
+    onProgressChange: () => updateSolveStatus(root, state.schoolPage.solveExecution),
     onChange: () => renderSchoolPage(root, state),
   });
 }
@@ -1436,7 +1438,6 @@ function bindActions(root, state) {
           : state.schoolPage.lastSolverResult?.status === 'unsat'
             ? 'No valid class distribution was found with the current rules and capacities. 🧠'
             : 'School solve could not complete successfully.';
-        renderSchoolPage(root, state);
       });
       return;
     }
@@ -1591,8 +1592,8 @@ export function renderSchoolPage(root, state) {
   const activeTab = state.schoolPage.activeWorkflowTab;
   const setupContent = `
     <section class="card sticky-panel"><h2>School scenario</h2><div class="form-grid two-columns">
-      <label><span>Scenario name</span><input type="text" name="schoolTitle" value="${escapeHtml(state.schoolPage.project.title)}" /></label>
-      <label class="full-width"><span>Description</span><textarea name="schoolDescription" rows="3">${escapeHtml(state.schoolPage.project.description)}</textarea></label>
+      <label>${renderFieldLabel('Scenario name', 'A descriptive name for this school class-allocation scenario.')}<input type="text" name="schoolTitle" value="${escapeHtml(state.schoolPage.project.title)}" /></label>
+      <label class="full-width">${renderFieldLabel('Description', 'Optional planning notes, assumptions, or context for this scenario.')}<textarea name="schoolDescription" rows="3">${escapeHtml(state.schoolPage.project.description)}</textarea></label>
     </div></section>
     ${renderSolveConfiguration(state.schoolPage.editor, 'school')}
     ${renderWorkbookSetup(state.schoolPage.workbookImport, 'school', 'school scenario')}`;
@@ -1608,7 +1609,7 @@ export function renderSchoolPage(root, state) {
     description: '🏫 Build school scenarios with students, teachers, levels, and classes while staying on the shared generic model.',
     persistence: state.schoolPage.persistence,
     body: `
-      ${state.schoolPage.message ? `<section class="command-bar-feedback">${escapeHtml(state.schoolPage.message)}</section>` : ''}
+      ${state.schoolPage.message ? `<section class="command-bar-feedback" role="status" aria-live="polite">${escapeHtml(state.schoolPage.message)}</section>` : ''}
       ${renderSummary(state.schoolPage.project)}
       ${renderWorkflowTabs(activeTab)}
       ${renderWorkflowPanel('setup', activeTab, setupContent)}

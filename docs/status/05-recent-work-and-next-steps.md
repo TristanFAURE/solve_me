@@ -4,6 +4,8 @@
 
 The ranked-solutions and shared-workflow implementation milestone is complete:
 
+- standardized panel framing, responsive controls, navigation arrows, and accessible field tooltips across Generic, School, Wedding, and Event Staffing workflows
+- stopped full-page rerenders on solver progress updates; only the live solve-status text now changes while a Worker is running
 - added a person-centric date-column availability calendar with previous/next person controls and whole-day/group rows, plus a collapsible date overview with previous/next navigation, people filtering, and editable group cells
 - added per-solution soft-goal trade-off explanations and workload spread while explicitly confirming that displayed solutions satisfy hard constraints
 - exposed temporary administrator repair only in Results for proven unsatisfiable solves or solve attempts with repairable validation conflicts
@@ -45,7 +47,7 @@ Final automated verification must include:
 - `git diff --check`
 - review for credentials, tokens, internal URLs, and database secrets
 
-Final unit verification passed 289 tests, including whole-day/group availability precedence, administrator repair behavior, and a 94-assignment equity regression that produces workloads 31/31/32. The production build emitted separate JavaScript and HiGHS Workers plus the 3.53 MB WASM asset, and `git diff --check` passed. All 23 Playwright tests are discovered; GitHub Actions installs Chromium before running them and uses no report server.
+Final unit verification passed 297 tests, including shared field-help rendering, in-place solve progress, whole-day/group availability precedence, administrator repair behavior, and a 94-assignment equity regression that produces workloads 31/31/32. The production build emitted separate JavaScript and HiGHS Workers plus the 3.53 MB WASM asset, and `git diff --check` passed. All 23 Playwright tests are discovered; GitHub Actions installs Chromium before running them and uses no report server.
 
 ## Event Staffing scale result
 

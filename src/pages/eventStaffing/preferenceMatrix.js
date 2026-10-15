@@ -7,6 +7,7 @@ import {
   PREFERENCE_STATES,
 } from './migration.js';
 import { escapeHtml } from './utils.js';
+import { renderFieldLabel } from '../../components/common/fieldHelp.js';
 
 const CHOICES = [
   [PREFERENCE_STATES.NEUTRAL, 'Neutral'],
@@ -119,9 +120,9 @@ export function renderPreferenceMatrix(domainProject, viewState = {}) {
       <summary>Person availability calendar</summary>
       <p class="muted-text">Select one person, then review every date and staffing group. Whole-day Unavailable overrides every group and slot on that date. Otherwise each group can inherit or override the whole-day preference across all slots on that date.</p>
       <div class="event-staffing-inline-actions top-gap">
-        <button type="button" data-event-staffing-action="previous-preference-person"${personIndex <= 0 ? ' disabled' : ''} aria-label="Previous availability person">←</button>
-        <label>Person<select name="preferenceMatrixPersonId">${domainProject.people.map((entry) => `<option value="${escapeHtml(entry.id)}"${entry.id === person.id ? ' selected' : ''}>${escapeHtml(entry.name)}</option>`).join('')}</select></label>
-        <button type="button" data-event-staffing-action="next-preference-person"${personIndex >= domainProject.people.length - 1 ? ' disabled' : ''} aria-label="Next availability person">→</button>
+        <button type="button" class="navigation-arrow" data-event-staffing-action="previous-preference-person"${personIndex <= 0 ? ' disabled' : ''} aria-label="Previous availability person"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m12.5 4-6 6 6 6" /></svg></button>
+        <label>${renderFieldLabel('Person', 'Select whose availability and preferences are displayed across every date and category.')}<select name="preferenceMatrixPersonId">${domainProject.people.map((entry) => `<option value="${escapeHtml(entry.id)}"${entry.id === person.id ? ' selected' : ''}>${escapeHtml(entry.name)}</option>`).join('')}</select></label>
+        <button type="button" class="navigation-arrow" data-event-staffing-action="next-preference-person"${personIndex >= domainProject.people.length - 1 ? ' disabled' : ''} aria-label="Next availability person"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m7.5 4 6 6-6 6" /></svg></button>
       </div>
       <div class="table-wrap event-staffing-scroll-box top-gap">
         <table class="data-table preference-matrix">
@@ -154,10 +155,10 @@ export function renderPreferenceMatrix(domainProject, viewState = {}) {
       <summary>Date availability overview</summary>
       <p class="muted-text">Review or edit every person's group preference for one date. Values inherit from each person's whole-day setting unless overridden.</p>
       <div class="event-staffing-inline-actions">
-        <button type="button" data-event-staffing-action="previous-preference-day"${activeDateIndex <= 0 ? ' disabled' : ''} aria-label="Previous availability date">←</button>
-        <label>Date<select name="preferenceMatrixDayKey">${dateGroups.map((group) => `<option value="${escapeHtml(group.dayKey)}"${group.dayKey === activeDayKey ? ' selected' : ''}>${escapeHtml(group.label)}</option>`).join('')}</select></label>
-        <button type="button" data-event-staffing-action="next-preference-day"${activeDateIndex >= dateGroups.length - 1 ? ' disabled' : ''} aria-label="Next availability date">→</button>
-        <label>Show people<select name="preferenceMatrixPeopleFilter"><option value="all"${peopleFilter === 'all' ? ' selected' : ''}>All</option>${CHOICES.map(([value, label]) => `<option value="${value}"${peopleFilter === value ? ' selected' : ''}>${value === PREFERENCE_STATES.PREFER ? 'Available / prefer' : label}</option>`).join('')}</select></label>
+        <button type="button" class="navigation-arrow" data-event-staffing-action="previous-preference-day"${activeDateIndex <= 0 ? ' disabled' : ''} aria-label="Previous availability date"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m12.5 4-6 6 6 6" /></svg></button>
+        <label>${renderFieldLabel('Date', 'Select the date whose category availability is shown for all people.')}<select name="preferenceMatrixDayKey">${dateGroups.map((group) => `<option value="${escapeHtml(group.dayKey)}"${group.dayKey === activeDayKey ? ' selected' : ''}>${escapeHtml(group.label)}</option>`).join('')}</select></label>
+        <button type="button" class="navigation-arrow" data-event-staffing-action="next-preference-day"${activeDateIndex >= dateGroups.length - 1 ? ' disabled' : ''} aria-label="Next availability date"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m7.5 4 6 6-6 6" /></svg></button>
+        <label>${renderFieldLabel('Show people', 'Filter columns by each person’s whole-day availability state on the selected date.')}<select name="preferenceMatrixPeopleFilter"><option value="all"${peopleFilter === 'all' ? ' selected' : ''}>All</option>${CHOICES.map(([value, label]) => `<option value="${value}"${peopleFilter === value ? ' selected' : ''}>${value === PREFERENCE_STATES.PREFER ? 'Available / prefer' : label}</option>`).join('')}</select></label>
       </div>
       <div class="table-wrap event-staffing-scroll-box top-gap">
         <table class="data-table preference-matrix">

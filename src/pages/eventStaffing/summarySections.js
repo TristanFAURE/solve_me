@@ -1,5 +1,6 @@
 import { escapeHtml, formatGroupTypeList } from './utils.js';
 import { getPreferenceMap, PREFERENCE_STATES } from './migration.js';
+import { renderFieldLabel } from '../../components/common/fieldHelp.js';
 
 function renderGroupTypeOptions(domainProject, selectedIds = [], inputName = 'groupTypeSelection') {
   return domainProject.groupTypes.map((groupType) => `
@@ -24,17 +25,18 @@ function renderPerGroupLimitRows(domainProject, rows = [], valueName, limitName,
     return `<p class="muted-text">${escapeHtml(emptyText)}</p>`;
   }
 
+  const isTarget = valueName.includes('Target');
   return rows.map((row, index) => `
     <div class="form-grid three-columns compact-form-grid top-gap event-staffing-limit-row">
       <label>
-        Group type
+        ${renderFieldLabel('Group type', 'The staffing category to which this person-specific override applies.')}
         <select name="${valueName}" data-row-index="${index}">
           <option value="">Select group type</option>
           ${domainProject.groupTypes.map((groupType) => `<option value="${escapeHtml(groupType.id)}"${row.groupTypeId === groupType.id ? ' selected' : ''}>${escapeHtml(groupType.label)}</option>`).join('')}
         </select>
       </label>
       <label>
-        Limit
+        ${renderFieldLabel(isTarget ? 'Target' : 'Limit', isTarget ? 'Preferred assignment count for this category. This is a soft goal.' : 'Hard maximum assignments this person may receive in this category.')}
         <input type="number" name="${limitName}" data-row-index="${index}" value="${escapeHtml(String(row.value ?? ''))}" min="0" step="1" />
       </label>
       <label class="button-label">
@@ -152,11 +154,11 @@ export function renderSupportSections(domainProject, groupTypeLabelsById, editor
       <p>Create the reusable staffing groups that events and rules refer to.</p>
       <div class="form-grid three-columns compact-form-grid top-gap">
         <label>
-          Label
+          ${renderFieldLabel('Label', 'Planner-facing name for this reusable staffing category.')}
           <input type="text" name="draftGroupTypeLabel" value="${escapeHtml(editor.draftGroupTypeLabel ?? '')}" placeholder="Setup" />
         </label>
         <label>
-          Id override (optional)
+          ${renderFieldLabel('Id override (optional)', 'Stable technical identifier. Leave blank to generate one from the label.')}
           <input type="text" name="draftGroupTypeId" value="${escapeHtml(editor.draftGroupTypeId ?? '')}" placeholder="setup" />
         </label>
         <label class="button-label">
@@ -213,23 +215,23 @@ export function renderSupportSections(domainProject, groupTypeLabelsById, editor
 
             <div class="form-grid four-columns compact-form-grid top-gap">
               <label>
-                Name
+                ${renderFieldLabel('Name', 'Display name used in availability, rules, schedules, and exports.')}
                 <input type="text" name="draftPersonName" value="${escapeHtml(editor.draftPersonName ?? '')}" placeholder="Alex Martin" />
               </label>
               <label>
-                Id override (optional)
+                ${renderFieldLabel('Id override (optional)', 'Stable technical identifier. It cannot be changed after the person is created.')}
                 <input type="text" name="draftPersonId" value="${escapeHtml(editor.draftPersonId ?? '')}" placeholder="alex-martin" ${isEditingPerson ? 'disabled' : ''} />
               </label>
               <label>
-                Email (optional, unique)
+                ${renderFieldLabel('Email (optional, unique)', 'Used to match workbook rows. Email matching is case-insensitive and must be unique.')}
                 <input type="email" name="draftPersonEmail" value="${escapeHtml(editor.draftPersonEmail ?? '')}" placeholder="alex@example.org" />
               </label>
               <label>
-                Hard max assignments
+                ${renderFieldLabel('Hard max assignments', 'Maximum assignments this person may receive across the complete schedule. Blank uses the global limit.')}
                 <input type="number" name="draftPersonMaxAssignments" value="${escapeHtml(editor.draftPersonMaxAssignments ?? '')}" min="0" step="1" placeholder="Use global" />
               </label>
               <label>
-                Soft target assignments
+                ${renderFieldLabel('Soft target assignments', 'Preferred total assignment count. Missing the target does not invalidate a schedule.')}
                 <input type="number" name="draftPersonTargetAssignments" value="${escapeHtml(editor.draftPersonTargetAssignments ?? '')}" min="0" step="1" placeholder="Optional" />
               </label>
             </div>
@@ -346,15 +348,15 @@ export function renderSupportSections(domainProject, groupTypeLabelsById, editor
       <p>Set shared defaults that apply unless a person-specific override is present.</p>
       <div class="form-grid four-columns compact-form-grid top-gap">
         <label>
-          Max assignments per person
+          ${renderFieldLabel('Max assignments per person', 'Default hard maximum across the complete schedule. A person-specific value overrides it.')}
           <input type="number" name="draftGlobalMaxAssignmentsPerPerson" value="${escapeHtml(String(editor.draftGlobalMaxAssignmentsPerPerson ?? domainProject.globalLimits?.maxAssignmentsPerPerson ?? ''))}" min="0" step="1" placeholder="Optional" />
         </label>
         <label>
-          Max assignments per group type
+          ${renderFieldLabel('Max assignments per group type', 'Default hard maximum each person may work in any one category.')}
           <input type="number" name="draftGlobalMaxAssignmentsPerGroupType" value="${escapeHtml(String(editor.draftGlobalMaxAssignmentsPerGroupType ?? domainProject.globalLimits?.maxAssignmentsPerGroupType ?? ''))}" min="0" step="1" placeholder="Optional" />
         </label>
         <label>
-          Soft target per group type
+          ${renderFieldLabel('Soft target per group type', 'Default preferred assignment count per person and category. It affects ranking, not validity.')}
           <input type="number" name="draftGlobalTargetAssignmentsPerGroupType" value="${escapeHtml(String(editor.draftGlobalTargetAssignmentsPerGroupType ?? domainProject.globalLimits?.targetAssignmentsPerGroupType ?? ''))}" min="0" step="1" placeholder="Optional" />
         </label>
         <label class="button-label">

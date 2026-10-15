@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createAppState } from '../../src/app/state.js';
 import { renderSolutionPanel } from '../../src/components/solutions/solutionPanel.js';
-import { renderSolveStatus } from '../../src/components/solutions/solveStatus.js';
+import { renderSolveStatus, updateSolveStatus } from '../../src/components/solutions/solveStatus.js';
 import { renderValidationPanel } from '../../src/components/solutions/validationPanel.js';
 import { createContainer, createItem } from '../../src/core/model/nodes.js';
 import { createEmptyProject } from '../../src/core/model/project.js';
 import { renderEventStaffingPage } from '../../src/pages/eventStaffing/index.js';
+import { createMockDomainProject } from '../../src/pages/eventStaffing/mockDomainProject.js';
 import { renderGenericPage } from '../../src/pages/generic/index.js';
 import { renderSchoolPage } from '../../src/pages/school/index.js';
 import { renderWeddingPage } from '../../src/pages/wedding/index.js';
@@ -69,9 +70,27 @@ describe('shared validation lifecycle panels', () => {
 
     expect(html).toContain('Loading WASM optimization engine');
     expect(html).toContain('aria-label="Solver is working"');
+    expect(html).toContain('data-solve-phase');
     expect(html).not.toContain('value=');
     expect(html).toContain('5000 ms time budget; latest Worker update at 1250 ms');
     expect(html).toContain('Cancel solve');
+  });
+
+  it('updates solve progress in place without replacing the page', () => {
+    const nodes = Object.fromEntries(['[data-solve-phase]', '[data-solve-detail]', '[data-solve-budget]']
+      .map((selector) => [selector, { textContent: '' }]));
+    const panel = { querySelector: (selector) => nodes[selector] ?? null };
+    const root = { querySelectorAll: (selector) => selector === '.solve-status' ? [panel] : [] };
+
+    expect(updateSolveStatus(root, {
+      status: 'solving',
+      elapsedMs: 250,
+      timeLimitMs: 5000,
+      progress: { phase: 'optimizing', exploredNodes: 12, prunedNodes: 4, solutionCount: 1 },
+    })).toBe(true);
+    expect(nodes['[data-solve-phase]'].textContent).toBe('Optimizing schedule...');
+    expect(nodes['[data-solve-detail]'].textContent).toContain('Explored 12 nodes');
+    expect(nodes['[data-solve-budget]'].textContent).toContain('latest Worker update at 250 ms');
   });
 
   it('shows active startup feedback before the Worker sends its first message', () => {
@@ -179,6 +198,35 @@ describe('shared validation lifecycle panels', () => {
     renderPage(root, state);
 
     expect(root.innerHTML).toContain('Not validated yet');
+  });
+
+  it.each([
+    ['Generic', renderGenericPage],
+    ['School', renderSchoolPage],
+    ['Wedding', renderWeddingPage],
+    ['Event Staffing', renderEventStaffingPage],
+  ])('provides accessible setup guidance on the %s page', (_name, renderPage) => {
+    const state = createAppState();
+    const root = createRoot();
+
+    renderPage(root, state);
+
+    expect(root.innerHTML).toContain('class="field-tooltip"');
+    expect(root.innerHTML).toContain('data-tooltip=');
+    expect(root.innerHTML).toContain('tabindex="0" role="note"');
+  });
+
+  it('explains Event Staffing fields across setup, data, and rules', () => {
+    const state = createAppState();
+    state.eventStaffingPage.domainProject = createMockDomainProject();
+    const root = createRoot();
+
+    renderEventStaffingPage(root, state);
+
+    expect(root.innerHTML).toContain('Project title help:');
+    expect(root.innerHTML).toContain('Hard max assignments help:');
+    expect(root.innerHTML).toContain('For the next slots help:');
+    expect(root.innerHTML).toContain('class="command-bar-button command-bar-file-button"');
   });
 
   it.each([

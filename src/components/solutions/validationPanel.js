@@ -28,13 +28,15 @@ function renderIssueList(issues, emptyMessage, className) {
 }
 
 export function renderValidationPanel(validation, options = {}) {
+  const eyebrow = escapeHtml(options.eyebrow ?? 'Validation');
+  const title = escapeHtml(options.title ?? 'Validation results');
   if (validation === null || validation === undefined) {
     return `
       <section class="card validation-panel-card" role="status" aria-live="polite">
         <div class="validation-panel-summary">
           <div>
-            <p class="eyebrow">Validation</p>
-            <h2>Validation results</h2>
+            <p class="eyebrow">${eyebrow}</p>
+            <h2>${title}</h2>
           </div>
           <div class="validation-panel-pills">
             <span class="section-count-pill">Not validated yet</span>
@@ -57,8 +59,8 @@ export function renderValidationPanel(validation, options = {}) {
       <details class="validation-panel-details" ${expanded ? 'open' : ''}>
         <summary class="validation-panel-summary">
           <div>
-            <p class="eyebrow">Validation</p>
-            <h2>Validation results</h2>
+            <p class="eyebrow">${eyebrow}</p>
+            <h2>${title}</h2>
           </div>
           <div class="validation-panel-pills">
             <span class="section-count-pill validation-pill-error">${errors.length} error${errors.length === 1 ? '' : 's'}</span>

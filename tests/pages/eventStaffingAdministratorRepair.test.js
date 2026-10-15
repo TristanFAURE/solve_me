@@ -64,6 +64,8 @@ describe('Event Staffing administrator repair', () => {
     ]));
     expect(candidates.every((candidate) => candidate.id.startsWith('repair:2026-10-15:'))).toBe(true);
     expect(candidates.map((candidate) => candidate.type)).not.toEqual(expect.arrayContaining(['coverage', 'cooldown']));
+    expect(candidates.find((candidate) => candidate.type === 'whole-day-unavailability')?.label)
+      .toContain('2026-10-15 (Morning, Evening)');
     expect(buildAdministratorRepairCandidates(domain, normalized(domain), '2026-10-15').map(({ id }) => id))
       .toEqual(candidates.map(({ id }) => id));
   });
@@ -255,6 +257,7 @@ describe('Event Staffing administrator repair', () => {
     expect(unsatHtml).toContain('Select all');
     expect(unsatHtml).toContain('Previous blocking date');
     expect(unsatHtml).toContain('Next blocking date');
+    expect(unsatHtml).toContain('class="navigation-arrow"');
     expect(unsatHtml).toContain('all dates, not only the date currently shown');
     expect(renderAdministratorRepairPanel(domain, model, { status: 'timeout' }, {})).toBe('');
     expect(renderAdministratorRepairPanel(domain, model, null, {
