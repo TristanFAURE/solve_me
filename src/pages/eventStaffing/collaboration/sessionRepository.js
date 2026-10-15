@@ -12,6 +12,11 @@ import {
   validateCollaborationResponse,
   verifyCollaborationResponseIdentity,
 } from './responseModel.js';
+import {
+  collaborationPlanningPath,
+  selectParticipantPlanning,
+  validateCollaborationPlanning,
+} from './planningModel.js';
 import * as defaultCryptoEnvelope from './cryptoEnvelope.js';
 
 export class CollaborationConflictError extends Error {
@@ -38,6 +43,22 @@ function decodeGitHubContent(file) {
 
 function fileSha(file) {
   return file?.sha ?? file?.data?.sha;
+}
+
+function mergeResponseInput(latest, local) {
+  const dayKeys = new Set([
+    ...Object.keys(latest?.dayGroupPreferences ?? {}),
+    ...Object.keys(local?.dayGroupPreferences ?? {}),
+  ]);
+  return {
+    ...latest,
+    ...local,
+    dayPreferences: { ...(latest?.dayPreferences ?? {}), ...(local?.dayPreferences ?? {}) },
+    dayGroupPreferences: Object.fromEntries([...dayKeys].map((dayKey) => [dayKey, {
+      ...(latest?.dayGroupPreferences?.[dayKey] ?? {}),
+      ...(local?.dayGroupPreferences?.[dayKey] ?? {}),
+    }])),
+  };
 }
 
 function safeSessionFolder(folder) {
@@ -83,6 +104,20 @@ export function createCollaborationSessionRepository({ githubClient, cryptoEnvel
     const loaded = await loadManifest(folder);
     const manifest = reviseCollaborationManifest(loaded.manifest, changes, clock());
     return saveManifest(manifest, loaded.sha);
+  }
+
+  async function loadResponse(manifest, email, pin) {
+    validateCollaborationManifest(manifest);
+    const path = await collaborationResponsePath(manifest.folder, manifest.sessionId, email, sha256);
+    const file = await read(path);
+    return { response: verifyCollaborationResponseIdentity(await decrypt(file, manifestPassword), email, pin), sha: fileSha(file), path };
+  }
+
+  async function loadPlanning(manifest) {
+    validateCollaborationManifest(manifest);
+    const path = collaborationPlanningPath(manifest.folder);
+    const file = await read(path);
+    return { planning: validateCollaborationPlanning(await decrypt(file, manifestPassword)), sha: fileSha(file), path };
   }
 
   return {
@@ -131,11 +166,36 @@ export function createCollaborationSessionRepository({ githubClient, cryptoEnvel
       return loaded.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
     },
 
-    async loadResponse(manifest, email, pin) {
+    loadResponse,
+
+    loadPlanning,
+
+    async publishPlanning(manifest, planning) {
       validateCollaborationManifest(manifest);
-      const path = await collaborationResponsePath(manifest.folder, manifest.sessionId, email, sha256);
-      const file = await read(path);
-      return { response: verifyCollaborationResponseIdentity(await decrypt(file, manifestPassword), email, pin), sha: fileSha(file), path };
+      const valid = validateCollaborationPlanning(planning);
+      if (valid.sessionId !== manifest.sessionId || valid.manifestRevision !== manifest.revision) {
+        throw new Error('The planning does not belong to the current collaboration session revision.');
+      }
+      const path = collaborationPlanningPath(manifest.folder);
+      let sha;
+      try {
+        sha = fileSha(await read(path));
+      } catch (error) {
+        if (!isNotFound(error)) throw error;
+      }
+      await writeEncrypted(path, valid, manifestPassword, { sha, message: `Publish planning for collaboration session ${manifest.slug}` });
+      return valid;
+    },
+
+    async loadParticipantData(manifest, email, pin) {
+      const loadedResponse = await loadResponse(manifest, email, pin);
+      let planning = null;
+      try {
+        planning = selectParticipantPlanning((await loadPlanning(manifest)).planning, manifest, loadedResponse.response.email);
+      } catch (error) {
+        if (!isNotFound(error)) throw error;
+      }
+      return { ...loadedResponse, planning };
     },
 
     async loadResponses(manifest) {
@@ -185,6 +245,26 @@ export function createCollaborationSessionRepository({ githubClient, cryptoEnvel
         }
       }
       return response;
+    },
+
+    async saveMergedResponse(manifest, input, sha) {
+      let candidate = input;
+      let currentSha = sha;
+      let lastConflict;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const response = await this.saveResponse(manifest, candidate, currentSha);
+          const loaded = await loadResponse(manifest, response.email, response.pin);
+          return { ...loaded, response };
+        } catch (error) {
+          if (!(error instanceof CollaborationConflictError)) throw error;
+          lastConflict = error;
+          const latest = await loadResponse(manifest, input.email, input.pin);
+          candidate = mergeResponseInput(latest.response, input);
+          currentSha = latest.sha;
+        }
+      }
+      throw lastConflict;
     },
 
     async deleteResponse(manifest, email, sha) {

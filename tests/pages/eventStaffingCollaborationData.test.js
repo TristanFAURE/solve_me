@@ -19,6 +19,13 @@ import {
   createSessionRepository,
 } from '../../src/pages/eventStaffing/collaboration/sessionRepository.js';
 import { consolidateCollaborationResponses } from '../../src/pages/eventStaffing/collaboration/adminPanel.js';
+import {
+  collaborationPlanningPath,
+  createCollaborationPlanning,
+  selectParticipantPlanning,
+  validateCollaborationPlanning,
+} from '../../src/pages/eventStaffing/collaboration/planningModel.js';
+import { renderParticipantPlanning } from '../../src/pages/eventStaffing/collaboration/participantPage.js';
 
 const project = () => ({
   title: 'Autumn Gala',
@@ -156,6 +163,33 @@ describe('collaboration data modules', () => {
     expect(unknown.report.errors.join(' ')).toMatch(/unknown session dates or groups/);
   });
 
+  it('creates a revision-bound planning and selects only the verified participant assignments', () => {
+    const source = project();
+    source.people = [
+      { id: 'P1', name: 'Alex Smith', email: 'Alex@Example.org' },
+      { id: 'P2', name: 'Other Person', email: 'other@example.org' },
+    ];
+    const manifest = createCollaborationManifest(source, { random: '0123456789abcdef', now: '2026-10-15T09:00:00.000Z' });
+    const solverResult = { solutions: [{ assignments: [
+      { itemRef: { id: 'P1' }, containerRef: { id: 'event:S1::group:welcome' } },
+      { itemRef: { id: 'P2' }, containerRef: { id: 'event:S2::group:food' } },
+    ] }] };
+
+    const planning = createCollaborationPlanning(source, manifest, solverResult, 0, { savedAt: '2026-10-15T12:00:00.000Z' });
+    expect(planning).toMatchObject({ version: 1, sessionId: manifest.sessionId, manifestRevision: 1, solutionNumber: 1 });
+    expect(collaborationPlanningPath(manifest.folder)).toBe(`.event-staffing-collab/${manifest.folder}/planning.enc.json`);
+    expect(selectParticipantPlanning(planning, manifest, ' ALEX@example.org ')).toEqual({
+      savedAt: '2026-10-15T12:00:00.000Z', solutionNumber: 1,
+      assignments: [{ dateKey: '2026-10-15', slotId: 'S1', slotLabel: 'S1', groupTypeId: 'welcome', groupTypeLabel: 'Welcome' }],
+    });
+    const staleManifest = { ...manifest, revision: 2 };
+    expect(selectParticipantPlanning(planning, staleManifest, 'alex@example.org')).toBeNull();
+    expect(() => validateCollaborationPlanning({ ...planning, assignments: [{ email: 'invalid' }] })).toThrow(/invalid assignment/);
+    expect(renderParticipantPlanning(null)).toBe('');
+    expect(renderParticipantPlanning(selectParticipantPlanning(planning, manifest, 'alex@example.org'))).toContain('Your assignments');
+    expect(renderParticipantPlanning(selectParticipantPlanning(planning, manifest, 'nobody@example.org'))).toContain('You have no assignments');
+  });
+
   it('uses injected repository services, verifies login, discovers by slug, and maps 409 conflicts', async () => {
     const files = new Map();
     const githubClient = {
@@ -183,9 +217,30 @@ describe('collaboration data modules', () => {
     expect(await repository.discoverSessions('autumn-gala')).toMatchObject([{ folder: manifest.folder, title: 'Autumn Gala' }]);
     await repository.saveResponse(manifest, response());
     await expect(repository.saveResponse(manifest, response())).rejects.toBeInstanceOf(CollaborationConflictError);
+    await expect(repository.saveMergedResponse(manifest, {
+      ...response(), dayPreferences: { '2026-10-16': 'preferNot' }, dayGroupPreferences: {},
+    })).resolves.toMatchObject({
+      response: { dayPreferences: { '2026-10-15': 'prefer', '2026-10-16': 'preferNot' } }, sha: 'sha-1',
+    });
     await expect(repository.loadResponse(manifest, 'alex@example.org', '0042')).resolves.toMatchObject({ response: { email: 'alex@example.org' }, sha: 'sha-1' });
     await expect(repository.loadResponse(manifest, 'alex@example.org', '9999')).rejects.toThrow(/does not match/);
     await expect(repository.saveResponse(manifest, response(), 'stale')).rejects.toBeInstanceOf(CollaborationConflictError);
+    await expect(repository.saveMergedResponse(manifest, {
+      ...response(), dayGroupPreferences: { '2026-10-16': { food: 'prefer' } },
+    }, 'stale')).resolves.toMatchObject({
+      response: { dayGroupPreferences: { '2026-10-16': { welcome: 'unavailable', food: 'prefer' } } }, sha: 'sha-1',
+    });
+    const planningProject = project();
+    planningProject.people = [{ id: 'P1', name: 'Alex Smith', email: 'alex@example.org' }];
+    const planning = createCollaborationPlanning(planningProject, manifest, { solutions: [{ assignments: [
+      { itemRef: { id: 'P1' }, containerRef: { id: 'event:S1::group:welcome' } },
+    ] }] }, 0, { savedAt: '2026-10-15T12:00:00.000Z' });
+    await repository.publishPlanning(manifest, planning);
+    await expect(repository.loadParticipantData(manifest, 'alex@example.org', '0042')).resolves.toMatchObject({
+      planning: { solutionNumber: 1, assignments: [{ dateKey: '2026-10-15', groupTypeLabel: 'Welcome' }] },
+    });
+    await repository.publishPlanning(manifest, planning);
+    expect(githubClient.updateContent).toHaveBeenCalledWith(expect.objectContaining({ path: collaborationPlanningPath(manifest.folder), sha: 'sha-1' }));
     await repository.deleteResponse(manifest, 'alex@example.org', 'sha-1');
     expect(githubClient.deleteContent).toHaveBeenCalledWith(expect.objectContaining({ path: expect.stringContaining('/responses/digest/response.enc.json'), sha: 'sha-1' }));
   });
@@ -218,6 +273,7 @@ describe('collaboration data modules', () => {
     const manifest = await repository.createSession(project());
     await expect(repository.saveResponse(manifest, response())).resolves.toMatchObject({ email: 'alex@example.org' });
     expect(responseCreateAttempts).toBe(2);
+    await expect(repository.loadParticipantData(manifest, 'alex@example.org', '0042')).resolves.toMatchObject({ planning: null });
     await expect(repository.saveResponse(manifest, response())).rejects.toBeInstanceOf(CollaborationConflictError);
   });
 });

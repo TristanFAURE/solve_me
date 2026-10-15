@@ -298,6 +298,14 @@ test('Event Staffing participant mode loads an encrypted manifest through GitHub
     dateKeys: ['2027-06-12'], groups: [{ id: 'welcome', label: 'Welcome' }], createdAt: '2027-01-01T00:00:00.000Z', updatedAt: '2027-01-01T00:00:00.000Z',
   };
   const encrypted = await encryptEnvelope(JSON.stringify(manifest), password);
+  const encryptedResponse = await encryptEnvelope(JSON.stringify({
+    version: 1, firstName: 'Alex', lastName: 'Smith', displayName: 'Alex Smith', email: 'alex@example.org', pin: '0042',
+    sessionId: manifest.sessionId, dayPreferences: {}, dayGroupPreferences: {}, manifestRevision: 1, savedAt: '2027-01-02T00:00:00.000Z',
+  }), password);
+  const encryptedPlanning = await encryptEnvelope(JSON.stringify({
+    version: 1, sessionId: manifest.sessionId, manifestRevision: 1, solutionNumber: 1, savedAt: '2027-01-03T00:00:00.000Z',
+    assignments: [{ email: 'alex@example.org', dateKey: '2027-06-12', slotId: 'morning', slotLabel: 'Morning', groupTypeId: 'welcome', groupTypeLabel: 'Welcome' }],
+  }), password);
   await page.route('https://api.github.com/**', async (route) => {
     const request = route.request();
     if (request.method() === 'GET' && /\/repos\/TristanFAURE\/solve_me$/.test(request.url())) {
@@ -316,11 +324,27 @@ test('Event Staffing participant mode loads an encrypted manifest through GitHub
       await route.fulfill({ json: { sha: 'manifest-sha', content: Buffer.from(encrypted).toString('base64') } });
       return;
     }
+    if (request.method() === 'GET' && request.url().includes('response.enc.json')) {
+      await route.fulfill({ json: { sha: 'response-sha', content: Buffer.from(encryptedResponse).toString('base64') } });
+      return;
+    }
+    if (request.method() === 'GET' && request.url().includes('planning.enc.json')) {
+      await route.fulfill({ json: { sha: 'planning-sha', content: Buffer.from(encryptedPlanning).toString('base64') } });
+      return;
+    }
     await route.fulfill({ status: 404, json: { message: 'stubbed not found' } });
   });
   await page.goto(`.?collab=true&user=true&session=${manifest.folder}&token=test-token&password=${encodeURIComponent(password)}&owner=TristanFAURE&repo=solve_me#/event-staffing`);
   await expect(page.getByRole('heading', { name: 'Summer Festival' })).toBeVisible();
   await expect(page.getByRole('columnheader', { name: '2027-06-12' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your assignments' })).toHaveCount(0);
+  await page.locator('[name="collabEmail"]').fill('alex@example.org');
+  await page.locator('[name="collabPin"]').fill('0042');
+  await page.getByRole('button', { name: 'Load existing response' }).click();
+  await expect(page.getByRole('heading', { name: 'Your assignments' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '2027-06-12' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Morning' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Welcome' })).toBeVisible();
   await expect(page.getByRole('navigation')).toHaveCount(0);
   expect(page.url()).not.toContain('token=');
   expect(page.url()).not.toContain('password=');

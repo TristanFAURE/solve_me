@@ -1,7 +1,8 @@
 import { applyCollaborationConfiguration, collaborationConfiguration, collaborationDateKeys, collaborationGroups, slugifyCollaborationTitle } from './collaborationManifest.js';
 import { buildParticipantCollaborationUrl } from './collaborationMode.js';
 import { applyCollaborationResponses, previewCollaborationResponses } from './responseMerge.js';
-import { createCollaborationSessionRepository } from './sessionRepository.js';
+import { CollaborationConflictError, createCollaborationSessionRepository } from './sessionRepository.js';
+import { createCollaborationPlanning } from './planningModel.js';
 
 function escapeHtml(value) {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
@@ -106,6 +107,24 @@ export function bindCollaborationAdminPanel(root, state, rerender) {
     rerender();
   });
   root.querySelector('[data-collab-admin-action="refresh"]')?.addEventListener('click', () => void refresh(state, rerender));
+  root.querySelector('[data-collab-admin-action="save-planning"]')?.addEventListener('click', async () => {
+    admin.error = '';
+    try {
+      const planning = createCollaborationPlanning(
+        state.eventStaffingPage.domainProject,
+        admin.manifest,
+        state.eventStaffingPage.lastSolverResult,
+        state.eventStaffingPage.activeSolutionIndex,
+      );
+      await service(collaboration, admin.password).publishPlanning(admin.manifest, planning);
+      admin.message = `Planning solution ${planning.solutionNumber} saved at ${planning.savedAt}.`;
+    } catch (error) {
+      admin.error = error instanceof CollaborationConflictError
+        ? 'The saved planning changed. Reload the session before saving again.'
+        : (error instanceof Error ? error.message : 'Unable to save the planning.');
+    }
+    rerender();
+  });
   root.querySelector('[data-collab-admin-action="apply-responses"]')?.addEventListener('click', () => {
     if (!admin.preview?.canApply || !globalThis.confirm?.('Apply the previewed participant responses?')) return;
     try {

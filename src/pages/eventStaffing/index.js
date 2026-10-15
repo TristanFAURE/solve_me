@@ -806,8 +806,18 @@ function renderBody(domainProject, state) {
     ${renderTabPanel('data', activeTab, dataContent)}
     ${renderTabPanel('rules', activeTab, `${renderPreferenceMatrix(domainProject, editor)}${renderRuleEditors(domainProject, editor)}`)}
     ${renderTabPanel('review', activeTab, renderReviewPanel(state))}
-    ${renderTabPanel('results', activeTab, `${renderSolveStatus(state.eventStaffingPage.solveExecution, 'data-event-staffing-action="cancel-solve"')}${renderAdministratorRepairPanel(domainProject, state.eventStaffingPage.lastNormalizedProject, state.eventStaffingPage.lastSolverResult, { ...editor.administratorRepair, validationErrors: state.eventStaffingPage.lastValidation?.errors ?? [] })}${renderStaffingScheduleView(domainProject, state.eventStaffingPage.lastSolverResult, state.eventStaffingPage.activeSolutionIndex ?? 0)}${state.eventStaffingPage.lastSolverResult?.solutions?.length ? '<div class="button-row"><button type="button" class="command-bar-button command-bar-button-primary" data-event-staffing-action="export-solution-workbook">Export selected schedule workbook</button></div>' : ''}`)}
+    ${renderTabPanel('results', activeTab, `${renderSolveStatus(state.eventStaffingPage.solveExecution, 'data-event-staffing-action="cancel-solve"')}${renderAdministratorRepairPanel(domainProject, state.eventStaffingPage.lastNormalizedProject, state.eventStaffingPage.lastSolverResult, { ...editor.administratorRepair, validationErrors: state.eventStaffingPage.lastValidation?.errors ?? [] })}${renderStaffingScheduleView(domainProject, state.eventStaffingPage.lastSolverResult, state.eventStaffingPage.activeSolutionIndex ?? 0)}${renderResultActions(state)}`)}
   `;
+}
+
+function renderResultActions(state) {
+  if (!state.eventStaffingPage.lastSolverResult?.solutions?.length) return '';
+  const collaboration = state.eventStaffingPage.collaboration;
+  const canSavePlanning = collaboration?.mode?.enabled
+    && !collaboration.mode.userMode
+    && collaboration.status === 'verified'
+    && collaboration.admin?.manifest;
+  return `<div class="button-row"><button type="button" class="command-bar-button command-bar-button-primary" data-event-staffing-action="export-solution-workbook">Export selected schedule workbook</button>${canSavePlanning ? '<button type="button" class="command-bar-button command-bar-button-primary" data-collab-admin-action="save-planning">Save planning</button>' : ''}</div>`;
 }
 
 export function parseNonNegativeInteger(value, fallbackValue) {
