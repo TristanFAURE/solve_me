@@ -27,8 +27,9 @@ function defaultWorkerFactory(model, options) {
 export class SolveWorkerClient {
   constructor({ workerFactory = defaultWorkerFactory, setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
     this.workerFactory = workerFactory;
-    this.setTimer = setTimer;
-    this.clearTimer = clearTimer;
+    // Browser timer functions require the Window receiver in some engines.
+    this.setTimer = (callback, delay) => Reflect.apply(setTimer, globalThis, [callback, delay]);
+    this.clearTimer = (timer) => Reflect.apply(clearTimer, globalThis, [timer]);
     this.nextRequestId = 1;
     this.active = null;
   }

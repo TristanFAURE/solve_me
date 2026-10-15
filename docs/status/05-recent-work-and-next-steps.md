@@ -25,6 +25,7 @@ The ranked-solutions and shared-workflow implementation milestone is complete:
 - made the active progress bar indeterminate and emitted an immediate Worker phase so CPU-bound searches no longer appear stuck at startup
 - initialize the expected JavaScript-search or WASM-loading phase before creating the Worker, so startup feedback does not depend on the Worker module having loaded
 - split JavaScript and HiGHS into separate Worker entry points; small problems now load a 32 KB Worker instead of the 152 KB optimization Worker and 3.53 MB WASM asset
+- fixed `SolveWorkerClient` timer binding so browsers no longer throw `TypeError: Illegal invocation` before posting a solve request
 
 The local large-model solver uses exact-pinned `highs@1.15.3` (MIT) and emits a 3.53 MB WASM asset. Playwright `1.64.1` remains the exact-pinned Apache-2.0 browser-test development dependency.
 
@@ -37,7 +38,7 @@ Final automated verification must include:
 - `git diff --check`
 - review for credentials, tokens, internal URLs, and database secrets
 
-Final unit verification passed 253 tests, the production build emitted the Worker and 3.53 MB WASM assets, and `git diff --check` passed. The 23 Playwright tests are discovered correctly but cannot execute in the current container because Chromium's required OS libraries, beginning with `libglib-2.0.so.0`, are unavailable. GitHub Actions installs those dependencies and runs the browser suite before deployment.
+Final unit verification passed 254 tests, the production build emitted separate JavaScript and HiGHS Workers plus the 3.53 MB WASM asset, and `git diff --check` passed. The 23 Playwright tests are discovered correctly but cannot execute in the current container because Chromium's required OS libraries, beginning with `libglib-2.0.so.0`, are unavailable. GitHub Actions installs those dependencies and runs the browser suite before deployment.
 
 ## Event Staffing scale result
 

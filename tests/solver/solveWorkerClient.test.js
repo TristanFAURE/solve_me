@@ -20,6 +20,30 @@ class FakeWorker {
 }
 
 describe('solve Worker protocol and client', () => {
+  it('invokes browser timer functions with the global receiver', () => {
+    const worker = new FakeWorker();
+    let timerReceiver;
+    let clearReceiver;
+    function strictSetTimer() {
+      timerReceiver = this;
+      return 1;
+    }
+    function strictClearTimer() {
+      clearReceiver = this;
+    }
+    const client = new SolveWorkerClient({
+      workerFactory: () => worker,
+      setTimer: strictSetTimer,
+      clearTimer: strictClearTimer,
+    });
+
+    const handle = client.solve({}, { timeLimitMs: 1000 });
+    handle.cancel();
+
+    expect(timerReceiver).toBe(globalThis);
+    expect(clearReceiver).toBe(globalThis);
+  });
+
   it('recognizes structured requests and responses', () => {
     const request = createSolveRequest(1, { items: [] }, { timeLimitMs: 25 });
     expect(isSolveRequest(request)).toBe(true);

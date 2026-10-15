@@ -107,6 +107,7 @@ Preserve these project rules:
 - fixed the progress panel's initial stalled appearance with immediate Worker phase updates and an indeterminate active-work indicator
 - initialized the expected solve phase on the main thread so Worker module startup cannot leave the panel at `Starting solver Worker`
 - split lightweight JavaScript solves from the HiGHS Worker bundle so small problems do not load WASM-related code before starting
+- fixed browser timer invocation in `SolveWorkerClient`, which previously prevented the Worker request from being posted
 
 See `docs/status/05-recent-work-and-next-steps.md` and `docs/status/06-ranked-solutions-and-ui-plan.md` for implementation detail and residual risks.
 
