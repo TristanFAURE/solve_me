@@ -31,9 +31,38 @@ export function collaborationConfiguration(project) {
     events: structuredClone(Array.isArray(project?.events) ? project.events : []),
     groupTypes: structuredClone(Array.isArray(project?.groupTypes) ? project.groupTypes : []),
     requirements: structuredClone(Array.isArray(project?.requirements) ? project.requirements : []),
+    people: structuredClone(Array.isArray(project?.people) ? project.people : []),
     cooldownRules: structuredClone(Array.isArray(project?.cooldownRules) ? project.cooldownRules : []),
     globalLimits: structuredClone(project?.globalLimits && typeof project.globalLimits === 'object' ? project.globalLimits : {}),
+    forcedAssignments: structuredClone(Array.isArray(project?.forcedAssignments) ? project.forcedAssignments : []),
+    forbiddenAssignments: structuredClone(Array.isArray(project?.forbiddenAssignments) ? project.forbiddenAssignments : []),
   };
+}
+
+function normalizeEmail(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function restorePeople(currentPeople, configuredPeople) {
+  if (!Array.isArray(configuredPeople)) return { people: currentPeople, personIdMap: new Map() };
+  const matchedCurrentIds = new Set();
+  const personIdMap = new Map();
+  const people = configuredPeople.map((configuredPerson) => {
+    const email = normalizeEmail(configuredPerson?.email);
+    const currentPerson = currentPeople.find((person) => (
+      !matchedCurrentIds.has(person.id)
+      && (person.id === configuredPerson.id || (email && normalizeEmail(person.email) === email))
+    ));
+    if (currentPerson) {
+      matchedCurrentIds.add(currentPerson.id);
+      if (currentPerson.id !== configuredPerson.id) personIdMap.set(currentPerson.id, configuredPerson.id);
+    }
+    return structuredClone(configuredPerson);
+  });
+  currentPeople.forEach((person) => {
+    if (!matchedCurrentIds.has(person.id)) people.push(structuredClone(person));
+  });
+  return { people, personIdMap };
 }
 
 export function applyCollaborationConfiguration(project, manifest) {
@@ -43,18 +72,21 @@ export function applyCollaborationConfiguration(project, manifest) {
   const slotIds = new Set(configuration.events.map((event) => event.id));
   const dayKeys = new Set(configuration.events.map((event) => String(event.dateKey ?? event.date ?? '').trim()).filter(Boolean));
   const groupIds = new Set(configuration.groupTypes.map((group) => group.id));
+  const currentPeople = Array.isArray(project?.people) ? project.people : [];
+  const { people, personIdMap } = restorePeople(currentPeople, configuration.people);
   const preferences = (project?.preferences ?? []).map((preference) => ({
     ...preference,
+    personId: personIdMap.get(preference.personId) ?? preference.personId,
     slotPreferences: Object.fromEntries(Object.entries(preference.slotPreferences ?? preference.eventPreferences ?? {}).filter(([slotId]) => slotIds.has(slotId))),
     slotGroupPreferences: Object.fromEntries(Object.entries(preference.slotGroupPreferences ?? {}).filter(([slotId]) => slotIds.has(slotId)).map(([slotId, values]) => [slotId, Object.fromEntries(Object.entries(values ?? {}).filter(([groupId]) => groupIds.has(groupId)))])),
     dayPreferences: Object.fromEntries(Object.entries(preference.dayPreferences ?? {}).filter(([dayKey]) => dayKeys.has(dayKey))),
     dayGroupPreferences: Object.fromEntries(Object.entries(preference.dayGroupPreferences ?? {}).filter(([dayKey]) => dayKeys.has(dayKey)).map(([dayKey, values]) => [dayKey, Object.fromEntries(Object.entries(values ?? {}).filter(([groupId]) => groupIds.has(groupId)))])),
   }));
   Object.assign(project, configuration, {
-    people: Array.isArray(project?.people) ? project.people : [],
+    people,
     preferences,
-    forcedAssignments: [],
-    forbiddenAssignments: [],
+    forcedAssignments: structuredClone(Array.isArray(configuration.forcedAssignments) ? configuration.forcedAssignments : []),
+    forbiddenAssignments: structuredClone(Array.isArray(configuration.forbiddenAssignments) ? configuration.forbiddenAssignments : []),
   });
   return project;
 }
@@ -102,6 +134,9 @@ export function validateCollaborationManifest(value) {
     if (!configuration || typeof configuration !== 'object' || Array.isArray(configuration)
       || !Array.isArray(configuration.events) || !Array.isArray(configuration.groupTypes)
       || !Array.isArray(configuration.requirements) || !Array.isArray(configuration.cooldownRules)
+      || (configuration.people !== undefined && !Array.isArray(configuration.people))
+      || (configuration.forcedAssignments !== undefined && !Array.isArray(configuration.forcedAssignments))
+      || (configuration.forbiddenAssignments !== undefined && !Array.isArray(configuration.forbiddenAssignments))
       || !configuration.globalLimits || typeof configuration.globalLimits !== 'object' || Array.isArray(configuration.globalLimits)) {
       throw new Error('Collaboration manifest configuration is invalid.');
     }
