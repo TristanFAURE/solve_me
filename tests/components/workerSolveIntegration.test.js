@@ -49,6 +49,11 @@ describe('browser page solve integration', () => {
     root.button.click();
 
     expect(state.genericPage.solveExecution.status).toBe('solving');
+    expect(state.genericPage.solveExecution.progress).toMatchObject({
+      phase: 'searching',
+      exploredNodes: 0,
+      solutionCount: 0,
+    });
     expect(state.genericPage.lastSolverResult).toBeNull();
     expect(workerInstance.request.options.timeLimitMs).toBe(5000);
     workerInstance.onmessage({

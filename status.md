@@ -105,6 +105,7 @@ Preserve these project rules:
 - measured the 180-day x 10-slot x 200-doctor lower bound at 360,000 theoretical pairs: a verified partial schedule is returned locally, while optimality remains unproved within a 20-second budget
 - added a shared accessible solve progress panel with Worker phase, elapsed budget, node/solution metrics, and cancellation
 - fixed the progress panel's initial stalled appearance with immediate Worker phase updates and an indeterminate active-work indicator
+- initialized the expected solve phase on the main thread so Worker module startup cannot leave the panel at `Starting solver Worker`
 
 See `docs/status/05-recent-work-and-next-steps.md` and `docs/status/06-ranked-solutions-and-ui-plan.md` for implementation detail and residual risks.
 

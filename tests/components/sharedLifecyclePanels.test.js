@@ -74,6 +74,19 @@ describe('shared validation lifecycle panels', () => {
     expect(html).toContain('Cancel solve');
   });
 
+  it('shows active startup feedback before the Worker sends its first message', () => {
+    const html = renderSolveStatus({
+      status: 'solving',
+      elapsedMs: 0,
+      timeLimitMs: 5000,
+      progress: { phase: 'searching', exploredNodes: 0, prunedNodes: 0, solutionCount: 0 },
+    });
+
+    expect(html).toContain('Searching assignments');
+    expect(html).toContain('waiting for the first Worker update');
+    expect(html).not.toContain('Starting solver Worker');
+  });
+
   it('renders an explicit state before validation has run', () => {
     const html = renderValidationPanel(null);
 

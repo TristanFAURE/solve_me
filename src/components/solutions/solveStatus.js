@@ -21,7 +21,9 @@ export function renderSolveStatus(execution, cancelAttribute = 'data-action="can
   const phase = phaseLabels[progress?.phase] ?? 'Starting solver Worker';
   const budgetLabel = timeLimitMs === null
     ? `${elapsedMs} ms reported elapsed time`
-    : `${timeLimitMs} ms time budget; latest Worker update at ${elapsedMs} ms`;
+    : elapsedMs > 0
+      ? `${timeLimitMs} ms time budget; latest Worker update at ${elapsedMs} ms`
+      : `${timeLimitMs} ms time budget; waiting for the first Worker update`;
 
   return `
     <section class="solve-status" role="status" aria-live="polite">

@@ -1,4 +1,4 @@
-import { runSolveService, withBrowserSolveDefaults } from './solveService.js';
+import { runSolveService, shouldUseHighs, withBrowserSolveDefaults } from './solveService.js';
 import { SolveWorkerClient } from './solveWorkerClient.js';
 
 export function createSolveExecutionState() {
@@ -25,6 +25,14 @@ export function startSolveExecution({ execution, model, options = {}, onResult, 
   const browserOptions = withBrowserSolveDefaults(options);
   execution.status = 'solving';
   execution.timeLimitMs = browserOptions.timeLimitMs;
+  execution.progress = {
+    phase: shouldUseHighs(model, browserOptions) ? 'loading-wasm' : 'searching',
+    elapsedMs: 0,
+    exploredNodes: 0,
+    prunedNodes: 0,
+    solutionCount: 0,
+    bestSolution: null,
+  };
   const startedAt = Date.now();
   onChange?.();
   const client = new SolveWorkerClient();
