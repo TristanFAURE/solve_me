@@ -260,6 +260,14 @@ describe('shared validation lifecycle panels', () => {
     expect(root.innerHTML).toContain('data-action="import-event-staffing-share-edit"');
   });
 
+  it('shows the count in the Saved people list', () => {
+    const state = createAppState({ storage: null });
+    state.eventStaffingPage.domainProject.people = [{ id: 'p1', name: 'One' }, { id: 'p2', name: 'Two' }];
+    const root = createRoot();
+    renderEventStaffingPage(root, state);
+    expect(root.innerHTML).toMatch(/Saved people[\s\S]*2 people/);
+  });
+
   it.each([
     ['Generic', 'genericPage', renderGenericPage, 'validate', 'solve', null, null],
     ['School', 'schoolPage', renderSchoolPage, 'validate-school', 'solve-school', null, null],

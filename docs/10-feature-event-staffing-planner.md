@@ -18,6 +18,8 @@ After a proven `unsat` result or a solve attempt with only repairable domain con
 
 People may have an optional email, which must be unique case-insensitively when present.
 
+GitHub collaboration is an opt-in Event Staffing mode documented in `docs/12-feature-event-staffing-collaboration.md`. Collaborative people are repository-derived and read-only in the administrator editor; participant responses contribute day and day/group preferences through encrypted, revisioned files.
+
 ## Configuration and preference workbook contract
 
 The configuration workbook is available before solving and contains the complete domain configuration in `_Configuration`, plus these readable sheets:

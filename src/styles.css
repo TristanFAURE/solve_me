@@ -1433,6 +1433,45 @@ textarea {
   align-items: start;
 }
 
+.event-staffing-people-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.event-staffing-people-fieldset:disabled {
+  opacity: 0.78;
+}
+
+.collaboration-admin-panel textarea {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.collaboration-gate form,
+.collaboration-participant-page .card {
+  display: grid;
+  gap: 14px;
+}
+
+.collaboration-gate label {
+  display: grid;
+  gap: 6px;
+}
+
+.collaboration-gate input {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 10px;
+  font: inherit;
+}
+
+.collaboration-preference-table select {
+  min-width: 8rem;
+}
+
 .event-staffing-person-editor-card,
 .event-staffing-people-list-card {
   border: 1px solid #dbeafe;

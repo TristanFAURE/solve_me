@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { encryptEnvelope } from '../../src/pages/eventStaffing/collaboration/cryptoEnvelope.js';
 
 const pages = [
   { route: '/generic', heading: /Generic Constraint Page/, hasDisplay: false },
@@ -265,4 +266,62 @@ test('Wedding seat-aware Display shows configured seat labels', async ({ page })
   await expect(displayPanel.getByText('Seat Two', { exact: true })).toBeVisible();
   await expect(displayPanel.getByText('Guest Sam', { exact: true })).toBeVisible();
   await expect(displayPanel.getByText(/Seat positions reflect the selected solution/)).toBeVisible();
+});
+
+test('Event Staffing collaborative administrator verifies GitHub through stubs and locks people', async ({ page }) => {
+  await page.route('https://api.github.com/**', async (route) => {
+    const request = route.request();
+    if (request.method() === 'GET' && /\/repos\/TristanFAURE\/solve_me$/.test(request.url())) {
+      await route.fulfill({ json: { default_branch: 'main' } });
+      return;
+    }
+    if (request.method() === 'PUT') {
+      await route.fulfill({ json: { content: { sha: 'probe-sha' } } });
+      return;
+    }
+    if (request.method() === 'DELETE') {
+      await route.fulfill({ json: { commit: { sha: 'deleted' } } });
+      return;
+    }
+    await route.fulfill({ status: 404, json: { message: 'stubbed not found' } });
+  });
+  await page.goto('.?collab=true&token=test-token&owner=TristanFAURE&repo=solve_me#/event-staffing');
+  await expect(page.getByRole('heading', { name: 'Collaborative session' })).toBeVisible();
+  await expect(page.locator('.event-staffing-people-fieldset')).toHaveAttribute('disabled', '');
+  expect(page.url()).not.toContain('token=');
+});
+
+test('Event Staffing participant mode loads an encrypted manifest through GitHub stubs', async ({ page }) => {
+  const password = 'a-long-session-password';
+  const manifest = {
+    version: 1, sessionId: 'session-id', folder: 'summer--abcdef1234567890', slug: 'summer', title: 'Summer Festival', status: 'open', revision: 1,
+    dateKeys: ['2027-06-12'], groups: [{ id: 'welcome', label: 'Welcome' }], createdAt: '2027-01-01T00:00:00.000Z', updatedAt: '2027-01-01T00:00:00.000Z',
+  };
+  const encrypted = await encryptEnvelope(JSON.stringify(manifest), password);
+  await page.route('https://api.github.com/**', async (route) => {
+    const request = route.request();
+    if (request.method() === 'GET' && /\/repos\/TristanFAURE\/solve_me$/.test(request.url())) {
+      await route.fulfill({ json: { default_branch: 'main' } });
+      return;
+    }
+    if (request.method() === 'PUT') {
+      await route.fulfill({ json: { content: { sha: 'probe-sha' } } });
+      return;
+    }
+    if (request.method() === 'DELETE') {
+      await route.fulfill({ json: { commit: { sha: 'deleted' } } });
+      return;
+    }
+    if (request.method() === 'GET' && request.url().includes('manifest.enc.json')) {
+      await route.fulfill({ json: { sha: 'manifest-sha', content: Buffer.from(encrypted).toString('base64') } });
+      return;
+    }
+    await route.fulfill({ status: 404, json: { message: 'stubbed not found' } });
+  });
+  await page.goto(`.?collab=true&user=true&session=${manifest.folder}&token=test-token&password=${encodeURIComponent(password)}&owner=TristanFAURE&repo=solve_me#/event-staffing`);
+  await expect(page.getByRole('heading', { name: 'Summer Festival' })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: '2027-06-12' })).toBeVisible();
+  await expect(page.getByRole('navigation')).toHaveCount(0);
+  expect(page.url()).not.toContain('token=');
+  expect(page.url()).not.toContain('password=');
 });

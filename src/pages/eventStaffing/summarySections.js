@@ -128,7 +128,7 @@ export function renderAssignmentList(assignments, domainProject, emptyText) {
   `;
 }
 
-export function renderSupportSections(domainProject, groupTypeLabelsById, editor = {}) {
+export function renderSupportSections(domainProject, groupTypeLabelsById, editor = {}, options = {}) {
   const perGroupMaxRows = Array.isArray(editor.draftPersonMaxAssignmentsPerGroupTypeRows)
     ? editor.draftPersonMaxAssignmentsPerGroupTypeRows
     : [];
@@ -198,7 +198,9 @@ export function renderSupportSections(domainProject, groupTypeLabelsById, editor
         </div>
         <span class="section-count-pill">${escapeHtml(String(domainProject.people.length))} people</span>
       </div>
+      ${options.peopleReadOnly ? '<p class="result-status-banner">Collaborative mode is active. People are loaded from encrypted repository responses and cannot be edited here.</p>' : ''}
 
+      <fieldset class="event-staffing-people-fieldset"${options.peopleReadOnly ? ' disabled' : ''}>
       <div class="event-staffing-people-layout top-gap">
         <section class="event-staffing-person-editor-card${isEditingPerson ? ' is-editing' : ''}">
           <form data-event-staffing-form="person-editor">
@@ -317,6 +319,7 @@ export function renderSupportSections(domainProject, groupTypeLabelsById, editor
               <h3>Saved people</h3>
               <p class="muted-text">Review the current roster, then edit a person only when they need exceptions or corrections.</p>
             </div>
+            <span class="section-count-pill">${escapeHtml(String(domainProject.people.length))} people</span>
           </div>
 
           ${domainProject.people.length > 0
@@ -341,6 +344,7 @@ export function renderSupportSections(domainProject, groupTypeLabelsById, editor
       )}
         </section>
       </div>
+      </fieldset>
     </section>
 
     <section class="panel">
