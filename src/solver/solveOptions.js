@@ -4,6 +4,8 @@ export const SOLVE_MODES = Object.freeze({
   OPTIMIZE: 'optimize',
 });
 
+export const SOLVER_ENGINES = Object.freeze({ AUTO: 'auto', JS: 'js', HIGHS: 'highs' });
+
 export const SOLVE_OPTION_LIMITS = Object.freeze({
   MAX_SOLUTIONS: 1000,
   MAX_TIME_LIMIT_MS: 2_147_483_647,
@@ -13,6 +15,7 @@ export const SOLVE_OPTION_LIMITS = Object.freeze({
 
 export const DEFAULT_SOLVE_OPTIONS = Object.freeze({
   mode: SOLVE_MODES.TOP_K,
+  engine: SOLVER_ENGINES.AUTO,
   maxSolutions: 10,
   timeLimitMs: null,
   includeScoreDetails: false,
@@ -48,6 +51,7 @@ export function normalizeSolveOptions(options = {}) {
 
   return {
     mode,
+    engine: source.engine ?? DEFAULT_SOLVE_OPTIONS.engine,
     maxSolutions: source.maxSolutions ?? defaultMaxSolutions,
     timeLimitMs: source.timeLimitMs ?? null,
     includeScoreDetails: source.includeScoreDetails ?? DEFAULT_SOLVE_OPTIONS.includeScoreDetails,
@@ -87,6 +91,9 @@ export function validateSolveOptions(options = {}, capabilities = null) {
   const normalized = normalizeSolveOptions(options);
   if (!Object.values(SOLVE_MODES).includes(normalized.mode)) {
     errors.push(`mode must be one of: ${Object.values(SOLVE_MODES).join(', ')}.`);
+  }
+  if (!Object.values(SOLVER_ENGINES).includes(normalized.engine)) {
+    errors.push(`engine must be one of: ${Object.values(SOLVER_ENGINES).join(', ')}.`);
   }
 
   if (!isIntegerInRange(normalized.maxSolutions, 1, SOLVE_OPTION_LIMITS.MAX_SOLUTIONS)) {

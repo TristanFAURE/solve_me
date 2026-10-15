@@ -263,7 +263,7 @@ Static hosting remains a requirement.
 
 ### Web Worker
 
-Solving should move to a Web Worker before pursuing WebAssembly so that:
+Solving runs in a Web Worker so that:
 
 - the interface remains responsive
 - solving can report progress
@@ -274,9 +274,9 @@ Worker messages must contain serializable project, options, progress, result, an
 
 ### WebAssembly
 
-WebAssembly is an optional future adapter, not an initial requirement. It should be evaluated only after representative browser benchmarks identify a real performance limit.
+Representative benchmarks demonstrated that the JavaScript repeated-pair search cannot handle the target staffing scale. The implemented HiGHS WASM adapter now handles supported large multiple-container models locally while preserving static hosting.
 
-Any future WebAssembly solver must preserve the public solver contract, capability reporting, result metadata, and static-hosting requirement.
+The adapter preserves the public solver contract, validates unsupported semantics explicitly, returns a verified greedy incumbent before native optimization, and reports partial/best-found results honestly when timeout or unresolved score ties prevent proof.
 
 ## Shared application workflow
 
@@ -480,7 +480,7 @@ The first approved implementation slice is intentionally narrower: implement onl
 - run solving in a Web Worker
 - add progress, cancellation, and timeout behavior
 - benchmark representative staffing scenarios
-- evaluate WebAssembly only if benchmarks justify it
+- benchmark HiGHS WASM on representative end-user hardware and retain hard Worker cancellation
 
 ## Testing requirements
 

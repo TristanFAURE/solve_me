@@ -144,7 +144,7 @@ Still not supported by the first solver:
 - direct optimization of general relation preferences
 - advanced heuristics for large scenarios
 
-The solver boundary now accepts validated solve options for `first`, `topK`, and `optimize` modes. Results include ranked scores, fingerprints, diversity metadata, search completeness, optimality claims, and search statistics. Browser solves run in a module Web Worker with progress, cancellation, timeout, and partial-result handling. Candidate retention is bounded to avoid retaining an unbounded feasible set.
+The solver boundary now accepts validated solve options for `first`, `topK`, and `optimize` modes plus `auto`, `js`, and `highs` engine selection. Results include ranked scores, fingerprints, diversity metadata, search completeness, optimality claims, canonical-versus-best-found selection, and search statistics. Browser solves run in a module Web Worker with progress, cancellation, timeout, and partial-result handling. Candidate retention is bounded to avoid retaining an unbounded feasible set. Large supported repeated-assignment models use the sparse HiGHS WASM MILP adapter; other models retain the JavaScript adapter.
 
 ## Shared workflow baseline
 
@@ -193,5 +193,6 @@ The planner is implemented while retaining event-shaped slot records grouped by 
 - contradiction detection is still incomplete for advanced cases
 - the current solver is a straightforward backtracking implementation and may need stronger pruning for larger inputs
 - general relation preferences remain ignored by the first solver
-- repeated-assignment search is exponential and relies on browser time limits and bounded candidate retention for larger scenarios
+- JavaScript repeated-assignment search is exponential; target-scale HiGHS optimization can provide a verified incumbent but may remain partial within browser time limits
+- HiGHS WASM is single-threaded and target-scale models require hundreds of MiB of memory
 - the current `xlsx` dependency has unresolved upstream security advisories; workbook size and ZIP preflight controls reduce but do not eliminate parser risk

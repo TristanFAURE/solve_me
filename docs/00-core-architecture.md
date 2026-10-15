@@ -474,9 +474,9 @@ Initial terms should cover assignment preferences, count-target deviation, and w
 
 ### Browser execution boundary
 
-The first performance isolation step should be a Web Worker. The worker keeps the static-hosting model while allowing progress, cancellation, and timeout behavior without blocking the interface.
+Browser solving runs in a Web Worker. The worker keeps the static-hosting model while allowing progress, cancellation, and hard timeout termination without blocking the interface.
 
-WebAssembly remains an optional future solver adapter. It should be evaluated only after representative browser benchmarks demonstrate a need, and it must preserve the same adapter and result contracts.
+Large supported repeated-assignment container models automatically use the HiGHS WebAssembly MILP adapter. Small models and unsupported HiGHS semantics retain the JavaScript adapter. Both paths preserve the same adapter and result contracts, and explicit HiGHS requests fail closed instead of silently dropping constraints.
 
 The complete approved direction is specified in `docs/11-feature-ranked-solutions-and-shared-workflow.md`.
 

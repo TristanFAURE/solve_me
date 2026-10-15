@@ -276,6 +276,8 @@ export function renderStaffingScheduleView(domainProject, solverResult, activeSo
         <div><dt>Equity contribution</dt><dd>${escapeHtml(String(selectedSolution.scoreDetails?.equity ?? '—'))}</dd></div>
         <div><dt>Search complete</dt><dd>${solverResult.searchComplete ? 'Yes' : 'No'}</dd></div>
         <div><dt>Optimality proven</dt><dd>${solverResult.optimalityProven ? 'Yes' : 'No'}</dd></div>
+        <div><dt>Engine</dt><dd>${escapeHtml(solverResult.solverEngine ?? 'Not reported')}</dd></div>
+        <div><dt>Selection</dt><dd>${solverResult.solutionSelection === 'canonical' ? 'Canonical ranking proven' : 'Best found'}</dd></div>
         <div><dt>Timeout reached</dt><dd>${solverResult.timeoutReached ? 'Yes' : 'No'}</dd></div>
         <div><dt>Changed assignments</dt><dd>${escapeHtml(String(changedAssignments))}${previousSolution ? ' vs previous solution' : ''}</dd></div>
       </dl>

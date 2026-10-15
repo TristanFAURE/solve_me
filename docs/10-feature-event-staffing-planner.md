@@ -8,6 +8,8 @@ Requirements are unique per slot and category and contain hard `min`/`max` cover
 
 Preferences are `prefer`, `neutral`, `preferNot`, or `unavailable` per person and slot. Workbook exports use `P`, blank, `N`, and `U`; legacy `Y` remains accepted. Unavailable compiles to forbidden assignments for every category in the slot. Other values are soft terms and count at most once because slot exclusivity is hard.
 
+Browser solves use the existing JavaScript adapter for single-assignment, position, and small models. Multiple-container models with at least 2,000 theoretical item/destination pairs automatically use the HiGHS WASM MILP adapter inside the solver Worker. The `engine` solve option accepts `auto`, `js`, or `highs`; explicit HiGHS requests return validation errors for unsupported semantics rather than dropping constraints or objective terms. HiGHS receives an independently verified greedy incumbent before optimization, so a timed-out large solve can still return a usable schedule. Ranked alternatives use repeated solves and minimum-distance cuts under one shared time budget; unresolved equal-score ties are labeled best-found rather than canonical.
+
 People may have an optional email, which must be unique case-insensitively when present.
 
 ## Configuration and preference workbook contract
@@ -33,7 +35,7 @@ Every exported user-controlled string beginning with `=`, `+`, `-`, or `@` is pr
 
 ## Workbook safety limits
 
-School, Wedding, and Event Staffing workbook paths share these limits: 5 MB upload, 20 sheets, 10,000 rows per sheet, 500 columns per sheet, and 10,000 characters per cell. Envelope chunks are at most 8,000 characters; reconstructed JSON is capped at 2 MB and depth 64. Missing, duplicate, or out-of-order chunks, malformed JSON, dangerous prototype keys, sensitive fields, wrong domains, and unsupported versions are rejected. Malformed or oversized files produce user-safe messages without stack traces or local paths. The accepted residual advisory in the existing `xlsx` dependency remains documented; no additional dependency is introduced.
+School, Wedding, and Event Staffing workbook paths share these limits: 5 MB upload, 20 sheets, 10,000 rows per sheet, 500 columns per sheet, and 10,000 characters per cell. Envelope chunks are at most 8,000 characters; reconstructed JSON is capped at 2 MB and depth 64. Missing, duplicate, or out-of-order chunks, malformed JSON, dangerous prototype keys, sensitive fields, wrong domains, and unsupported versions are rejected. Malformed or oversized files produce user-safe messages without stack traces or local paths. The accepted residual advisory in the existing `xlsx` dependency remains documented. The separate exact-pinned `highs` dependency is MIT-licensed and supplies the local WASM solver.
 
 ## Purpose
 

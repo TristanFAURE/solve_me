@@ -2,7 +2,8 @@ import { createSolveRequest, isSolveResponse, SOLVE_MESSAGE_TYPES } from './solv
 import { createInterruptedResult, withBrowserSolveDefaults } from './solveService.js';
 import { buildSearchHints } from './searchHints.js';
 
-const WORKER_DEADLINE_GRACE_MS = 100;
+// Native solving owns the requested budget; this only covers result delivery and serialization.
+const WORKER_DEADLINE_GRACE_MS = 500;
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 function betterSolution(left, right) {

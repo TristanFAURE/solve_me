@@ -28,7 +28,7 @@ Completed documentation work:
 - selected diverse top-K alternatives rather than nearly identical strict alternatives
 - documented complete versus best-found search semantics
 - documented Web Worker as the first execution isolation step
-- retained WebAssembly as an optional benchmark-driven future adapter
+- selected WebAssembly only after benchmark evidence; the HiGHS WASM adapter is now implemented for large supported staffing models
 - selected shared Setup, Data, Rules, Review, and Results workflow tabs
 - documented cross-page reliability, persistence, accessibility, and responsive requirements
 - updated the Event Staffing direction to dates containing several slots
@@ -36,7 +36,7 @@ Completed documentation work:
 - documented preferences per person and slot
 - separated soft `prefer not` from hard `unavailable`
 
-The roadmap has now been implemented without adding a dependency. `package.json` adds only a compatibility-test script.
+The roadmap is implemented. `highs@1.15.3` is an exact-pinned MIT runtime dependency for local MILP solving; Playwright is the exact-pinned browser-test development dependency.
 
 ## Approved Event Staffing semantics
 
@@ -116,6 +116,7 @@ Domain language remains page-specific. Raw JSON, normalization details, internal
 - Event Staffing date/slot migration and planner authoring
 - Generic, School, and Wedding workflow migration
 - Web Worker progress, cancellation, timeout, and partial results
+- automatic HiGHS WASM selection for large supported repeated-assignment models
 - workbook and local-draft safety controls
 
 ## Remaining follow-up phases
@@ -130,8 +131,8 @@ Domain language remains page-specific. Raw JSON, normalization details, internal
 ### Performance
 
 - deterministic realistic staffing schedule benchmarks are available through `npm run bench:staffing`
-- tune bounded candidate retention and default time limits from measurements
-- evaluate WebAssembly only when benchmark evidence supports it
+- tune HiGHS time limits and objective settings from representative hardware measurements
+- retain the JavaScript adapter for small models and unsupported HiGHS semantics
 
 ### Dependency risk
 
@@ -141,7 +142,8 @@ Domain language remains page-specific. Raw JSON, normalization details, internal
 ## Known current risks
 
 - general relation preferences remain unsupported even though some pages expose them
-- repeated-assignment search is exponential and may return an explicitly incomplete bounded or timed-out result
+- target-scale HiGHS optimization can return a verified feasible incumbent but may remain partial or best-found within browser time limits
+- HiGHS WASM is single-threaded and the 360,000-pair lower-bound model uses hundreds of MiB of process/WASM memory
 - Event Staffing models slots as event-shaped records grouped by date metadata
 - local drafts can contain personal data in browser storage
 - full-page rerenders create focus and caret risks

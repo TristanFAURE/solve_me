@@ -28,6 +28,7 @@ The app already includes:
 - JavaScript (ES modules)
 - HTML/CSS
 - Vite
+- HiGHS WebAssembly for large local staffing MILP models
 
 ## Getting started
 
@@ -93,12 +94,14 @@ This benchmark is not part of the default test suite or CI gate. It is meant for
 
 ```bash
 npm run bench:solver
+npm run bench:staffing
 ```
 
 You can configure the generated benchmark size with environment variables:
 
 ```bash
 BENCH_CONTAINERS=100 BENCH_ITEMS=1000 BENCH_CONSTRAINTS=1000 BENCH_SEED=12345 npm run bench:solver
+BENCH_STAFFING_DAYS=180 BENCH_STAFFING_SLOTS_PER_DAY=10 BENCH_STAFFING_PEOPLE=200 BENCH_STAFFING_CATEGORIES=1 BENCH_STAFFING_MODE=first npm run bench:staffing
 ```
 
 The benchmark prints:
@@ -110,6 +113,8 @@ The benchmark prints:
 - solve status
 - number of returned solutions
 - truncation flag
+
+The staffing benchmark supports `BENCH_STAFFING_ENGINE=highs|js`, `BENCH_STAFFING_MODE=first|topK|optimize`, and bounded timeout/process/memory settings documented in `docs/08-testing-strategy.md`.
 
 ## Deploy to GitHub Pages
 

@@ -121,6 +121,8 @@ export function renderSolutionPanel(project, result, activeSolutionIndex = 0, op
       <div><dt>Completeness</dt><dd>${result.searchComplete ? 'Complete' : 'Incomplete'}</dd></div>
       <div><dt>Truncation</dt><dd>${result.truncatedByLimit ? 'Limited' : 'Not truncated'}</dd></div>
       <div><dt>Optimality</dt><dd>${result.optimalityProven ? 'Proven' : 'Not proven'}</dd></div>
+      <div><dt>Engine</dt><dd>${escapeHtml(result.solverEngine ?? 'Not reported')}</dd></div>
+      <div><dt>Selection</dt><dd>${result.solutionSelection === 'canonical' ? 'Canonical ranking proven' : 'Best found'}</dd></div>
       <div><dt>Diversity</dt><dd>${escapeHtml(diversity)}</dd></div>
       <div><dt>Assignment differences</dt><dd>${comparisonSolution ? `${changedAssignments} vs ${clampedSolutionIndex === 0 ? 'next' : 'previous'} plan` : 'No alternative'}</dd></div>
       <div><dt>Occupancy differences</dt><dd>${comparisonSolution ? `${changedOccupancies} container(s)` : 'No alternative'}</dd></div>

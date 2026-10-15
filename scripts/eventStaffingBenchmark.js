@@ -3,6 +3,8 @@ import { fileURLToPath } from 'node:url';
 import { normalizeProject } from '../src/core/normalize/normalizeProject.js';
 import { transformEventStaffingProject } from '../src/core/transform/eventStaffingProject.js';
 import { FirstSolverAdapter } from '../src/solver/adapters/firstSolverAdapter.js';
+import { HighsSolverAdapter } from '../src/solver/adapters/highsSolverAdapter.js';
+import loadHighs from 'highs';
 import { SOLVE_MODES } from '../src/solver/solveOptions.js';
 import {
   createEventStaffingBenchmarkScenario,
@@ -44,50 +46,62 @@ function getScenarios() {
   }];
 }
 
-function getHeapBytes() {
-  return process.memoryUsage().heapUsed;
+function getMemoryBytes(highs = null) {
+  const usage = process.memoryUsage();
+  return {
+    rss: usage.rss,
+    heapUsed: usage.heapUsed,
+    external: usage.external,
+    arrayBuffers: usage.arrayBuffers,
+    wasmRuntime: Number.isFinite(highs?.memoryBytes) ? highs.memoryBytes : 0,
+  };
 }
 
-function createSolveOptions(domainProject, timeLimitMs) {
+function createSolveOptions(domainProject, timeLimitMs, mode) {
   return {
-    mode: SOLVE_MODES.TOP_K,
-    maxSolutions: 3,
+    mode,
+    maxSolutions: mode === SOLVE_MODES.FIRST ? 1 : 3,
     timeLimitMs,
     includeScoreDetails: true,
     equityEligibleItemIds: domainProject.people.map((person) => person.id),
     scoreWeights: { equity: 100, preferences: 10, targets: 20 },
-    diversity: { enabled: true, minimumAssignmentDistance: 2 },
+    diversity: { enabled: mode === SOLVE_MODES.TOP_K, minimumAssignmentDistance: 2 },
   };
 }
 
-function runChild(definition, settings) {
+async function runChild(definition, settings) {
   if (global.gc) global.gc();
-  const heap = { baseline: getHeapBytes() };
+  const memory = { baseline: getMemoryBytes() };
 
   const generationStart = performance.now();
   const domainProject = createEventStaffingBenchmarkScenario(definition);
   const generationMs = performance.now() - generationStart;
-  heap.afterGeneration = getHeapBytes();
+  memory.afterGeneration = getMemoryBytes();
 
   const transformStart = performance.now();
   const transformedProject = transformEventStaffingProject(domainProject);
   const transformMs = performance.now() - transformStart;
-  heap.afterTransform = getHeapBytes();
+  memory.afterTransform = getMemoryBytes();
 
   const normalizationStart = performance.now();
   const normalizedProject = normalizeProject(transformedProject);
   const normalizationMs = performance.now() - normalizationStart;
-  heap.afterNormalization = getHeapBytes();
+  memory.afterNormalization = getMemoryBytes();
 
-  const solver = new FirstSolverAdapter();
-  const solveOptions = createSolveOptions(domainProject, settings.timeLimitMs);
+  const wasmLoadStart = performance.now();
+  const highs = settings.engine === 'highs' ? await loadHighs() : null;
+  const solver = highs ? new HighsSolverAdapter(highs) : new FirstSolverAdapter();
+  const wasmLoadMs = performance.now() - wasmLoadStart;
+  const solveOptions = createSolveOptions(domainProject, settings.timeLimitMs, settings.mode);
   const validationStart = performance.now();
   const validation = solver.validateModel(normalizedProject, solveOptions);
   const validationMs = performance.now() - validationStart;
-  heap.afterValidation = getHeapBytes();
+  memory.afterValidation = getMemoryBytes(highs);
 
   const theoreticalPairs = normalizedProject.items.length * normalizedProject.containers.length;
-  const firstNodePairInspections = theoreticalPairs * normalizedProject.containers.length;
+  const jsFirstNodePairInspections = settings.engine === 'js'
+    ? theoreticalPairs * normalizedProject.containers.length
+    : null;
   let result = null;
   let solveWallClockMs = 0;
   let solverStartupMs = 0;
@@ -107,10 +121,13 @@ function runChild(definition, settings) {
     solverStartupMs = (searchStartedAt ?? solveEnd) - solveStart;
     solverSearchMs = searchStartedAt === null ? 0 : (searchEndedAt ?? solveEnd) - searchStartedAt;
     solverFinalizeMs = searchEndedAt === null ? 0 : solveEnd - searchEndedAt;
-    heap.afterSolve = getHeapBytes();
+    memory.afterSolve = getMemoryBytes(highs);
   }
 
-  const heapValues = Object.values(heap);
+  const memoryValues = Object.values(memory);
+  const stageMaximumByMetric = Object.fromEntries(Object.keys(memory.baseline).map((metric) => [
+    metric, Math.max(...memoryValues.map((snapshot) => snapshot[metric])),
+  ]));
   return {
     definition: {
       ...definition,
@@ -122,15 +139,16 @@ function runChild(definition, settings) {
       transform: transformMs,
       normalization: normalizationMs,
       solverValidation: validationMs,
+      wasmLoad: wasmLoadMs,
       solverStartup: solverStartupMs,
       solverSearch: solverSearchMs,
       solverFinalize: solverFinalizeMs,
       solveWallClock: solveWallClockMs,
     },
-    heapBytes: {
-      ...heap,
-      observedPeak: Math.max(...heapValues),
-      observedGrowth: Math.max(...heapValues) - heap.baseline,
+    memoryBytes: {
+      ...memory,
+      observedStageMaximumByMetric: stageMaximumByMetric,
+      observedRssGrowth: stageMaximumByMetric.rss - memory.baseline.rss,
     },
     model: {
       days: definition.dayCount,
@@ -145,7 +163,7 @@ function runChild(definition, settings) {
       softAssignmentScores: normalizedProject.softAssignmentScores.length,
       assignmentCountUpperBounds: normalizedProject.assignmentCountUpperBounds.length,
       theoreticalPairs,
-      firstNodePairInspections,
+      jsFirstNodePairInspections,
     },
     validation: { valid: validation.valid, errors: validation.errors.length, warnings: validation.warnings.length },
     solve: result ? {
@@ -156,6 +174,8 @@ function runChild(definition, settings) {
       solutions: result.solutions.length,
       incumbentCount: result.incumbentCount,
       runtimeMs: result.runtimeMs,
+      score: result.solutions[0]?.score ?? null,
+      assignmentCount: result.solutions[0]?.assignments?.length ?? 0,
     } : {
       status: validation.valid ? 'not-run-safety-limit' : 'not-run-invalid',
       searchComplete: false,
@@ -164,9 +184,13 @@ function runChild(definition, settings) {
       solutions: 0,
       incumbentCount: 0,
       runtimeMs: 0,
+      score: null,
+      assignmentCount: 0,
     },
     safety: {
       internalTimeoutMs: settings.timeLimitMs,
+      engine: settings.engine,
+      mode: settings.mode,
       maxSolvePairs: settings.maxSolvePairs,
       searchSkipped: theoreticalPairs > settings.maxSolvePairs,
     },
@@ -182,30 +206,39 @@ function formatMiB(value) {
 }
 
 function printRun(run) {
-  const { definition, model, timingsMs, heapBytes, solve, safety } = run;
-  console.log(`\n${definition.id}: ${model.days} days x ${definition.slotsPerDay} slots/day x ${model.doctors} doctors x ${model.categories} categories`);
+  const { definition, model, timingsMs, memoryBytes, solve, safety } = run;
+  console.log(`\n${definition.id} [${safety.engine}]: ${model.days} days x ${definition.slotsPerDay} slots/day x ${model.doctors} doctors x ${model.categories} categories`);
   console.log(`  model: ${model.slots} slots, ${model.containers} containers, ${model.preferenceCells} preference cells, ${model.theoreticalPairs} doctor/container pairs`);
   console.log(`  terms: ${model.forbiddenAssignments} forbidden, ${model.softAssignmentScores} soft scores, ${model.assignmentCountUpperBounds} count bounds`);
-  console.log(`  work lower bound: ${model.firstNodePairInspections} pair inspections at the first search node`);
-  console.log(`  timings: generate ${formatMs(timingsMs.generation)}, transform ${formatMs(timingsMs.transform)}, normalize ${formatMs(timingsMs.normalization)}, validate ${formatMs(timingsMs.solverValidation)}`);
+  if (model.jsFirstNodePairInspections !== null) {
+    console.log(`  JS search metric: ${model.jsFirstNodePairInspections} estimated pair inspections at the first search node`);
+  }
+  console.log(`  timings: generate ${formatMs(timingsMs.generation)}, transform ${formatMs(timingsMs.transform)}, normalize ${formatMs(timingsMs.normalization)}, WASM load ${formatMs(timingsMs.wasmLoad)}, validate ${formatMs(timingsMs.solverValidation)}`);
   console.log(`  solver: startup ${formatMs(timingsMs.solverStartup)}, search ${formatMs(timingsMs.solverSearch)}, finalize ${formatMs(timingsMs.solverFinalize)}, wall ${formatMs(timingsMs.solveWallClock)}`);
-  const solveHeap = heapBytes.afterSolve === undefined ? 'not run' : formatMiB(heapBytes.afterSolve);
-  console.log(`  heap: baseline ${formatMiB(heapBytes.baseline)}, generation ${formatMiB(heapBytes.afterGeneration)}, transform ${formatMiB(heapBytes.afterTransform)}, normalize ${formatMiB(heapBytes.afterNormalization)}, validation ${formatMiB(heapBytes.afterValidation)}, solve ${solveHeap}`);
-  console.log(`  heap summary: observed peak ${formatMiB(heapBytes.observedPeak)}, growth ${formatMiB(heapBytes.observedGrowth)}`);
+  const solveMemory = memoryBytes.afterSolve;
+  console.log(`  memory baseline: RSS ${formatMiB(memoryBytes.baseline.rss)}, heap ${formatMiB(memoryBytes.baseline.heapUsed)}, external ${formatMiB(memoryBytes.baseline.external)}, array buffers ${formatMiB(memoryBytes.baseline.arrayBuffers)}`);
+  console.log(`  memory after validation: RSS ${formatMiB(memoryBytes.afterValidation.rss)}, heap ${formatMiB(memoryBytes.afterValidation.heapUsed)}, external ${formatMiB(memoryBytes.afterValidation.external)}, array buffers ${formatMiB(memoryBytes.afterValidation.arrayBuffers)}, WASM runtime ${formatMiB(memoryBytes.afterValidation.wasmRuntime)}`);
+  console.log(`  memory after solve: ${solveMemory ? `RSS ${formatMiB(solveMemory.rss)}, heap ${formatMiB(solveMemory.heapUsed)}, external ${formatMiB(solveMemory.external)}, array buffers ${formatMiB(solveMemory.arrayBuffers)}, WASM runtime ${formatMiB(solveMemory.wasmRuntime)}` : 'not run'}`);
+  console.log(`  memory summary: observed stage maximum RSS ${formatMiB(memoryBytes.observedStageMaximumByMetric.rss)}, RSS growth ${formatMiB(memoryBytes.observedRssGrowth)}`);
   console.log(`  result: ${solve.status}, ${solve.exploredNodes} explored, ${solve.prunedNodes} pruned, ${solve.incumbentCount} incumbents, ${solve.solutions} returned`);
+  if (solve.solutions > 0) console.log(`  incumbent: ${solve.assignmentCount} assignments, score ${solve.score}`);
   if (safety.searchSkipped) console.log(`  safety: search skipped because ${model.theoreticalPairs} pairs exceed limit ${safety.maxSolvePairs}`);
 }
 
 function runParent() {
   const settings = {
     timeLimitMs: readPositiveInteger('BENCH_STAFFING_TIMEOUT_MS', 1500),
-    processTimeoutMs: readPositiveInteger('BENCH_STAFFING_PROCESS_TIMEOUT_MS', 10000),
+    processTimeoutMs: readPositiveInteger('BENCH_STAFFING_PROCESS_TIMEOUT_MS', 30000),
     maxOldSpaceMb: readPositiveInteger('BENCH_STAFFING_MAX_OLD_SPACE_MB', 512),
-    maxSolvePairs: readPositiveInteger('BENCH_STAFFING_MAX_SOLVE_PAIRS', 60000),
+    maxSolvePairs: readPositiveInteger('BENCH_STAFFING_MAX_SOLVE_PAIRS', 400000),
+    engine: process.env.BENCH_STAFFING_ENGINE === 'js' ? 'js' : 'highs',
+    mode: Object.values(SOLVE_MODES).includes(process.env.BENCH_STAFFING_MODE)
+      ? process.env.BENCH_STAFFING_MODE
+      : SOLVE_MODES.TOP_K,
   };
   console.log('Event Staffing solver benchmark');
   console.log('================================');
-  console.log(`Safety limits: ${settings.timeLimitMs} ms internal, ${settings.processTimeoutMs} ms process, ${settings.maxOldSpaceMb} MiB old-space, ${settings.maxSolvePairs} solve pairs`);
+  console.log(`Safety limits: ${settings.engine} engine, ${settings.mode} mode, ${settings.timeLimitMs} ms internal, ${settings.processTimeoutMs} ms process, ${settings.maxOldSpaceMb} MiB old-space, ${settings.maxSolvePairs} solve pairs`);
 
   const runs = [];
   for (const definition of getScenarios()) {
@@ -243,7 +276,7 @@ function runParent() {
 if (process.argv[2] === '--child') {
   const definition = JSON.parse(process.argv[3]);
   const settings = JSON.parse(process.argv[4]);
-  process.stdout.write(JSON.stringify(runChild(definition, settings)));
+  process.stdout.write(JSON.stringify(await runChild(definition, settings)));
 } else {
   runParent();
 }

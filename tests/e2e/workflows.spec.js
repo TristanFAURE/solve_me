@@ -94,7 +94,7 @@ test('Generic project changes persist across reload', async ({ page }) => {
   await expect(page.getByText('Recovered local draft.')).toBeVisible();
 });
 
-test('Event Staffing completes a deterministic solve in a Worker', async ({ page }) => {
+test('Event Staffing completes a deterministic HiGHS WASM solve in a Worker', async ({ page }) => {
   const project = {
     modelVersion: 2,
     title: 'Worker fixture',
@@ -137,11 +137,15 @@ test('Event Staffing completes a deterministic solve in a Worker', async ({ page
     }));
   }, project);
   await openRoute(page, '/event-staffing');
+  await page.getByLabel('Engine').selectOption('highs');
+  await page.getByLabel('Mode').selectOption('first');
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
 
   const workerStarted = page.waitForEvent('worker');
+  const wasmLoaded = page.waitForResponse((response) => /\/assets\/highs-.*\.wasm$/.test(new URL(response.url()).pathname));
   await page.getByRole('button', { name: 'Transform + solve', exact: true }).click();
   await workerStarted;
+  await wasmLoaded;
 
   await expect(page.getByRole('tab', { name: 'Results', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
   await expect(page.getByRole('heading', { name: 'Staffing schedule' })).toBeVisible();

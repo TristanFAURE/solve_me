@@ -21,7 +21,7 @@ The ranked-solutions and shared-workflow implementation milestone is complete:
 - moved XLSX parsing into a dedicated browser Worker while retaining preflight and post-parse bounds
 - added 23 Playwright tests for all page workflows, keyboard tabs, persistence, Worker solving, and 360/768/1024/1440 px layouts
 
-The benchmark adds no dependency. Playwright `1.64.1` was added as an exact-pinned Apache-2.0 development dependency, and Vite was upgraded to its Vitest-compatible 8.x line.
+The local large-model solver uses exact-pinned `highs@1.15.3` (MIT) and emits a 3.53 MB WASM asset. Playwright `1.64.1` remains the exact-pinned Apache-2.0 browser-test development dependency.
 
 ## Verification
 
@@ -32,39 +32,42 @@ Final automated verification must include:
 - `git diff --check`
 - review for credentials, tokens, internal URLs, and database secrets
 
-Final unit verification passed 229 tests across 32 files, the production build completed with its existing large-chunk warning, and `git diff --check` passed. The 23 Playwright tests are discovered correctly but cannot execute in the current container because Chromium's required OS libraries, beginning with `libglib-2.0.so.0`, are unavailable. GitHub Actions installs those dependencies and runs the browser suite before deployment.
+Final unit verification passed 250 tests with 89.17% line coverage, the production build emitted the Worker and 3.53 MB WASM assets, and `git diff --check` passed. The 23 Playwright tests are discovered correctly but cannot execute in the current container because Chromium's required OS libraries, beginning with `libglib-2.0.so.0`, are unavailable. GitHub Actions installs those dependencies and runs the browser suite before deployment.
 
 ## Event Staffing scale result
 
-Measured on 2026-10-15 with Node.js `v22.23.2` on Linux x86_64. Every child had a 512 MiB old-space cap and 10 s external process timeout; searches had a 1500 ms internal budget checked at recursive-node boundaries and were not started above 60,000 doctor/container pairs. Heap values are stage snapshots, so `observed peak` is not a sampled allocation high-water mark.
+Measured on 2026-10-15 with Node.js `v22.23.2` on Linux x86_64. The lower-bound target has 180 days, 10 independently staffed slots per day, 200 doctors, one category per slot, 1,800 containers, 360,000 theoretical assignment pairs, 17,820 forbidden assignments, and 162,000 soft-score terms.
 
-| Scenario | Generate / transform / normalize / validate | Solver startup / search / finalize | Observed heap peak | Status | Explored / pruned / incumbents |
-| --- | --- | --- | --- | --- | --- |
-| 7d x 1 x 10, 3 categories | 6.59 / 1.66 / 0.73 / 0.39 ms | 0.81 / 1504.07 / 8.67 ms | 11.36 MiB | partial, 3 returned | 57,524 / 342 / 6 |
-| 14d x 1 x 16, 3 categories | 10.16 / 2.04 / 1.42 / 0.54 ms | 1.12 / 1500.28 / 3.84 ms | 46.19 MiB | partial, 3 returned | 11,684 / 16 / 4 |
-| 28d x 1 x 24, 3 categories | 38.28 / 5.16 / 4.08 / 0.48 ms | 2.43 / 1498.44 / 0.24 ms | 105.82 MiB | timeout | 587 / 0 / 0 |
-| 30d x 10 x 50, 1 category | 21.18 / 29.31 / 9.33 / 0.47 ms | 6.13 / 1564.97 / 0.27 ms | 33.83 MiB | timeout | 14 / 0 / 0 |
-| 30d x 10 x 200, 1 category | 30.40 / 64.71 / 23.41 / 0.59 ms | 20.33 / 1515.71 / 0.27 ms | 46.06 MiB | timeout | 3 / 0 / 0 |
-| 60d x 10 x 200, 1 category | 65.11 / 156.66 / 42.62 / 0.53 ms | not run | 32.67 MiB | safety limit | 0 / 0 / 0 |
-| 90d x 10 x 200, 1 category | 155.03 / 232.94 / 113.23 / 0.58 ms | not run | 39.79 MiB | safety limit | 0 / 0 / 0 |
-| 180d x 10 x 200, 1 category | 237.28 / 458.64 / 234.76 / 0.59 ms | not run | 117.80 MiB | safety limit | 0 / 0 / 0 |
+HiGHS uses 342,180 feasible binary assignment variables after pruning. It receives a deterministic schedule that is independently checked against capacities, eligibility, fixed/forbidden assignments, cooldown exclusions, count bounds, and supported relation constraints before native optimization starts.
 
-The full lower bound has 1,800 slots, 360,000 preference cells/pairs, 17,820 forbidden terms, 162,000 soft-score terms, and 200 count bounds. Preprocessing and validation are practical, but the current repeated-assignment search is not. Its first node constructs/checks the remaining pair space and performs at least `containers x pairs`: 18,000,000 pair inspections at 30d x 10 x 200 versus 648,000,000 at the target. That is 36x the work while the measured checkpoint already reaches only three nodes within its approximately 1.5 s budget. A linear estimate suggests order-of-tens-of-seconds work before meaningful branching at target size, but it is not a precise latency prediction because node costs and runtime conditions vary. Search was therefore stopped at the largest measured safe search size, 30d x 10 x 200; 60, 90, and 180 days were measured through validation only.
+In `first` mode with a 5-second budget, the target lower bound returned a verified 1,800-assignment schedule with score 17,910 in approximately 1.88 seconds of adapter work (about 3.25 seconds including generation, transform, normalization, WASM loading, and validation). The observed stage-maximum RSS was approximately 344 MiB. No native branch-and-bound run is needed when the verified first solution satisfies the request; completeness and optimality are not claimed.
 
-The target should use an established CP-SAT or MILP scheduling model with sparse feasible assignment variables, preferably in a Worker-backed WASM build if a supported browser package meets bundle/memory requirements, or in a bounded remote solver service for stronger operational controls. Do not scale the current JavaScript pair-branching solver to this workload; no replacement solver is added in this change.
+With a 20-second requested budget in direct Node execution:
+
+- generation: approximately 0.47 s
+- transform and normalization: approximately 1.95 s
+- WASM load and validation: approximately 0.09 s
+- MILP model startup: approximately 3.29 s
+- native search: approximately 19.24 s
+- total adapter wall time: approximately 22.56 s
+- observed stage-maximum RSS: approximately 664 MiB
+- result: one verified partial solution; optimality was not proved
+
+HiGHS can overrun its native time limit during long presolve/native sections. Browser execution remains bounded because the main-thread watchdog terminates the Worker after the requested limit plus a delivery grace and preserves the verified incumbent reported before native optimization. HiGHS WASM is single-threaded; faster computers can improve search, but target-scale optimization and diverse top-K remain best-found unless the result explicitly proves completeness.
 
 ## Recommended next steps
 
 1. Run `npm run test:e2e` in an environment with Chromium system libraries, then manually verify the four workflows on desktop and mobile.
-2. Evaluate a sparse CP-SAT/MILP WASM or bounded remote-service prototype for Event Staffing; retain the current solver only for small models.
+2. Validate HiGHS schedule quality and memory use on representative end-user computers; tune timeout and objective settings from those measurements.
 3. Review alternatives to `xlsx`, which has unresolved upstream advisories; current upload, ZIP expansion, workbook-shape, and cell limits reduce but do not eliminate parser risk.
 4. Keep the Playwright suite in the verification gate once the execution environment provides its browser libraries.
-5. Keep the benchmark safety limits in place when comparing any future solver architecture.
+5. Consider a bounded remote CP-SAT service only if local HiGHS quality or latency is insufficient on representative hardware.
 
 ## Known residual risks
 
-- general relation preferences remain unsupported by the first solver
-- repeated-assignment search remains exponential and can return incomplete bounded or timed-out results on large scenarios
+- general relation preferences remain unsupported by both current optimization paths
+- target-scale HiGHS results may be partial or best-found; equal-score canonical top-K can remain unproved
+- the target lower-bound model used roughly 664 MiB RSS in the measured Node process
 - Event Staffing uses event-shaped slot records grouped by date metadata rather than a separate date entity
 - local drafts can contain personal data in origin-local browser storage
 - full-page rerenders still warrant manual focus/caret and accessibility checks

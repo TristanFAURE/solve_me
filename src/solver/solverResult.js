@@ -12,6 +12,8 @@ export function createSolverResult({
   exploredNodes = 0,
   prunedNodes = 0,
   incumbentCount = 0,
+  canonicalRankingComplete = false,
+  solutionSelection = 'best-found',
 } = {}) {
   return {
     status,
@@ -27,5 +29,7 @@ export function createSolverResult({
     exploredNodes,
     prunedNodes,
     incumbentCount,
+    canonicalRankingComplete,
+    solutionSelection,
   };
 }

@@ -95,7 +95,7 @@ describe('solve Worker protocol and client', () => {
     });
     const handle = client.solve({ items: [{ id: 'a' }], containers: [{ id: 'c' }] }, {});
     expect(worker.sent[0].options.timeLimitMs).toBe(5000);
-    expect(watchdogDelay).toBe(5100);
+    expect(watchdogDelay).toBe(5500);
 
     watchdog();
     const result = await handle.promise;

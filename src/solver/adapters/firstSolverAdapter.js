@@ -1521,6 +1521,10 @@ export class FirstSolverAdapter extends SolverAdapter {
       exploredNodes: searchState.exploredNodes,
       prunedNodes: searchState.prunedNodes,
       incumbentCount: searchState.incumbentCount,
+      canonicalRankingComplete: normalizedOptions.mode !== SOLVE_MODES.FIRST && searchComplete,
+      solutionSelection: normalizedOptions.mode !== SOLVE_MODES.FIRST && searchComplete
+        ? 'canonical'
+        : 'best-found',
     });
   }
 }

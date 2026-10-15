@@ -189,6 +189,7 @@ Planned configuration shape:
 ```js
 {
   mode: "first" | "topK" | "optimize",
+  engine: "auto" | "js" | "highs",
   maxSolutions: 10,
   timeLimitMs: 5000,
   includeScoreDetails: true,
@@ -203,6 +204,8 @@ Planned configuration shape:
   }
 }
 ```
+
+`auto` keeps small, single-assignment, and position models on the JavaScript adapter and selects the Worker-hosted HiGHS WASM adapter for sufficiently large supported multiple-container models. `highs` is an explicit request and therefore returns an error for unsupported semantics or initialization failure; it does not silently downgrade. `js` forces the original adapter.
 
 The initial optimization strategy is a configurable weighted numeric score. Staffing should initially assign the dominant default weight to workload equity while retaining configurable preference and target weights.
 
@@ -253,6 +256,7 @@ The next result contract should also expose:
 - `timeoutReached`
 - explored and pruned node counts when available
 - warnings when requested diversity or objectives could not be applied
+- solver engine and whether canonical ranking was proved or alternatives are best-found
 
 The solver must not report `unsat` without completing the relevant search, and must not report a proven optimum without a valid objective bound.
 - whether results were truncated

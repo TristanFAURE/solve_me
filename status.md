@@ -63,6 +63,7 @@ The app now has:
   - container mode
   - position mode
   - adjacency hard constraints
+- a HiGHS WASM MILP adapter for large supported repeated-assignment staffing models
 - shared solution display components
 - GitHub Pages deployment already configured and working
 
@@ -71,7 +72,7 @@ The app now has:
 Current recommended next work:
 
 - run the committed Playwright suite in an environment with Chromium system libraries and complete manual desktop/mobile verification
-- evaluate a sparse CP-SAT/MILP WASM or bounded remote solver for target-scale Event Staffing; the current JavaScript pair search is measured as unsuitable
+- validate target-scale HiGHS schedules and optimization quality on representative end-user computers
 - evaluate replacement or isolation options for the existing `xlsx` dependency, which has unresolved upstream advisories
 
 ## Key invariant decisions
@@ -99,6 +100,8 @@ Preserve these project rules:
 - changed the Event Staffing preference workbook to a planner-friendly two-row date/slot matrix with stable slot-ID mapping and legacy import compatibility
 - moved browser workbook parsing to a dedicated module Worker and added Playwright coverage for all workflows and target viewport widths
 - aligned Vite with Vitest's supported Vite 8 peer range; production dependency audit now reports only the accepted `xlsx` advisory
+- added automatic Worker-hosted HiGHS WASM solving with sparse assignment variables, verified greedy incumbents, hard cancellation, and honest best-found/canonical ranking metadata
+- measured the 180-day x 10-slot x 200-doctor lower bound at 360,000 theoretical pairs: a verified partial schedule is returned locally, while optimality remains unproved within a 20-second budget
 
 See `docs/status/05-recent-work-and-next-steps.md` and `docs/status/06-ranked-solutions-and-ui-plan.md` for implementation detail and residual risks.
 
@@ -140,7 +143,7 @@ Current implementation direction:
 - keep the core generic and compile date/slot semantics in the Event Staffing transform
 - use configurable weighted numeric scoring with equity as the initial dominant staffing objective
 - return diverse top-K alternatives with honest completeness and optimality metadata
-- move solving to a Web Worker before considering WebAssembly
+- keep JavaScript and HiGHS WASM solvers behind the shared Worker and adapter boundary
 - migrate all pages toward Setup, Data, Rules, Review, and Results tabs
 - protect school and wedding behavior with regression tests
 - preserve bounded-memory search and honest incomplete-result metadata
