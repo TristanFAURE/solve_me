@@ -70,8 +70,8 @@ The app now has:
 
 Current recommended next work:
 
-- manually verify the four browser workflows on desktop and mobile
-- benchmark realistic Event Staffing searches and tune time limits and search guidance from measured results
+- run the committed Playwright suite in an environment with Chromium system libraries and complete manual desktop/mobile verification
+- evaluate a sparse CP-SAT/MILP WASM or bounded remote solver for target-scale Event Staffing; the current JavaScript pair search is measured as unsuitable
 - evaluate replacement or isolation options for the existing `xlsx` dependency, which has unresolved upstream advisories
 
 ## Key invariant decisions
@@ -94,7 +94,11 @@ Preserve these project rules:
 - added versioned local draft recovery and full-fidelity configuration workbook flows for specialized pages
 - implemented Event Staffing date/slot migration, category requirements, preferences, unavailability, assignment rules, cooldowns, and ranked schedule results
 - bounded solver candidate retention and hardened autosave and workbook handling during final review
-- automated verification passes; real-browser and realistic performance verification remain manual follow-up work
+- measured Event Staffing through the 180-day x 10-slot x 200-doctor one-category lower bound; preprocessing is safe, but 30-day x 10-slot x 200-doctor search timed out after three nodes and target search was stopped by the pair-work safety gate
+- added configurable benchmark dimensions, isolated process/heap limits, internal/external timeouts, phase timings, model/heap metrics, and generator dimension tests
+- changed the Event Staffing preference workbook to a planner-friendly two-row date/slot matrix with stable slot-ID mapping and legacy import compatibility
+- moved browser workbook parsing to a dedicated module Worker and added Playwright coverage for all workflows and target viewport widths
+- aligned Vite with Vitest's supported Vite 8 peer range; production dependency audit now reports only the accepted `xlsx` advisory
 
 See `docs/status/05-recent-work-and-next-steps.md` and `docs/status/06-ranked-solutions-and-ui-plan.md` for implementation detail and residual risks.
 
