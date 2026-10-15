@@ -87,6 +87,7 @@ describe('FirstSolverAdapter - solve contract', () => {
     expect(result.optimalityProven).toBe(true);
     expect(result.exploredNodes).toBeGreaterThan(0);
     expect(result.prunedNodes).toBeGreaterThanOrEqual(0);
+    expect(result.incumbentCount).toBeGreaterThan(0);
   });
 
   it('reports complete unsatisfiability without claiming an optimum', () => {

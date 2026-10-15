@@ -177,8 +177,8 @@ export function validateWorkbookBounds(workbook) {
     if (!range) return;
     const rows = range.e.r - range.s.r + 1;
     const columns = range.e.c - range.s.c + 1;
-    if (rows > WORKBOOK_LIMITS.maxRowsPerSheet) throw new WorkbookSafetyError(`Sheet "${sheetName}" exceeds the 10000 row limit.`);
-    if (columns > WORKBOOK_LIMITS.maxColumnsPerSheet) throw new WorkbookSafetyError(`Sheet "${sheetName}" exceeds the 500 column limit.`);
+    if (rows > WORKBOOK_LIMITS.maxRowsPerSheet) throw new WorkbookSafetyError('A workbook sheet exceeds the 10000 row limit.');
+    if (columns > WORKBOOK_LIMITS.maxColumnsPerSheet) throw new WorkbookSafetyError('A workbook sheet exceeds the 500 column limit.');
     Object.keys(sheet).filter((key) => !key.startsWith('!')).forEach((key) => sanitizeWorkbookValue(sheet[key]?.v));
   });
   return workbook;
@@ -197,8 +197,15 @@ export function readWorkbookArrayBuffer(arrayBuffer) {
 export async function readWorkbookFile(file) {
   assertWorkbookFileSize(file);
   const arrayBuffer = await file.arrayBuffer();
-  if (arrayBuffer.byteLength > WORKBOOK_LIMITS.maxUploadBytes) throw new WorkbookSafetyError('The workbook is larger than the 5 MB upload limit.');
-  return readWorkbookArrayBuffer(arrayBuffer);
+  validateXlsxArrayBuffer(arrayBuffer);
+  if (typeof window === 'undefined' || typeof document === 'undefined') return readWorkbookArrayBuffer(arrayBuffer);
+
+  try {
+    const { parseWorkbookInWorker } = await import('./parseWorkerClient.js');
+    return validateWorkbookBounds(await parseWorkbookInWorker(arrayBuffer));
+  } catch {
+    throw new WorkbookSafetyError('The Excel workbook could not be read. Check that it is a valid .xlsx file.');
+  }
 }
 
 export function sheetToSafeRows(sheet, options = {}) {

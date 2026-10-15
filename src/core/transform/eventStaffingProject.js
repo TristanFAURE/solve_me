@@ -216,6 +216,12 @@ function createForcedAssignments(assignments) {
 
 function createEventPreferenceTerms(preferences, requirements, orderedEvents) {
   const eventIds = new Set(orderedEvents.map((event) => event.id));
+  const requirementsByEventId = new Map();
+  requirements.forEach((requirement) => {
+    const eventRequirements = requirementsByEventId.get(requirement.eventId) ?? [];
+    eventRequirements.push(requirement);
+    requirementsByEventId.set(requirement.eventId, eventRequirements);
+  });
   const scores = [];
   const forbiddenAssignments = [];
   toArray(preferences).forEach((preference) => {
@@ -231,7 +237,7 @@ function createEventPreferenceTerms(preferences, requirements, orderedEvents) {
       if (!eventIds.has(eventId) || !state || state === PREFERENCE_STATES.NEUTRAL) {
         return;
       }
-      requirements.filter((requirement) => requirement.eventId === eventId).forEach((requirement) => {
+      (requirementsByEventId.get(eventId) ?? []).forEach((requirement) => {
         const assignment = {
           itemId: personId,
           destinationId: createDestinationId(requirement.eventId, requirement.groupTypeId),

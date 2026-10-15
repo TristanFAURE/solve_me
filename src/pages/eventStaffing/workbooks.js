@@ -43,8 +43,43 @@ function createSlotColumns(project) {
       suffix += 1;
     }
     usedHeaders.add(key);
-    return { key, slot };
+    return {
+      key,
+      slot,
+      displayLabel: suffix === 2 ? slot.slotLabel : `${slot.slotLabel} [${suffix - 1}]`,
+    };
   });
+}
+
+function preferenceColumnName(position) {
+  return `Preference column ${position}`;
+}
+
+function createPreferenceSheet(project, columns, preferencesByPersonId) {
+  const firstHeader = ['Name', 'Email', 'Person ID', ...columns.map(({ slot }, index) => (
+    index === 0 || columns[index - 1].slot.date !== slot.date ? slot.date : ''
+  ))];
+  const secondHeader = ['', '', '', ...columns.map(({ displayLabel }) => displayLabel)];
+  const personRows = project.people.map((person) => [
+    person.name,
+    person.email ?? '',
+    person.id,
+    ...columns.map(({ slot }) => preferenceToWorkbookValue(preferencesByPersonId.get(person.id)?.[slot.id])),
+  ]);
+  const sheet = XLSX.utils.aoa_to_sheet(neutralizeMatrix([firstHeader, secondHeader, ...personRows]));
+  const merges = [
+    { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
+    { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },
+    { s: { r: 0, c: 2 }, e: { r: 1, c: 2 } },
+  ];
+  for (let start = 0; start < columns.length;) {
+    let end = start;
+    while (end + 1 < columns.length && columns[end + 1].slot.date === columns[start].slot.date) end += 1;
+    if (end > start) merges.push({ s: { r: 0, c: start + 3 }, e: { r: 0, c: end + 3 } });
+    start = end + 1;
+  }
+  sheet['!merges'] = merges;
+  return applyWorksheetLayout(sheet, [24, 30, 20, ...columns.map(() => 16)], { autoFilter: false });
 }
 
 function preferenceToWorkbookValue(value) {
@@ -59,13 +94,9 @@ export function createEventStaffingPreferenceWorkbook(domainProject) {
   const project = migrateEventStaffingProject(domainProject);
   const columns = createSlotColumns(project);
   const preferencesByPersonId = new Map(project.preferences.map((entry) => [entry.personId, getPreferenceMap(entry)]));
-  const rows = project.people.map((person) => {
-    const row = { Name: person.name, Email: person.email ?? '', 'Person ID': person.id };
-    columns.forEach(({ key, slot }) => { row[key] = preferenceToWorkbookValue(preferencesByPersonId.get(person.id)?.[slot.id]); });
-    return row;
-  });
-  const slotRows = columns.map(({ key, slot }) => ({
+  const slotRows = columns.map(({ key, slot }, index) => ({
     'Preference column key': key,
+    'Preference column position': index + 4,
     'Slot ID': slot.id,
     Date: slot.date,
     'Slot label': slot.slotLabel,
@@ -73,7 +104,7 @@ export function createEventStaffingPreferenceWorkbook(domainProject) {
   }));
   const instructions = [
     ['Event Staffing preference workbook'],
-    ['Edit only preference cells on the Preferences sheet. Do not change identity or Slots mapping values.'],
+    ['Edit only preference cells on the Preferences sheet. Dates are grouped in the first header row and slot labels are in the second. Do not change identity or Slots mapping values.'],
     ['P', 'Prefer (X, Y, YES, PREFER, and PREFERRED are also accepted)'],
     ['blank', 'Neutral'],
     ['N', 'Prefer not'],
@@ -83,8 +114,8 @@ export function createEventStaffingPreferenceWorkbook(domainProject) {
   ];
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, applyWorksheetLayout(XLSX.utils.aoa_to_sheet(neutralizeMatrix(instructions)), [24, 100], { autoFilter: false }), 'Instructions');
-  XLSX.utils.book_append_sheet(workbook, applyWorksheetLayout(XLSX.utils.json_to_sheet(neutralizeRows(rows), { header: ['Name', 'Email', 'Person ID', ...columns.map(({ key }) => key)] }), [24, 30, 20, ...columns.map(() => 18)]), 'Preferences');
-  XLSX.utils.book_append_sheet(workbook, applyWorksheetLayout(XLSX.utils.json_to_sheet(neutralizeRows(slotRows), { header: ['Preference column key', 'Slot ID', 'Date', 'Slot label', 'Category coverage'] }), [34, 20, 14, 22, 40]), 'Slots');
+  XLSX.utils.book_append_sheet(workbook, createPreferenceSheet(project, columns, preferencesByPersonId), 'Preferences');
+  XLSX.utils.book_append_sheet(workbook, applyWorksheetLayout(XLSX.utils.json_to_sheet(neutralizeRows(slotRows), { header: ['Preference column key', 'Preference column position', 'Slot ID', 'Date', 'Slot label', 'Category coverage'] }), [34, 26, 20, 14, 22, 40]), 'Slots');
   return workbook;
 }
 
@@ -103,7 +134,7 @@ export function createEventStaffingConfigurationWorkbook(domainProject, options 
   workbook.Sheets.Instructions = XLSX.utils.aoa_to_sheet(neutralizeMatrix([
     ['Event Staffing configuration workbook'],
     ['Full replacement uses the reserved configuration envelope after preview and confirmation. Readable sheets other than Preferences are reference views.'],
-    ['Preferences is editable and may be applied alone. Keep identity and Slots mapping values stable.'],
+    ['Preferences is editable and may be applied alone. Dates are grouped in the first header row and slot labels are in the second. Keep identity and Slots mapping values stable.'],
     ['P', 'Prefer (X, Y, YES, PREFER, and PREFERRED are also accepted)'],
     ['blank', 'Neutral (NEUTRAL is also accepted)'],
     ['N', 'Prefer not (NO and PREFER NOT are also accepted)'],
@@ -151,20 +182,53 @@ export function parseEventStaffingPreferenceWorkbook(workbook, domainProject) {
   const preferencesSheet = findSheet(workbook, 'Preferences');
   const slotsSheet = findSheet(workbook, 'Slots');
   if (!preferencesSheet || !slotsSheet) throw new WorkbookSafetyError('The workbook must contain Preferences and Slots sheets.');
-  const rows = sheetToSafeRows(preferencesSheet);
+  if (!preferencesSheet['!ref']) throw new WorkbookSafetyError('The Preferences sheet is empty.');
+  const preferencesRange = XLSX.utils.decode_range(preferencesSheet['!ref']);
+  const preferenceMatrix = XLSX.utils.sheet_to_json(preferencesSheet, { header: 1, defval: '', raw: false });
   const slotRows = sheetToSafeRows(slotsSheet);
   const knownSlotIds = new Set(project.events.map((slot) => slot.id));
+  const expectedColumns = new Map(createSlotColumns(project).map((column, index) => [column.slot.id, {
+    ...column,
+    position: index + 4,
+  }]));
   const slotIdByColumn = new Map();
   const unknownSlotMappings = [];
+  const usesColumnPositions = String(slotsSheet.B1?.v ?? '').trim() === 'Preference column position'
+    || slotRows.some((row) => String(row['Preference column position'] ?? '').trim() !== '');
   slotRows.forEach((row, index) => {
     const columnKey = String(row['Preference column key'] ?? '').trim();
     const slotId = String(row['Slot ID'] ?? '').trim();
-    if (!columnKey || !slotId || !knownSlotIds.has(slotId) || slotIdByColumn.has(columnKey)) {
+    const rawPosition = String(row['Preference column position'] ?? '').trim();
+    const position = Number(rawPosition);
+    const mappingKey = usesColumnPositions ? preferenceColumnName(position) : columnKey;
+    const validPosition = !usesColumnPositions || (/^\d+$/.test(rawPosition) && position >= 4 && position <= preferencesRange.e.c + 1);
+    const expected = expectedColumns.get(slotId);
+    const displayedDate = String(preferenceMatrix[0]?.[position - 1] ?? '').trim()
+      || String(preferenceMatrix[0]?.slice(3, position - 1).findLast((value) => String(value ?? '').trim()) ?? '').trim();
+    const displayedSlot = String(preferenceMatrix[1]?.[position - 1] ?? '').trim();
+    const positionMatchesHeaders = !usesColumnPositions || (expected
+      && position === expected.position
+      && columnKey === expected.key
+      && String(row.Date ?? '').trim() === expected.slot.date
+      && String(row['Slot label'] ?? '').trim() === expected.slot.slotLabel
+      && displayedDate === expected.slot.date
+      && displayedSlot === expected.displayLabel);
+    if (!columnKey || !slotId || !knownSlotIds.has(slotId) || !validPosition || !positionMatchesHeaders || slotIdByColumn.has(mappingKey)) {
       unknownSlotMappings.push(index + 2);
       return;
     }
-    slotIdByColumn.set(columnKey, slotId);
+    slotIdByColumn.set(mappingKey, slotId);
   });
+
+  const rows = usesColumnPositions
+    ? sheetToSafeRows(preferencesSheet, {
+      header: Array.from({ length: preferencesRange.e.c + 1 }, (_, index) => (
+        index < 3 ? ['Name', 'Email', 'Person ID'][index] : preferenceColumnName(index + 1)
+      )),
+      range: 2,
+    })
+    : sheetToSafeRows(preferencesSheet);
+  const preferenceRowOffset = usesColumnPositions ? 3 : 2;
 
   const personById = new Map(project.people.map((person) => [person.id, person]));
   const peopleByEmail = uniqueLookup(project.people, (person) => normalizeIdentity(person.email));
@@ -189,7 +253,7 @@ export function parseEventStaffingPreferenceWorkbook(workbook, domainProject) {
     const name = normalizeIdentity(row.Name);
     if (!personId && !email && !name) {
       report.invalidRows += 1;
-      report.issues.push(`Preferences row ${rowIndex + 2} has no person identity.`);
+      report.issues.push(`Preferences row ${rowIndex + preferenceRowOffset} has no person identity.`);
       return;
     }
     let matches = personId && personById.has(personId) ? [personById.get(personId)] : [];
@@ -197,18 +261,18 @@ export function parseEventStaffingPreferenceWorkbook(workbook, domainProject) {
     if (matches.length === 0 && name) matches = peopleByName.get(name) ?? [];
     if (matches.length === 0) {
       report.unknownRows += 1;
-      report.issues.push(`Preferences row ${rowIndex + 2} does not match a current person.`);
+      report.issues.push(`Preferences row ${rowIndex + preferenceRowOffset} does not match a current person.`);
       return;
     }
     if (matches.length !== 1) {
       report.ambiguousRows += 1;
-      report.issues.push(`Preferences row ${rowIndex + 2} matches more than one person.`);
+      report.issues.push(`Preferences row ${rowIndex + preferenceRowOffset} matches more than one person.`);
       return;
     }
     const person = matches[0];
     if (seenPersonIds.has(person.id)) {
       report.duplicateRows += 1;
-      report.issues.push(`Preferences row ${rowIndex + 2} duplicates person "${person.name}".`);
+      report.issues.push(`Preferences row ${rowIndex + preferenceRowOffset} duplicates person "${person.name}".`);
       return;
     }
     seenPersonIds.add(person.id);
@@ -224,7 +288,7 @@ export function parseEventStaffingPreferenceWorkbook(workbook, domainProject) {
       const state = normalizePreferenceState(rawValue);
       if (!state) {
         report.invalidCells += 1;
-        report.issues.push(`Preferences row ${rowIndex + 2}, column "${columnKey}" has an invalid value.`);
+        report.issues.push(`Preferences row ${rowIndex + preferenceRowOffset}, column "${columnKey}" has an invalid value.`);
         return;
       }
       report.preferenceCells += 1;

@@ -20,16 +20,34 @@ function project() {
 }
 
 describe('Event Staffing workbooks', () => {
-  it('round-trips preference values through stable slot and person mappings', () => {
-    const workbook = createEventStaffingPreferenceWorkbook(project());
+  it('generates two header rows with grouped dates, slot labels, and people as rows', () => {
+    const current = project();
+    current.events.push(
+      { id: 'S2', label: 'Evening', slotLabel: 'Evening', date: '2026-10-14', dateKey: '2026-10-14', orderIndex: 1 },
+      { id: 'S3', label: 'Morning', slotLabel: 'Morning', date: '2026-10-15', dateKey: '2026-10-15', orderIndex: 2 },
+    );
+    current.people.push({ id: 'P2', name: 'Blair', email: 'blair@example.org' });
+    const workbook = createEventStaffingPreferenceWorkbook(current);
     const sheet = workbook.Sheets.Preferences;
-    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-    expect(Object.keys(rows[0]).slice(0, 3)).toEqual(['Name', 'Email', 'Person ID']);
-    const slotColumn = Object.keys(rows[0]).find((key) => key.startsWith('2026-10-14 | Morning'));
-    expect(sheet['!autofilter'].ref).toBe(sheet['!ref']);
-    rows[0][slotColumn] = 'Unavailable';
-    workbook.Sheets.Preferences = XLSX.utils.json_to_sheet(rows);
-    const preview = parseEventStaffingPreferenceWorkbook(workbook, project());
+    const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+
+    expect(matrix[0]).toEqual(['Name', 'Email', 'Person ID', '2026-10-14', '', '2026-10-15']);
+    expect(matrix[1]).toEqual(['', '', '', 'Morning', 'Evening', 'Morning']);
+    expect(matrix.slice(2).map((row) => row.slice(0, 3))).toEqual([
+      ["'@Alex", 'alex@example.org', 'P1'],
+      ['Blair', 'blair@example.org', 'P2'],
+    ]);
+    expect(sheet['!merges']).toContainEqual({ s: { r: 0, c: 3 }, e: { r: 0, c: 4 } });
+    expect(sheet['!cols'].map(({ wch }) => wch)).toEqual([24, 30, 20, 16, 16, 16]);
+    const slotRows = XLSX.utils.sheet_to_json(workbook.Sheets.Slots, { defval: '' });
+    expect(slotRows.map((row) => [row['Preference column position'], row['Slot ID']])).toEqual([[4, 'S1'], [5, 'S2'], [6, 'S3']]);
+  });
+
+  it('round-trips preference values through serialized stable slot and person mappings', () => {
+    const workbook = createEventStaffingPreferenceWorkbook(project());
+    workbook.Sheets.Preferences.D3.v = 'Unavailable';
+    const serialized = XLSX.read(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }), { type: 'buffer' });
+    const preview = parseEventStaffingPreferenceWorkbook(serialized, project());
     expect(preview.canApply).toBe(true);
     expect(preview.report).toMatchObject({ matchedRows: 1, preferenceCells: 1, invalidCells: 0 });
     const current = project();
@@ -46,13 +64,10 @@ describe('Event Staffing workbooks', () => {
     );
     current.preferences = [{ personId: 'P1', slotPreferences: { S1: 'prefer' } }];
     const workbook = createEventStaffingPreferenceWorkbook(current);
-    const rows = XLSX.utils.sheet_to_json(workbook.Sheets.Preferences, { defval: '' });
-    const slotColumn = '2026-10-14 | Morning';
-    expect(rows[0][slotColumn]).toBe('P');
-    rows[0][slotColumn] = 'p';
-    rows[1][slotColumn] = 'X';
-    rows[2][slotColumn] = 'y';
-    workbook.Sheets.Preferences = XLSX.utils.json_to_sheet(rows);
+    expect(workbook.Sheets.Preferences.D3.v).toBe('P');
+    workbook.Sheets.Preferences.D3.v = 'p';
+    workbook.Sheets.Preferences.D4.v = 'X';
+    workbook.Sheets.Preferences.D5.v = 'y';
 
     const preview = parseEventStaffingPreferenceWorkbook(workbook, current);
     expect(preview.canApply).toBe(true);
@@ -63,32 +78,63 @@ describe('Event Staffing workbooks', () => {
     ]);
   });
 
-  it('disambiguates duplicate date-slot headers while retaining stable slot IDs', () => {
+  it('parses duplicate visible date-slot labels safely by physical column', () => {
     const current = project();
     current.events.push({ ...current.events[0], id: 'S2', orderIndex: 1 });
     const workbook = createEventStaffingPreferenceWorkbook(current);
-    const preferenceHeaders = XLSX.utils.sheet_to_json(workbook.Sheets.Preferences, { header: 1 })[0];
-    expect(preferenceHeaders).toEqual(['Name', 'Email', 'Person ID', '2026-10-14 | Morning', '2026-10-14 | Morning [2]']);
+    const preferenceRows = XLSX.utils.sheet_to_json(workbook.Sheets.Preferences, { header: 1, defval: '' });
+    expect(preferenceRows.slice(0, 2)).toEqual([
+      ['Name', 'Email', 'Person ID', '2026-10-14', ''],
+      ['', '', '', 'Morning', 'Morning [2]'],
+    ]);
     const slotRows = XLSX.utils.sheet_to_json(workbook.Sheets.Slots, { defval: '' });
-    expect(slotRows.map((row) => [row['Preference column key'], row['Slot ID']])).toEqual([
-      ['2026-10-14 | Morning', 'S1'],
-      ['2026-10-14 | Morning [2]', 'S2'],
+    expect(slotRows.map((row) => [row['Preference column key'], row['Preference column position'], row['Slot ID']])).toEqual([
+      ['2026-10-14 | Morning', 4, 'S1'],
+      ['2026-10-14 | Morning [2]', 5, 'S2'],
     ]);
 
-    const rows = XLSX.utils.sheet_to_json(workbook.Sheets.Preferences, { defval: '' });
-    rows[0]['2026-10-14 | Morning'] = 'P';
-    rows[0]['2026-10-14 | Morning [2]'] = 'U';
-    workbook.Sheets.Preferences = XLSX.utils.json_to_sheet(rows);
+    workbook.Sheets.Preferences.D3.v = 'P';
+    workbook.Sheets.Preferences.E3.v = 'U';
     expect(parseEventStaffingPreferenceWorkbook(workbook, current).changes.map(({ slotId, state }) => ({ slotId, state }))).toEqual([
       { slotId: 'S1', state: 'prefer' },
       { slotId: 'S2', state: 'unavailable' },
     ]);
   });
 
+  it('rejects preference columns that no longer match their stable slot mapping', () => {
+    const current = project();
+    current.events.push({ id: 'S2', label: 'Evening', slotLabel: 'Evening', date: '2026-10-14', dateKey: '2026-10-14', orderIndex: 1 });
+    const workbook = createEventStaffingPreferenceWorkbook(current);
+    const firstValue = workbook.Sheets.Preferences.D3.v;
+    workbook.Sheets.Preferences.D3.v = workbook.Sheets.Preferences.E3.v;
+    workbook.Sheets.Preferences.E3.v = firstValue;
+    workbook.Sheets.Preferences.D2.v = 'Evening';
+    workbook.Sheets.Preferences.E2.v = 'Morning';
+
+    const preview = parseEventStaffingPreferenceWorkbook(workbook, current);
+
+    expect(preview.canApply).toBe(false);
+    expect(preview.report.unknownSlotMappings).toBeGreaterThan(0);
+  });
+
+  it('retains import compatibility with the existing single-header format', () => {
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{
+      Name: '@Alex', Email: 'alex@example.org', 'Person ID': 'P1', '2026-10-14 | Morning': 'Y',
+    }], { header: ['Name', 'Email', 'Person ID', '2026-10-14 | Morning'] }), 'Preferences');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{
+      'Preference column key': '2026-10-14 | Morning', 'Slot ID': 'S1', Date: '2026-10-14', 'Slot label': 'Morning',
+    }]), 'Slots');
+
+    const preview = parseEventStaffingPreferenceWorkbook(workbook, project());
+    expect(preview.canApply).toBe(true);
+    expect(preview.changes).toEqual([{ personId: 'P1', slotId: 'S1', state: 'prefer' }]);
+  });
+
   it('blocks ambiguous duplicate rows without creating people', () => {
     const workbook = createEventStaffingPreferenceWorkbook(project());
-    const rows = XLSX.utils.sheet_to_json(workbook.Sheets.Preferences, { defval: '' });
-    workbook.Sheets.Preferences = XLSX.utils.json_to_sheet([...rows, { ...rows[0] }]);
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets.Preferences, { header: 1, defval: '' });
+    workbook.Sheets.Preferences = XLSX.utils.aoa_to_sheet([...rows, [...rows[2]]]);
     const preview = parseEventStaffingPreferenceWorkbook(workbook, project());
     expect(preview.canApply).toBe(false);
     expect(preview.report.duplicateRows).toBe(1);

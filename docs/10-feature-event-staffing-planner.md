@@ -15,11 +15,11 @@ People may have an optional email, which must be unique case-insensitively when 
 The configuration workbook is available before solving and contains the complete domain configuration in `_Configuration`, plus these readable sheets:
 
 - `Instructions`: meanings and matching rules.
-- `Preferences`: one row per person. The first columns are `Name`, `Email`, and `Person ID`; every remaining column is one independently staffed occurrence in schedule order, such as `2026-10-14 | Morning`.
-- `Slots`: maps each exact `Preference column key` to stable `Slot ID`, `Date`, `Slot label`, and `Category coverage`.
+- `Preferences`: one row per person. The first columns are `Name`, `Email`, and `Person ID`; the first two rows group adjacent slots by ISO date and then show each slot label.
+- `Slots`: maps each stable `Preference column key` and one-based column position to `Slot ID`, `Date`, `Slot label`, and `Category coverage`.
 - `Categories`, `Requirements`, `People`, `Cooldowns`, `Forced assignments`, `Forbidden assignments`, and `Limits`: readable views of all staffing inputs.
 
-Accepted preference cells are case-insensitive `P`, `X`, `Y`, `YES`, `PREFER`, or `PREFERRED`; blank or `NEUTRAL`; `N`, `NO`, or `PREFER NOT`; and `U` or `UNAVAILABLE`. Duplicate display labels are deterministically suffixed, for example `2026-10-14 | Morning [2]`, while `Slots` retains the exact stable-ID mapping.
+Accepted preference cells are case-insensitive `P`, `X`, `Y`, `YES`, `PREFER`, or `PREFERRED`; blank or `NEUTRAL`; `N`, `NO`, or `PREFER NOT`; and `U` or `UNAVAILABLE`. Duplicate visible date and slot labels remain safe because the `Slots` sheet maps each physical preference column to a stable slot ID. Legacy single-header workbooks continue to use their deterministic composite column keys, including duplicate suffixes such as `[2]`.
 
 One import control detects the full envelope after workbook safety validation. A valid envelope can replace the full migrated configuration only after explicit impact confirmation, or optionally apply preferences alone. Only preference cells are editable import surfaces in the configuration workbook; other readable sheets are reference views. Without an envelope, valid legacy `Preferences`/`Slots` workbooks remain preference-only merges. Preference matching uses exact Person ID, unique case-insensitive email, then unique case-insensitive name and never creates people. Parse, validation, cancellation, or confirmation failure leaves the active project unchanged.
 

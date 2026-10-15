@@ -112,7 +112,10 @@ function pushRankedSolution(solutions, solution, model, maxSolutions, searchStat
   const previousBestFingerprint = searchState.bestSolution?.fingerprint;
   searchState.bestSolution = solutions[0] ?? searchState.bestSolution;
   const incumbentImproved = searchState.bestSolution?.fingerprint !== previousBestFingerprint;
-  if (incumbentImproved) searchState.pendingIncumbent = searchState.bestSolution;
+  if (incumbentImproved) {
+    searchState.incumbentCount += 1;
+    searchState.pendingIncumbent = searchState.bestSolution;
+  }
   reportProgress(searchState, incumbentImproved);
 
   if (searchState.stopWhenDiverseCount !== null) {
@@ -1234,9 +1237,18 @@ export class FirstSolverAdapter extends SolverAdapter {
       hasReportedProgress: false,
       bestSolution: null,
       pendingIncumbent: null,
+      incumbentCount: 0,
     };
     const assignmentScoreMap = getIncrementalAssignmentScoreMap(model.softAssignmentScores ?? []);
     const targetScoreMap = getIncrementalTargetScoreMap(model.softItemCountTargets ?? []);
+
+    if (typeof runtimeHooks.onSearchStart === 'function') {
+      try {
+        runtimeHooks.onSearchStart();
+      } catch {
+        // Runtime observers are diagnostic only and must never affect search correctness.
+      }
+    }
 
     try {
       if (model.assignmentMode === ASSIGNMENT_MODES.CONTAINER) {
@@ -1454,6 +1466,14 @@ export class FirstSolverAdapter extends SolverAdapter {
       }
     }
 
+    if (typeof runtimeHooks.onSearchEnd === 'function') {
+      try {
+        runtimeHooks.onSearchEnd();
+      } catch {
+        // Runtime observers are diagnostic only and must never affect search correctness.
+      }
+    }
+
     const allRankedSolutions = rankUniqueSolutions(solutions, model, normalizedOptions);
     const rankedSolutions = normalizedOptions.diversity.enabled
       ? selectDiverseSolutions(
@@ -1500,6 +1520,7 @@ export class FirstSolverAdapter extends SolverAdapter {
       timeoutReached: searchState.timeoutReached,
       exploredNodes: searchState.exploredNodes,
       prunedNodes: searchState.prunedNodes,
+      incumbentCount: searchState.incumbentCount,
     });
   }
 }

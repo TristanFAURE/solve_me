@@ -106,7 +106,18 @@ The shared workflow redesign should add tests for:
 - accessible names and status announcements
 - responsive handling of dense tables and preference matrices
 
-The concrete browser or DOM testing technology should be selected explicitly before adding a dependency.
+Playwright is the approved browser-testing technology. The suite is intentionally separate from Vitest and runs with `npm run test:e2e`.
+
+Current browser coverage includes:
+
+- Generic, School, Wedding, and Event Staffing route/workflow smoke tests
+- 360, 768, 1024, and 1440 pixel viewport checks
+- document-overflow checks
+- keyboard workflow-tab navigation
+- local draft recovery across reload
+- a real Event Staffing Web Worker solve
+
+The current development container can discover the suite but cannot launch Chromium because required Linux system libraries are unavailable. The GitHub Pages workflow installs Chromium and its Linux dependencies and runs the suite before deployment; local workstations can use the setup command in `README.md`.
 
 ## Structure
 
@@ -126,6 +137,7 @@ tests/
     solverSupport.test.js
 scripts/
   solverBenchmark.js
+  eventStaffingBenchmark.js
 ```
 
 ## Readability rule
@@ -175,8 +187,11 @@ Large-scale solver capacity and complexity checks should not run as part of the 
 Instead, use an explicit opt-in benchmark script:
 
 - `npm run bench:solver`
+- `npm run bench:staffing`
 
 This benchmark is intended for manual iteration, not for pass/fail correctness gating.
+
+The staffing benchmark runs deterministic, feasible-by-construction 7-, 14-, and 28-day realistic rosters plus scaled lower-bound rosters through Event Staffing generation, transform, normalization, solver validation, startup, and search. The lower bound uses one required doctor in one category per independently staffed slot. It reports model dimensions, stage heap snapshots, status, nodes, and incumbent updates. Honest `partial`, `timeout`, and `not-run-safety-limit` results are measurements rather than process failures.
 
 Its purpose is to:
 
@@ -191,5 +206,11 @@ Current configuration is controlled through environment variables:
 - `BENCH_ITEMS`
 - `BENCH_CONSTRAINTS`
 - `BENCH_SEED`
+- `BENCH_STAFFING_TIMEOUT_MS` (default `1500` per staffing scenario)
+- `BENCH_STAFFING_PROCESS_TIMEOUT_MS` (default `10000` per isolated process)
+- `BENCH_STAFFING_MAX_OLD_SPACE_MB` (default `512`)
+- `BENCH_STAFFING_MAX_SOLVE_PAIRS` (default `60000`; larger models stop after validation)
+- `BENCH_STAFFING_DAYS`, `BENCH_STAFFING_SLOTS_PER_DAY`, `BENCH_STAFFING_PEOPLE`, and `BENCH_STAFFING_CATEGORIES` (define one custom run when `BENCH_STAFFING_DAYS` is set)
+- `BENCH_STAFFING_JSON=1` (also print machine-readable results)
 
 The benchmark should always generate a scenario with at least one valid solution so it can exercise real solve work rather than just immediate unsat rejection.

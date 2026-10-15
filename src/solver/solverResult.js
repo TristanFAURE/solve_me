@@ -11,6 +11,7 @@ export function createSolverResult({
   cancelled = false,
   exploredNodes = 0,
   prunedNodes = 0,
+  incumbentCount = 0,
 } = {}) {
   return {
     status,
@@ -25,5 +26,6 @@ export function createSolverResult({
     cancelled,
     exploredNodes,
     prunedNodes,
+    incumbentCount,
   };
 }

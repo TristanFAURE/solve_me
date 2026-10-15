@@ -18,7 +18,7 @@ Also read:
 
 ## Current milestone state
 
-The documentation and implementation milestone is complete. Automated verification is recorded in `docs/status/05-recent-work-and-next-steps.md`; browser and performance checks remain follow-up work.
+The documentation and implementation milestone is complete. Automated verification and performance measurements are recorded in `docs/status/05-recent-work-and-next-steps.md`. Playwright coverage is implemented, but execution remains blocked in the current container by missing Chromium system libraries.
 
 Completed documentation work:
 
@@ -122,13 +122,14 @@ Domain language remains page-specific. Raw JSON, normalization details, internal
 
 ### Browser verification
 
+- run the existing Playwright suite where Chromium system libraries are available
 - manually test the shared workflows on desktop and mobile
 - verify focus/caret behavior through rerenders
 - verify keyboard and screen-reader semantics
 
 ### Performance
 
-- benchmark realistic staffing schedules
+- deterministic realistic staffing schedule benchmarks are available through `npm run bench:staffing`
 - tune bounded candidate retention and default time limits from measurements
 - evaluate WebAssembly only when benchmark evidence supports it
 
@@ -144,7 +145,7 @@ Domain language remains page-specific. Raw JSON, normalization details, internal
 - Event Staffing models slots as event-shaped records grouped by date metadata
 - local drafts can contain personal data in browser storage
 - full-page rerenders create focus and caret risks
-- current automated tests do not cover the planned browser workflow comprehensively
+- the Playwright suite covers primary workflows and responsive smoke checks, but has not executed in the current container because Chromium system libraries are unavailable
 - `xlsx` has unresolved upstream advisories; preflight controls reduce but cannot eliminate parser risk
 
 ## Invariants for every implementation phase

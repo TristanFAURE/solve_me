@@ -33,7 +33,7 @@ The app already includes:
 
 ### Prerequisites
 
-- Node.js 18+ recommended
+- Node.js 20.19+ or 22.12+ (required by Vite 8)
 - npm
 
 ### Install
@@ -64,6 +64,15 @@ npm run preview
 
 ```bash
 npm run test
+```
+
+### Run browser tests
+
+Install Chromium and its system dependencies once, then run Playwright:
+
+```bash
+npx playwright install --with-deps chromium
+npm run test:e2e
 ```
 
 ### Run tests with coverage
