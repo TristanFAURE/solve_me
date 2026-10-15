@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getEffectiveAssignmentPreference, migrateEventStaffingProject, moveSlotDayPreferences, PREFERENCE_STATES } from '../../src/pages/eventStaffing/migration.js';
-import { movePreferenceMatrixDay, renderPreferenceMatrix, setDayAvailability, setDayGroupPreference } from '../../src/pages/eventStaffing/preferenceMatrix.js';
+import { movePreferenceMatrixDay, movePreferenceMatrixPerson, renderPreferenceMatrix, setDayAvailability, setDayGroupPreference } from '../../src/pages/eventStaffing/preferenceMatrix.js';
 import { validateEventStaffingProject } from '../../src/pages/eventStaffing/validateEventStaffingProject.js';
 import { transformEventStaffingProject } from '../../src/core/transform/eventStaffingProject.js';
 
@@ -40,6 +40,7 @@ describe('Event Staffing slot migration', () => {
       ],
       preferences: [],
     });
+    project.people.push({ id: 'P2', name: 'Blair', email: 'blair@example.org' });
 
     setDayAvailability(project, 'P1', '2026-10-14', 'unavailable');
     setDayGroupPreference(project, 'P1', '2026-10-14', 'G1', 'prefer');
@@ -62,11 +63,15 @@ describe('Event Staffing slot migration', () => {
     expect(html).toContain('data-day-group-preference');
     expect(html).toContain('Previous availability date');
     expect(html).toContain('Next availability date');
+    expect(html).toContain('Previous availability person');
+    expect(html).toContain('Next availability person');
     expect(html).toContain('name="preferenceMatrixPeopleFilter"');
     expect(html.indexOf('Person availability calendar')).toBeLessThan(html.indexOf('Date availability overview'));
     expect(html.indexOf('2026-10-14')).toBeLessThan(html.indexOf('2026-10-15'));
     expect(movePreferenceMatrixDay(project, '2026-10-14', 1)).toBe('2026-10-15');
     expect(movePreferenceMatrixDay(project, '2026-10-15', -1)).toBe('2026-10-14');
+    expect(movePreferenceMatrixPerson(project, 'P1', 1)).toBe('P2');
+    expect(movePreferenceMatrixPerson(project, 'P2', -1)).toBe('P1');
   });
 
   it('compiles whole-day unavailability for every slot and category on that date', () => {

@@ -70,6 +70,13 @@ export function movePreferenceMatrixDay(domainProject, currentDayKey, offset) {
   return dayKeys[Math.min(Math.max(currentIndex + offset, 0), dayKeys.length - 1)];
 }
 
+export function movePreferenceMatrixPerson(domainProject, currentPersonId, offset) {
+  const people = domainProject.people ?? [];
+  if (people.length === 0) return '';
+  const currentIndex = Math.max(0, people.findIndex((person) => person.id === currentPersonId));
+  return people[Math.min(Math.max(currentIndex + offset, 0), people.length - 1)].id;
+}
+
 export function renderPreferenceMatrix(domainProject, viewState = {}) {
   const slots = domainProject.events.slice().sort((left, right) => left.orderIndex - right.orderIndex);
   const preferenceEntriesByPersonId = new Map(domainProject.preferences.map((entry) => [entry.personId, entry]));
@@ -89,6 +96,7 @@ export function renderPreferenceMatrix(domainProject, viewState = {}) {
   });
   const selectedPersonId = typeof viewState === 'string' ? viewState : viewState.preferenceMatrixPersonId;
   const person = domainProject.people.find((entry) => entry.id === selectedPersonId) ?? domainProject.people[0];
+  const personIndex = domainProject.people.findIndex((entry) => entry.id === person.id);
   const preferenceEntry = preferenceEntriesByPersonId.get(person.id);
   const dayPreferences = getDayPreferenceMap(preferenceEntry);
   const dayGroupPreferences = getDayGroupPreferenceMap(preferenceEntry);
@@ -110,7 +118,11 @@ export function renderPreferenceMatrix(domainProject, viewState = {}) {
       <details class="details-panel availability-calendar-panel" open>
       <summary>Person availability calendar</summary>
       <p class="muted-text">Select one person, then review every date and staffing group. Whole-day Unavailable overrides every group and slot on that date. Otherwise each group can inherit or override the whole-day preference across all slots on that date.</p>
-      <label class="top-gap">Person<select name="preferenceMatrixPersonId">${domainProject.people.map((entry) => `<option value="${escapeHtml(entry.id)}"${entry.id === person.id ? ' selected' : ''}>${escapeHtml(entry.name)}</option>`).join('')}</select></label>
+      <div class="event-staffing-inline-actions top-gap">
+        <button type="button" data-event-staffing-action="previous-preference-person"${personIndex <= 0 ? ' disabled' : ''} aria-label="Previous availability person">←</button>
+        <label>Person<select name="preferenceMatrixPersonId">${domainProject.people.map((entry) => `<option value="${escapeHtml(entry.id)}"${entry.id === person.id ? ' selected' : ''}>${escapeHtml(entry.name)}</option>`).join('')}</select></label>
+        <button type="button" data-event-staffing-action="next-preference-person"${personIndex >= domainProject.people.length - 1 ? ' disabled' : ''} aria-label="Next availability person">→</button>
+      </div>
       <div class="table-wrap event-staffing-scroll-box top-gap">
         <table class="data-table preference-matrix">
           <thead><tr><th>Availability</th>${dateGroups.map((group) => `<th>${escapeHtml(group.label)}</th>`).join('')}</tr></thead>

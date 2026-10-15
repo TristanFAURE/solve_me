@@ -136,7 +136,12 @@ describe('Event Staffing administrator repair', () => {
     const model = normalized(domain);
     const candidates = buildAdministratorRepairCandidates(domain, model, '2026-10-15');
     expect(model.assignmentCountUpperBounds[0].metadata.eventStaffingScope).toBe('slot-exclusivity');
-    expect(candidates.filter((candidate) => candidate.kind === 'maximum')).toEqual([]);
+    const maxima = candidates.filter((candidate) => candidate.kind === 'maximum');
+    expect(maxima).toHaveLength(1);
+
+    const repaired = createAdministratorRepairModel(model, candidates, [maxima[0].id]);
+    expect(repaired.assignmentCountUpperBounds.find((bound) => bound.metadata?.eventStaffingScope === 'slot-exclusivity')?.maxCount).toBe(1);
+    expect(repaired.assignmentCountUpperBounds.find((bound) => bound.metadata?.eventStaffingScope === 'person-total-maximum')?.maxCount).toBe(2);
   });
 
   it('solves through a selected exception and annotates only exceptions actually used', () => {

@@ -21,7 +21,7 @@ import { cancelSolveExecution, createSolveExecutionState, discardSolveExecution,
 import { bindPageDraftAutosave, persistPageDraft } from '../../storage/localDrafts.js';
 import { bindWorkflowTabs, isWorkflowTab, renderWorkflowPanel as renderTabPanel, renderWorkflowTabs } from '../../components/common/workflowTabs.js';
 import { getDayGroupPreferenceMap, getDayPreferenceMap, getEffectiveAssignmentPreference, getSlotDayKey, migrateEventStaffingProject, moveSlotDayPreferences, getPreferenceMap, normalizePreferenceState, PREFERENCE_STATES } from './migration.js';
-import { movePreferenceMatrixDay, renderPreferenceMatrix, setDayAvailability, setDayGroupPreference, setSlotPreference } from './preferenceMatrix.js';
+import { movePreferenceMatrixDay, movePreferenceMatrixPerson, renderPreferenceMatrix, setDayAvailability, setDayGroupPreference, setSlotPreference } from './preferenceMatrix.js';
 import { addAssignmentRule, addCooldownRule, renderRuleEditors } from './ruleEditors.js';
 import {
   applyEventStaffingPreferencePreview,
@@ -486,7 +486,7 @@ export function renderAdministratorRepairPanel(domainProject, normalizedProject,
     <section class="panel administrator-repair-panel">
       <p class="eyebrow">Unsatisfiable hard model</p>
       <h2>Temporary administrator repair</h2>
-      <p>Select narrowly scoped person restrictions to relax for one blocking date. The original project rules are unchanged; exceptions apply only to this repair solve. Coverage min/max and cooldown/rest rules always remain hard and are never available here.</p>
+      <p>Select narrowly scoped person restrictions to relax for one blocking date. The original project rules are unchanged; exceptions apply only to this repair solve. Coverage min/max and cooldown/rest rules always remain hard and are never available here. Relaxed prohibitions receive a strong penalty. A workload-limit exception permits at most one extra assignment and is explicitly reported when used; the equity objective still controls how work is distributed.</p>
       <label>Blocking date
         <select name="administratorRepairDate">
           ${dates.map((date) => `<option value="${escapeHtml(date.dateKey)}"${date.dateKey === dateKey ? ' selected' : ''}>${escapeHtml(date.label)}</option>`).join('')}
@@ -1411,6 +1411,14 @@ function bindInteractions(root, state) {
   });
   root.querySelector('[name="preferenceMatrixPersonId"]')?.addEventListener('change', (event) => {
     editor.preferenceMatrixPersonId = event.target.value;
+    rerender();
+  });
+  root.querySelector('[data-event-staffing-action="previous-preference-person"]')?.addEventListener('click', () => {
+    editor.preferenceMatrixPersonId = movePreferenceMatrixPerson(domainProject, editor.preferenceMatrixPersonId, -1);
+    rerender();
+  });
+  root.querySelector('[data-event-staffing-action="next-preference-person"]')?.addEventListener('click', () => {
+    editor.preferenceMatrixPersonId = movePreferenceMatrixPerson(domainProject, editor.preferenceMatrixPersonId, 1);
     rerender();
   });
   root.querySelector('[name="preferenceMatrixDayKey"]')?.addEventListener('change', (event) => {

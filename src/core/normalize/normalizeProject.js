@@ -42,7 +42,7 @@ export function normalizeProject(project) {
   );
   const assignmentCountUpperBounds = dedupeBy(
     expandedProject.assignmentCountUpperBounds ?? [],
-    (bound) => `${bound.itemId}::${normalizeDestinationIds(bound.destinationIds)}::${bound.maxCount}`,
+    (bound) => `${bound.itemId}::${normalizeDestinationIds(bound.destinationIds)}::${bound.maxCount}::${bound.metadata?.eventStaffingScope ?? ''}::${bound.metadata?.eventId ?? ''}::${bound.metadata?.groupTypeId ?? ''}`,
   );
   const fixedAssignments = dedupeBy(
     expandedProject.fixedAssignments ?? [],

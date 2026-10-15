@@ -4,7 +4,7 @@
 
 The ranked-solutions and shared-workflow implementation milestone is complete:
 
-- added a person-centric date-column availability calendar with whole-day and group rows, plus a collapsible date overview with previous/next navigation, people filtering, and editable group cells
+- added a person-centric date-column availability calendar with previous/next person controls and whole-day/group rows, plus a collapsible date overview with previous/next navigation, people filtering, and editable group cells
 - added per-solution soft-goal trade-off explanations and workload spread while explicitly confirming that displayed solutions satisfy hard constraints
 - clarified cooldown authoring as hard rest/spacing rules, including an example and the ordered-slot limitation
 - fixed small weighted Event Staffing plans incorrectly staying on the JavaScript search path; automatic selection now uses HiGHS and staffing results are ordered by equity first

@@ -56,7 +56,7 @@ Rules:
 - one date can contain several slots
 - one slot can contain several category requirements
 - one person can occupy at most one category in a slot
-- the Rules UI selects one person and displays dates as columns with `Whole day` and staffing-group rows
+- the Rules UI selects one person, with previous/next arrows, and displays dates as columns with `Whole day` and staffing-group rows
 - a second collapsible date overview provides previous/next date controls, people filtering, people as columns, and staffing groups as rows
 - whole-day unavailability blocks every slot/category on that date; group/date cells inherit or override other day preferences
 - legacy slot-level preferences and workbook imports remain supported
