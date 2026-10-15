@@ -23,10 +23,12 @@ import {
   insertEventNearSelection,
   removeRequirementFromSelectedEvent,
   renderStaffingScheduleView,
+  rankStaffingSolutionsByEquity,
   runEventStaffingWorkflow,
   saveGlobalLimits,
 } from '../../src/pages/eventStaffing/index.js';
 import { renderSupportSections } from '../../src/pages/eventStaffing/summarySections.js';
+import { renderRuleEditors } from '../../src/pages/eventStaffing/ruleEditors.js';
 
 function buildValidDomainProject() {
   return {
@@ -92,6 +94,15 @@ function buildEditorState() {
 }
 
 describe('event staffing planner workflow', () => {
+  it('explains cooldowns as hard ordered-slot rest rules', () => {
+    const html = renderRuleEditors(buildValidDomainProject(), buildEditorState());
+
+    expect(html).toContain('Rest and spacing rules');
+    expect(html).toContain('hard rule');
+    expect(html).toContain('does not calculate elapsed hours or calendar days');
+    expect(html).toContain('next 1 ordered slot(s)');
+  });
+
   it('validates a planner-facing domain project before generic transform validation', () => {
     const domainProject = buildValidDomainProject();
     const adapter = new FirstSolverAdapter();
@@ -186,6 +197,40 @@ describe('event staffing planner workflow', () => {
       min: 2,
       max: 4,
     });
+  });
+
+  it('orders returned staffing plans by workload equity before total score', () => {
+    const domainProject = { people: [{ id: 'T' }, { id: 'J' }, { id: 'C' }] };
+    const assignment = (itemId, index) => ({
+      itemRef: { id: itemId },
+      containerRef: { id: `slot-${index}` },
+    });
+    const imbalanced = {
+      score: 100,
+      fingerprint: 'imbalanced',
+      assignments: [
+        assignment('T', 1),
+        ...Array.from({ length: 4 }, (_, index) => assignment('J', index + 2)),
+        ...Array.from({ length: 4 }, (_, index) => assignment('C', index + 6)),
+      ],
+    };
+    const balanced = {
+      score: 50,
+      fingerprint: 'balanced',
+      assignments: [
+        ...Array.from({ length: 3 }, (_, index) => assignment('T', index + 1)),
+        ...Array.from({ length: 3 }, (_, index) => assignment('J', index + 4)),
+        ...Array.from({ length: 3 }, (_, index) => assignment('C', index + 7)),
+      ],
+    };
+
+    const result = rankStaffingSolutionsByEquity(domainProject, {
+      status: 'partial',
+      solutions: [imbalanced, balanced],
+    });
+
+    expect(result.solutions.map((solution) => solution.fingerprint)).toEqual(['balanced', 'imbalanced']);
+    expect(result).toMatchObject({ solutionSelection: 'equity-first', canonicalRankingComplete: false });
   });
 
   it('supports copy-from-focused and remove-all bulk requirement tools', () => {

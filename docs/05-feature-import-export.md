@@ -128,7 +128,7 @@ Example high-level content:
 - solverOptions: last used solver-related settings
 - persistenceInfo: schema version and migration markers
 
-The exact schema can be defined later in implementation docs.
+The implemented JSON shape is the versioned generic project model. Specialized configuration workbooks embed a domain-tagged, versioned JSON envelope while retaining readable domain sheets.
 
 ## Import workflow
 
@@ -234,7 +234,7 @@ Imported data must be validated at multiple levels.
 - School, Wedding, and Event Staffing provide an editable configuration workbook before solving. A reserved `_Configuration` sheet carries a domain-tagged, versioned, chunked canonical JSON envelope so all persisted constraints, preferences, metadata, assignment arrays, positions, and topology survive round-trip.
 - Configuration workbook import validates workbook bounds before decoding, verifies the domain and envelope version, migrates and validates the project, previews impact, and requires confirmation before replacement. Invalid or cancelled imports leave active state unchanged.
 - Event Staffing configuration workbooks retain editable `Preferences` and stable `Slots` sheets. The same import control can apply only preference cells; legacy Preferences/Slots workbooks remain supported as merge-only inputs.
-- Event Staffing preferences use one person per row and one `YYYY-MM-DD | slot` occurrence per column. Exports use `P`/blank/`N`/`U`; imports also accept `X`, legacy `Y`, and the documented case-insensitive words.
+- Event Staffing preferences use one person per row, ISO dates grouped across the first header row, and slot labels in the second header row. The `Slots` sheet maps physical columns to stable slot IDs. Exports use `P`/blank/`N`/`U`; imports also accept `X`, legacy `Y`, and the documented case-insensitive words.
 - School readable views use `Student`, `Levels`, `Student ID`; teacher and class rows; and `First participant`, `Rule`, `Second participant`. Wedding views similarly use guest/group/table vocabulary, with Seats and Topology later as advanced references.
 - School and Wedding readable sheets are convenience views and legacy-template examples, not editable overlays on the envelope. The web UI is recommended for edits; legacy workbook formats remain convenience data-entry imports. Solved-result workbooks remain separate and are clearly named as selected-result exports.
 - The generic page remains the canonical JSON import/export workflow and does not wrap arbitrary generic models in Excel.
@@ -252,7 +252,7 @@ Imported data must be validated at multiple levels.
 - The current implementation exposes compatibility results as structured status plus warning or error messages for import and draft-restore UX.
 - Page-specific spreadsheet importers should validate required sheets and required columns before converting workbook rows into shared project data.
 - Configuration JSON is split into numbered cells of at most 8,000 characters. Reconstruction is capped at 2 MB and depth 64; malformed ordering, dangerous prototype keys, sensitive fields, unsupported versions, and wrong-domain workbooks are rejected.
-- Human-readable workbook sheets neutralize formula-leading strings. The accepted residual risk in the existing `xlsx` package is documented and no new workbook dependency is added.
+- Human-readable workbook sheets neutralize formula-leading strings. The existing `xlsx` package has two high-severity advisories with no npm fix; upload, ZIP-expansion, workbook-bound, cell-length, and Worker-timeout controls reduce but do not eliminate parser risk.
 - Human-readable tabular sheets include practical column widths and auto-filters. `_Configuration` is hidden when the workbook format supports it, but import always discovers and validates it by reserved name rather than trusting hidden state.
 - In the current school workbook importer baseline, a `Students` sheet is mandatory, a `Classes` sheet is optional, and the `Student` column is required in the `Students` sheet.
 
@@ -269,3 +269,5 @@ Imported data must be validated at multiple levels.
 - The same persistence model works across generic and specialized pages.
 - Domain-facing spreadsheet workflows for wedding and school do not replace the shared JSON persistence model.
 - The school page can import a teacher-facing workbook for convenience, but canonical cross-page persistence remains JSON-based.
+- Specialized full-configuration imports are previewed and confirmed before replacement; Event Staffing can apply only edited preference cells.
+- Browser XLSX parsing runs in a dedicated module Worker and is terminated on timeout.

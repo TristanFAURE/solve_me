@@ -47,22 +47,29 @@ The solver adapter must provide a machine-readable capability description.
 
 ### Minimum capability fields
 
-- supportsHardConstraints
-- supportsSoftPreferences
-- supportsWeightedPreferences
-- supportsAllSolutionsEnumeration
-- supportsOptimization
-- supportsAdjacencyConstraints
-- supportsPositionMode
-- supportsTimeout
-- supportsPartialResults
-- supportsUnsatExplanation
-- supportsAssignmentExclusions
-- supportsPerItemAssignmentUpperBounds
-- supportsScopedAssignmentUpperBounds
-- supportsFixedAssignments
-- supportsForbiddenAssignments
-- supportsSoftAssignmentScores
+- `hardConstraints`
+- `softPreferences`
+- `weightedPreferences`
+- `enumerateSolutions`
+- `optimization`
+- `adjacency`
+- `positionMode`
+- `timeout`
+- `partialResults`
+- `unsatExplanation`
+- `assignmentExclusions`
+- `perItemAssignmentUpperBounds`
+- `scopedAssignmentUpperBounds`
+- `fixedAssignments`
+- `forbiddenAssignments`
+- `softAssignmentScores`
+- `softItemCountTargets`
+- `firstSolution`
+- `scoreDetails`
+- `scoreWeights`
+- `diversity`
+- `solutionFingerprints`
+- `searchStatistics`
 
 ### Optional capability fields
 
@@ -92,7 +99,7 @@ The solver adapter must provide a machine-readable capability description.
 
 ### Solver selection
 
-If multiple solver adapters exist, the application should support selecting one.
+The application supports automatic and explicit selection between the JavaScript and HiGHS WASM adapters.
 
 Possible strategies:
 
@@ -110,7 +117,8 @@ The feature must support a generic solve configuration model.
 
 - maximum number of solutions to return
 - timeout duration
-- solve mode: first solution, all solutions, or optimized solution
+- solve mode: `first`, `topK`, or `optimize`
+- engine: `auto`, `js`, or `highs`
 - whether to include score details when available
 
 #### Preference-related options
@@ -168,7 +176,7 @@ The configuration feature must support the following generic modes.
 - stop after the first valid solution is found
 - useful for quick validation and responsiveness
 
-### Enumerate solutions mode
+### Ranked top-K mode
 
 - return up to N valid solutions
 - must respect result count limits and timeout limits
@@ -182,9 +190,9 @@ The configuration feature must support the following generic modes.
 
 ## Approved ranked-solution configuration
 
-The next implementation phase refines the generic modes to `first`, `topK`, and `optimize` and adds explicit scoring and diversity options.
+The implemented generic modes are `first`, `topK`, and `optimize`, with explicit scoring and diversity options.
 
-Planned configuration shape:
+Implemented configuration shape:
 
 ```js
 {
@@ -200,12 +208,12 @@ Planned configuration shape:
   },
   diversity: {
     enabled: true,
-    minimumAssignmentDistance: 4
+    minimumAssignmentDistance: 2
   }
 }
 ```
 
-`auto` keeps small, single-assignment, and position models on the JavaScript adapter and selects the Worker-hosted HiGHS WASM adapter for sufficiently large supported multiple-container models. `highs` is an explicit request and therefore returns an error for unsupported semantics or initialization failure; it does not silently downgrade. `js` forces the original adapter.
+`auto` keeps single-assignment, position, and small feasibility-only models on the JavaScript adapter. It selects the Worker-hosted HiGHS WASM adapter for weighted repeated-assignment optimization or sufficiently large supported multiple-container models. `highs` is an explicit request and therefore returns an error for unsupported semantics or initialization failure; it does not silently downgrade. `js` forces the original adapter.
 
 The initial optimization strategy is a configurable weighted numeric score. Staffing should initially assign the dominant default weight to workload equity while retaining configurable preference and target weights.
 
@@ -246,7 +254,7 @@ The solver result should expose metadata that the UI can display.
 
 ### Ranked-solution metadata
 
-The next result contract should also expose:
+The result contract also exposes:
 
 - score and objective breakdown for each solution
 - `searchComplete`
@@ -257,6 +265,10 @@ The next result contract should also expose:
 - explored and pruned node counts when available
 - warnings when requested diversity or objectives could not be applied
 - solver engine and whether canonical ranking was proved or alternatives are best-found
+- `incumbentCount`
+- `canonicalRankingComplete`
+- `solutionSelection`
+- `solverEngine`
 
 The solver must not report `unsat` without completing the relevant search, and must not report a proven optimum without a valid objective bound.
 - whether results were truncated
@@ -320,16 +332,7 @@ Potential contents:
 
 ## Default settings recommendation
 
-For MVP, use conservative defaults.
-
-Recommended defaults:
-
-- solve mode: first valid solution for large models, otherwise enumerate with a small cap
-- maximum solutions: 50 or 100
-- timeout: a short but reasonable default such as 5 to 15 seconds depending on environment
-- optimization off unless soft preferences are present and supported
-
-These defaults should be easy to override.
+Shared defaults are `topK`, 10 solutions, score details off, and diversity off. Browser execution supplies a 5000 ms timeout. Event Staffing enables score details, weighted objectives, and diversity by default; users can select first, ranked alternatives, or optimize and choose automatic, JavaScript, or HiGHS execution.
 
 ## Interaction with feature pages
 
@@ -347,85 +350,24 @@ Examples:
 - Solver options should be normalized into a shared configuration object.
 - The configuration object should be serializable for JSON export and local persistence.
 - The UI must not expose solver-internal terminology unless clearly labeled as advanced.
-- The implementation should be ready for multiple adapters even if only one exists in the MVP.
+- JavaScript and HiGHS WASM adapters implement the shared boundary.
 - New solver features should extend the current solver contract in place when possible rather than introducing parallel public APIs.
 - Backward compatibility matters: existing generic, school, and wedding flows should continue to use the same solver entry points and option structure.
 - Domain transforms may compile domain-specific semantics such as ordered-event cooldowns into generic incompatibility constraints before solve, avoiding domain leakage into the solver API.
 - Solver evolution should prefer additive capability fields and additive normalized constraint families over renaming or reshaping the existing public API.
 
--
+## Implemented Event Staffing solver evolution
 
-+## Solver evolution required by the event staffing planner
-+
-+The event staffing planner introduces requirements that should be integrated into the current solver architecture without creating a separate public solver API.
-+
-+Recommended approach:
-+
-+- keep the current solver entry points and high-level option structure
-+- keep the generic core vocabulary unchanged
-+- extend normalization and solver capabilities additively
-+- compile domain-specific ordering logic in transforms whenever possible
-+
-+### Requirements that should be handled primarily in transforms
-+
-+The following event-staffing semantics should be compiled into generic solver-ready constraints before solve:
-+
-+- ordered-event cooldown logic
-+- one-assignment-per-person-per-event exclusivity
-+- eligibility filtering where assignments are impossible
-+- event-group to generic destination mapping
-+
-+In particular, ordered-event cooldowns should be transformed into explicit incompatibility constraints between relevant assignment destinations. The solver does not need a native concept of event order if the transform materializes the resulting exclusions.
-+
-+### Requirements that require additive solver capability growth
-+
-+The following features are not well represented by simple pairwise transform expansion alone and should be supported by the current solver architecture as additive capability growth:
-+
-+- assignment exclusions when represented explicitly in normalized data
-+- per-item hard maximum assignment counts across all destinations
-+- per-item hard maximum assignment counts over scoped subsets such as one group type across many events
-+- fixed assignments when the transform cannot safely pre-commit them outside the solver
-+- forbidden assignments when represented explicitly rather than removed during preprocessing
-+- soft assignment scoring for event preferences and similar item-destination preferences
-+- soft item count targets for person targets and fairness-oriented scoring
-+
-+### Backward-compatible API direction
-+
-+To reduce regression risk for school and wedding use cases:
-+
-+- keep `getCapabilities()`, `validateModel(model, options)`, and `solve(model, options)` unchanged as the public adapter entry points
-+- add capability fields instead of replacing existing ones
-+- add new normalized constraint families instead of renaming existing ones
-+- preserve existing solve modes and option semantics
-+- ensure existing models continue to validate and solve without requiring new fields
-+
-+### Recommended additive normalized constraint families
-+
-+The current solver architecture should grow to accept the following generic normalized families without changing the public API shape:
-+
-+- `assignmentExclusions[]`
-- - item-specific forbidden co-assignment between two destinations
-+- `assignmentCountUpperBounds[]`
-- - item-specific hard maximum over a generic destination scope
-+- `fixedAssignments[]`
-- - item must be assigned to a destination
-+- `forbiddenAssignments[]`
-- - item must not be assigned to a destination
-+- `softAssignmentScores[]`
-- - score or penalty attached to one item-destination assignment
-+- `softItemCountTargets[]`
-- - soft target count for one item over a generic destination scope
--
+Event Staffing preserves the generic solver API and compiles date/slot behavior in its transform:
 
-+These normalized additions are intended to cover scheduling-style domains while remaining generic enough for reuse in other pages.
-+
-+### Expected regression surface
-+
-+If this backward-compatible approach is followed:
-+
-+- school and wedding should see no semantic changes by default
-+- regression risk should be concentrated in shared solver internals, normalization helpers, and capability-aware validation
-+- the main areas requiring regression tests are existing hard assignment behavior, adjacency in wedding position mode, and existing capacity handling
+- cooldowns become assignment exclusions
+- one-category-per-person-per-slot becomes scoped assignment bounds
+- eligibility and unavailability become forbidden assignments
+- locked duties become fixed assignments
+- preferences become soft assignment scores
+- workload targets become soft item count targets
+
+Both adapters consume these generic families. Cross-domain regression tests protect Generic, School, and Wedding behavior when shared solver code changes.
 
 ## Acceptance criteria
 

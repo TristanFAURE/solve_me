@@ -24,9 +24,10 @@ export function runSolveService(model, options = {}, runtimeHooks = {}) {
 export function shouldUseHighs(model, options = {}) {
   if (options.engine === 'js') return false;
   if (options.engine === 'highs') return true;
-  return model.assignmentMode === 'container'
-    && model.assignmentMultiplicity === 'multiple'
-    && model.items.length * model.containers.length >= HIGHS_AUTO_PAIR_THRESHOLD;
+  if (model.assignmentMode !== 'container' || model.assignmentMultiplicity !== 'multiple') return false;
+  const hasWeightedObjective = Object.values(options.scoreWeights ?? {}).some((weight) => Number(weight) !== 0);
+  return hasWeightedObjective
+    || model.items.length * model.containers.length >= HIGHS_AUTO_PAIR_THRESHOLD;
 }
 
 export function createInterruptedResult(status, progress = null, warning = '') {

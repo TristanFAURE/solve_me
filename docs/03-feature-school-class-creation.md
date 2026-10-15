@@ -277,10 +277,10 @@ The UI should focus on understandable school sentences rather than solver jargon
 - The import should use the same school-facing sheet vocabulary as the export baseline when possible.
 - A `Students` sheet is mandatory.
 - A `Classes` sheet is optional.
-- In the `Students` sheet, the first mandatory column is `Student`.
+- In the `Students` sheet, a column named `Student` is mandatory and may appear in any column position.
 - The `Students` sheet may also include `Level` and `Class` columns.
 - If the `Classes` sheet is present, it may include `Class`, `Teachers`, `Accepted levels`, and `Capacity` columns.
-- If the `Classes` sheet is absent, the workbook must still be importable as long as the `Students` sheet exists and contains the required first column.
+- If the `Classes` sheet is absent, the workbook remains importable as long as the `Students` sheet contains the required named column.
 - Spreadsheet import should create or infer levels and classes from the workbook rows when enough information is present.
 - Imported workbook data should be converted into the same underlying generic project shape used by the school page.
 
@@ -478,9 +478,9 @@ Recommended columns for the main class-distribution sheet:
 The school spreadsheet export should prioritize clarity over technical completeness.
 It should not expose generic terms such as Item, Group, Container, constraint kind, or preference kind.
 
-### Spreadsheet import expectations
+### Legacy teacher-facing import contract
 
-The school page should also support importing a workbook that follows the same teacher-facing vocabulary as the export baseline.
+The school page supports importing a workbook that follows the same teacher-facing vocabulary as the export baseline.
 This import is for convenient data entry, not for preserving every possible school-page feature.
 
 Current import baseline:
@@ -500,7 +500,7 @@ Current interpretation rules:
 - `Classes` sheet rows enrich classes with accepted levels, teachers, and capacity when present
 - duplicate student names in the import workbook are currently collapsed to a single imported student row by label
 
-The import flow should fail clearly when the workbook has no `Students` sheet or when that sheet lacks the required `Student` column.
+The import flow fails clearly when the workbook has no `Students` sheet or when that sheet lacks the required `Student` column.
 
 ## Technical notes
 

@@ -6,13 +6,14 @@ This project provides:
 
 - a **generic constraint modeling page**
 - a **school class creation page**
-- groundwork for a **wedding table planning page**
+- a **wedding table planning page** with seat topology
+- an **Event Staffing page** with date-grouped slots and category coverage
 - a shared generic core model for items, groups, containers, positions, relations, constraints, and preferences
-- an in-browser MVP solver for container-based assignment scenarios
+- ranked in-browser solving through JavaScript and HiGHS WebAssembly Workers
 
 ## Project status
 
-This is an early MVP built with **plain JavaScript**, **HTML**, **CSS**, and **Vite**.
+This is a browser-first application built with **plain JavaScript**, **HTML**, **CSS**, and **Vite**.
 
 The app already includes:
 
@@ -20,8 +21,10 @@ The app already includes:
 - validation -> normalization -> solve workflow
 - local draft save/load
 - JSON import/export
-- multi-solution navigation
-- a first working school-oriented authoring and solving flow
+- full-fidelity specialized configuration workbooks
+- shared Setup, Data, Rules, Review, and Results workflows
+- weighted scoring, diverse alternatives, progress, cancellation, and timeout handling
+- Generic, School, Wedding, and Event Staffing authoring and solving flows
 
 ## Tech stack
 
@@ -29,6 +32,8 @@ The app already includes:
 - HTML/CSS
 - Vite
 - HiGHS WebAssembly for large local staffing MILP models
+- SheetJS `xlsx` for workbook import/export
+- Vitest and Playwright for automated verification
 
 ## Getting started
 
@@ -123,7 +128,7 @@ This repository is configured to deploy automatically to **GitHub Pages** using 
 ### Included automation
 
 - `vite.config.js` sets the correct base path for the repository site
-- `.github/workflows/deploy.yml` runs tests, runs coverage, uploads the coverage artifact, builds the app, and deploys the `dist/` folder to GitHub Pages on every push to `main`
+- `.github/workflows/deploy.yml` runs unit, coverage, and Playwright tests, builds the app, and deploys the `dist/` folder to GitHub Pages on every push to `main`
 - `.gitignore` excludes local build and dependency folders
 
 ### Deploy flow
@@ -133,6 +138,7 @@ Every push to `main` will:
 - install dependencies with `npm ci`
 - run tests with `npm run test`
 - run coverage with `npm run test:coverage`
+- install Chromium dependencies and run `npm run test:e2e`
 - upload the generated coverage report as a workflow artifact
 - build the app with `npm run build`
 - publish the built site to GitHub Pages
@@ -165,10 +171,13 @@ src/
   app/          # bootstrap, router, app state
   components/   # shared UI pieces
   core/         # generic model, validation, normalization, transforms
-  pages/        # generic, school, wedding pages
-  solver/       # solver boundary and adapters
+  pages/        # generic, school, wedding, Event Staffing pages
+  solver/       # JavaScript/HiGHS adapters and separate Worker entry points
   storage/      # local drafts, import/export, model versioning
+  workbooks/    # bounded XLSX parsing, configuration envelopes, Worker parsing
   utils/        # shared helpers
+scripts/        # generic and Event Staffing benchmarks
+tests/          # unit, integration, workbook, and browser suites
 ```
 
 ## Current capabilities
@@ -189,9 +198,22 @@ src/
 - Solve class assignment scenarios using the shared generic pipeline
 - View solved class cards including linked teachers and accepted levels
 
-## Solver scope in the current MVP
+### Wedding page
 
-The first solver adapter currently focuses on a narrow but working subset:
+- Author guests, groups, tables, seats, and topology
+- Solve container or seat-aware position assignments
+- Import/export full configurations and selected results
+
+### Event Staffing page
+
+- Author date-grouped slots, categories, requirements, people, preferences, unavailability, and rules
+- Import/export an editable people-by-date/slot preference matrix
+- Generate ranked schedules with weighted preference, target, and equity scoring
+- Run large supported models through HiGHS WASM without sending planning data to a server
+
+## Solver scope
+
+The JavaScript adapter supports:
 
 - container-mode assignment
 - position-mode assignment
@@ -200,12 +222,16 @@ The first solver adapter currently focuses on a narrow but working subset:
 - must-not-share constraints
 - hard adjacency constraints in position mode
 - multiple returned solutions
+- complete or explicitly bounded repeated-assignment search
+- weighted assignment, count-target, and equity objectives
 
-Some advanced semantics are modeled in the app but not yet fully solved by the first adapter.
+The HiGHS WASM adapter supports large multiple-container staffing models with sparse assignment variables, capacities, eligibility, fixed/forbidden assignments, cooldown exclusions, scoped count bounds, weighted objectives, and best-found alternatives. Unsupported semantics fail explicitly or remain on the JavaScript adapter in automatic mode.
+
+General relation preferences remain unsupported by the current solvers.
 
 ## Testing
 
-Solver and normalization tests are organized around generic semantics rather than page/domain features.
+The suite currently contains 253 Vitest tests across solver, core, page, workbook, Worker, and cross-domain integration behavior, plus 23 Playwright browser tests.
 
 Current test areas include:
 
@@ -214,10 +240,13 @@ Current test areas include:
 - first solver adapter behavior in position mode
 - solver validation and warnings
 - solver support modules and capability reporting
+- HiGHS objective parity, hard constraints, timeout incumbents, and engine fallback
+- workbook safety, migration, configuration round trips, and Worker parsing
+- cross-domain compatibility and responsive browser workflow coverage
 
 Tests use small scenario helpers under `tests/helpers/` to keep constraints readable with low boilerplate.
 
-A separate manual benchmark script is available under `scripts/solverBenchmark.js` for large generated scenarios. It is intentionally opt-in and is not run by default in tests or CI.
+Manual generic and staffing benchmark scripts are available under `scripts/`. They are intentionally opt-in and are not run by default in tests or CI.
 
 ## Documentation
 

@@ -43,6 +43,36 @@ function getEventLookup(domainProject) {
   return new Map(domainProject.events.map((event) => [event.id, event]));
 }
 
+function workloadDifference(solution, people) {
+  const counts = new Map(people.map((person) => [person.id, 0]));
+  (solution?.assignments ?? []).forEach((assignment) => {
+    const itemId = assignment.itemRef?.id;
+    if (counts.has(itemId)) counts.set(itemId, counts.get(itemId) + 1);
+  });
+  const values = [...counts.values()];
+  let difference = 0;
+  for (let left = 0; left < values.length; left += 1) {
+    for (let right = left + 1; right < values.length; right += 1) {
+      difference += Math.abs(values[left] - values[right]);
+    }
+  }
+  return difference;
+}
+
+export function rankStaffingSolutionsByEquity(domainProject, solverResult) {
+  if (!Array.isArray(solverResult?.solutions) || solverResult.solutions.length < 2) return solverResult;
+  return {
+    ...solverResult,
+    canonicalRankingComplete: false,
+    solutionSelection: 'equity-first',
+    solutions: [...solverResult.solutions].sort((left, right) => (
+      workloadDifference(left, domainProject.people) - workloadDifference(right, domainProject.people)
+      || (right.score ?? Number.NEGATIVE_INFINITY) - (left.score ?? Number.NEGATIVE_INFINITY)
+      || String(left.fingerprint ?? '').localeCompare(String(right.fingerprint ?? ''))
+    )),
+  };
+}
+
 function parseContainerAssignmentId(containerId) {
   if (typeof containerId !== 'string' || containerId.length === 0) {
     return null;
@@ -277,7 +307,7 @@ export function renderStaffingScheduleView(domainProject, solverResult, activeSo
         <div><dt>Search complete</dt><dd>${solverResult.searchComplete ? 'Yes' : 'No'}</dd></div>
         <div><dt>Optimality proven</dt><dd>${solverResult.optimalityProven ? 'Yes' : 'No'}</dd></div>
         <div><dt>Engine</dt><dd>${escapeHtml(solverResult.solverEngine ?? 'Not reported')}</dd></div>
-        <div><dt>Selection</dt><dd>${solverResult.solutionSelection === 'canonical' ? 'Canonical ranking proven' : 'Best found'}</dd></div>
+        <div><dt>Selection</dt><dd>${solverResult.solutionSelection === 'canonical' ? 'Canonical ranking proven' : solverResult.solutionSelection === 'equity-first' ? 'Equity first' : 'Best found'}</dd></div>
         <div><dt>Timeout reached</dt><dd>${solverResult.timeoutReached ? 'Yes' : 'No'}</dd></div>
         <div><dt>Changed assignments</dt><dd>${escapeHtml(String(changedAssignments))}${previousSolution ? ' vs previous solution' : ''}</dd></div>
       </dl>
@@ -1754,6 +1784,7 @@ function bindInteractions(root, state) {
           equityEligibleItemIds: domainProject.people.map((person) => person.id),
         },
         onResult(solverResult) {
+          solverResult = rankStaffingSolutionsByEquity(domainProject, solverResult);
           state.eventStaffingPage.lastSolverResult = solverResult;
           state.eventStaffingPage.message = solverResult.status === 'solved'
             ? `Solved staffing plan with ${solverResult.solutions.length} solution(s).`

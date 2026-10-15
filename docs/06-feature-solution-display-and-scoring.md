@@ -46,6 +46,7 @@ It must work for:
 - generic constraint problems
 - wedding seating plans
 - school class assignments
+- Event Staffing schedules
 
 ## Functional requirements
 
@@ -100,7 +101,7 @@ If the solve mode is hard-only, the UI should not pretend there is a score unles
 
 ### Ranked and diverse alternatives
 
-The next shared result UI must support ranked top-K alternatives.
+The shared result UI supports ranked top-K alternatives.
 
 For each solution, display:
 
@@ -123,6 +124,8 @@ The result summary must distinguish:
 - timeout reached
 
 Raw numeric score alone is insufficient. Users must be able to understand why one solution ranks above another.
+
+The current UI exposes weighted objective contributions and canonical-versus-best-found metadata. More domain-language score explanations remain a refinement area.
 
 ### Preference violation display
 
@@ -285,8 +288,9 @@ Recommended MVP support:
 Possible future extensions:
 
 - side-by-side comparison
-- highlight changed assignments between two solutions
 - filter solutions by score or rule satisfaction
+
+Event Staffing already reports changed assignments and occupancy differences against the adjacent returned plan.
 
 ## Interaction with feature pages
 
@@ -307,6 +311,14 @@ Possible future extensions:
 - show students by class
 - emphasize class occupancy and capacity usage
 - support a readable solved-result spreadsheet export appropriate for teachers and school staff
+
+### Event Staffing page
+
+- show slot/category coverage and person-centric schedules
+- order returned plans by workload equity first, then by configured total score
+- compare assignment and occupancy changes between ranked alternatives
+- expose completeness, optimality, engine, and canonical-versus-best-found status
+- export the selected schedule as a workbook
 
 ## Technical notes
 

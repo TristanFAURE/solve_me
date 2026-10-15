@@ -6,9 +6,11 @@ Event Staffing stores each independently staffed slot as an existing event-shape
 
 Requirements are unique per slot and category and contain hard `min`/`max` coverage. A person can hold at most one category in a slot and can work multiple slots when cooldown, eligibility, limits, fixed, forbidden, and availability rules permit it.
 
+The UI presents cooldowns as **Rest and spacing rules**. After a person works a trigger category, the rule prevents that same person from working selected categories in the next `N` slots according to schedule order. It does not calculate elapsed hours or calendar days.
+
 Preferences are `prefer`, `neutral`, `preferNot`, or `unavailable` per person and slot. Workbook exports use `P`, blank, `N`, and `U`; legacy `Y` remains accepted. Unavailable compiles to forbidden assignments for every category in the slot. Other values are soft terms and count at most once because slot exclusivity is hard.
 
-Browser solves use the existing JavaScript adapter for single-assignment, position, and small models. Multiple-container models with at least 2,000 theoretical item/destination pairs automatically use the HiGHS WASM MILP adapter inside the solver Worker. The `engine` solve option accepts `auto`, `js`, or `highs`; explicit HiGHS requests return validation errors for unsupported semantics rather than dropping constraints or objective terms. HiGHS receives an independently verified greedy incumbent before optimization, so a timed-out large solve can still return a usable schedule. Ranked alternatives use repeated solves and minimum-distance cuts under one shared time budget; unresolved equal-score ties are labeled best-found rather than canonical.
+Browser solves use the existing JavaScript adapter for single-assignment, position, and small feasibility-only models. Weighted repeated-assignment models, and multiple-container models with at least 2,000 theoretical item/destination pairs, automatically use the HiGHS WASM MILP adapter inside the solver Worker. The `engine` solve option accepts `auto`, `js`, or `highs`; explicit HiGHS requests return validation errors for unsupported semantics rather than dropping constraints or objective terms. HiGHS receives an independently verified greedy incumbent before optimization, so a timed-out large solve can still return a usable schedule. Ranked alternatives use repeated solves and minimum-distance cuts under one shared time budget; unresolved equal-score ties are labeled best-found rather than canonical. Event Staffing presents returned plans in equity-first order, then by total weighted score.
 
 People may have an optional email, which must be unique case-insensitively when present.
 
@@ -52,7 +54,9 @@ This page is intended for schedule planning scenarios where:
 
 This document defines the domain semantics, V1 scope, import format, solution expectations, and mapping considerations for implementation.
 
-## V1 scope
+## Historical V1 scope
+
+The sections below preserve the original V1 requirements for design history. The implemented contract at the top of this document is authoritative where it differs, notably for multiple slots per date, hard unavailability, workbook values, and solver execution.
 
 V1 must support:
 
@@ -78,13 +82,13 @@ V1 does not include:
 - pair / anti-pair rules between people
 - recurring schedule templates beyond UI helpers that generate explicit events/requirements
 
-## Approved next iteration
+## Implemented date/slot iteration
 
-The next iteration extends the V1 event model into an explicit date and slot authoring model. This section describes planned behavior and does not claim that the current implementation already supports it.
+The implemented iteration extends the original event model into date-grouped slot authoring while retaining event-shaped records internally.
 
 ### Date, slot, and category structure
 
-The planned structure is:
+The implemented structure is:
 
 ```text
 Date
@@ -566,9 +570,9 @@ A likely mapping strategy is:
 
 The exact transform should be defined during implementation design and kept outside the generic core model.
 
-## Open implementation design questions
+## Archived implementation design questions
 
-These questions should be resolved during technical design before coding the page:
+These questions were retained from the original design phase; current answers are recorded in the implemented contract at the top of this document and in `docs/status/06-ranked-solutions-and-ui-plan.md`.
 
 1. how the event staffing domain maps onto current generic container/position abstractions without leaking schedule semantics into the core
 2. how person-specific soft assignment targets should be represented in solver scoring and solution display

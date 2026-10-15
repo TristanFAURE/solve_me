@@ -4,6 +4,8 @@
 
 The ranked-solutions and shared-workflow implementation milestone is complete:
 
+- clarified cooldown authoring as hard rest/spacing rules, including an example and the ordered-slot limitation
+- fixed small weighted Event Staffing plans incorrectly staying on the JavaScript search path; automatic selection now uses HiGHS and staffing results are ordered by equity first
 - fixed Event Staffing requirement submission so visible group/min/max controls cannot be replaced by stale editor state
 - fixed school preference creation, unlimited aggregate capacity, two-seat wedding adjacency, and cascading wedding-table deletion
 - added validated `first`, `topK`, and `optimize` solve options
@@ -38,7 +40,7 @@ Final automated verification must include:
 - `git diff --check`
 - review for credentials, tokens, internal URLs, and database secrets
 
-Final unit verification passed 254 tests, the production build emitted separate JavaScript and HiGHS Workers plus the 3.53 MB WASM asset, and `git diff --check` passed. The 23 Playwright tests are discovered correctly but cannot execute in the current container because Chromium's required OS libraries, beginning with `libglib-2.0.so.0`, are unavailable. GitHub Actions installs those dependencies and runs the browser suite before deployment.
+Final unit verification passed 258 tests, including a 94-assignment equity regression that produces workloads 31/31/32. The production build emitted separate JavaScript and HiGHS Workers plus the 3.53 MB WASM asset, and `git diff --check` passed. The 23 Playwright tests are discovered correctly but cannot execute in the current container because Chromium's required OS libraries, beginning with `libglib-2.0.so.0`, are unavailable. GitHub Actions installs those dependencies and runs the browser suite before deployment.
 
 ## Event Staffing scale result
 

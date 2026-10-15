@@ -27,14 +27,16 @@ The current application already provides:
 
 - a generic project model
 - a validate -> normalize -> solve pipeline
-- replaceable solver adapters
+- JavaScript and HiGHS WASM solver adapters behind one boundary
 - container and position assignment modes
 - school, wedding, and event staffing transforms
-- limited soft assignment score and count-target ranking
+- weighted assignment, count-target, and pairwise-equity scoring
+- canonical or explicitly best-found ranked alternatives with diversity controls
+- timeout, progress, cancellation, and partial-result handling in separate module Workers
 - shared validation and solution components
 - static browser execution
 
-The current multiple-assignment staffing search remains partly greedy. It does not guarantee complete enumeration, a global optimum, or correct top-K ranking. Solve options, timeout handling, diversity controls, and complete score explanations are not yet implemented consistently.
+The JavaScript repeated-assignment path performs complete or explicitly bounded pair branching. Large supported staffing models use HiGHS WASM with an independently verified greedy incumbent. Target-scale optimization can remain partial or best-found within browser limits, and general relation preferences still lack optimization semantics.
 
 ## Architectural invariants
 
@@ -57,7 +59,7 @@ Event Staffing remains the domain use case name. Medical terminology is not requ
 
 ### Schedule structure
 
-The planned authoring model is:
+The implemented authoring model is:
 
 ```text
 Date
@@ -100,25 +102,26 @@ The first three states are soft scoring inputs. `Unavailable` is a hard prohibit
 
 A slot-level preference is counted once even when the slot contains several categories because one person may occupy at most one category in that slot.
 
-### Migration direction
+### Implemented migration
 
-To minimize unnecessary migration, the existing internal event structure may initially represent an assignable slot, with date metadata used to group slots in the interface. A separate date entity should be introduced only if grouping metadata is insufficient for required behavior.
+The existing internal event structure represents an assignable slot, with date metadata used to group slots in the interface. No separate date entity is currently required.
 
 The transform must continue to compile staffing concepts into generic destinations, exclusions, assignment bounds, fixed assignments, forbidden assignments, and objective terms.
 
 ## Solve configuration
 
-The public solver entry point should evolve to:
+The public solver entry point is:
 
 ```js
 solve(model, options)
 ```
 
-Planned core options:
+Implemented core options:
 
 ```js
 {
   mode: "first" | "topK" | "optimize",
+  engine: "auto" | "js" | "highs",
   maxSolutions: 10,
   timeLimitMs: 5000,
   includeScoreDetails: true,
@@ -129,7 +132,7 @@ Planned core options:
   },
   diversity: {
     enabled: true,
-    minimumAssignmentDistance: 4
+    minimumAssignmentDistance: 2
   }
 }
 ```

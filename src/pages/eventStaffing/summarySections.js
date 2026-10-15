@@ -365,16 +365,16 @@ export function renderSupportSections(domainProject, groupTypeLabelsById, editor
     </section>
 
     <section class="panel">
-      <h2>⏱️ Cooldown rules</h2>
+      <h2>⏱️ Rest and spacing rules</h2>
       ${domainProject.cooldownRules.length > 0
       ? `
         <ul>
-          ${domainProject.cooldownRules.map((rule, index) => `<li>Rule ${index + 1}: after ${escapeHtml(formatGroupTypeList(rule.triggerGroupTypes, groupTypeLabelsById))}, block ${escapeHtml(formatGroupTypeList(rule.blockedGroupTypes, groupTypeLabelsById))} for the next ${escapeHtml(String(rule.blockedNextEventCount))} event(s).</li>`).join('')}
+          ${domainProject.cooldownRules.map((rule, index) => `<li>Rule ${index + 1}: after working ${escapeHtml(formatGroupTypeList(rule.triggerGroupTypes, groupTypeLabelsById))}, prevent that person from working ${escapeHtml(formatGroupTypeList(rule.blockedGroupTypes, groupTypeLabelsById))} in the next ${escapeHtml(String(rule.blockedNextEventCount))} ordered slot(s).</li>`).join('')}
         </ul>
       `
       : renderSupportEmptyState(
-        'No cooldown rules yet',
-        'That is valid for small or simple schedules. Add cooldown rules when staffing someone should block them from nearby future events.',
+        'No rest or spacing rules yet',
+        'That is valid when back-to-back assignments are allowed. Add a rule when an assignment requires recovery time before later ordered slots.',
         [
           'Cooldowns use event order, not calendar-day arithmetic.',
           'A rule can block any next event or only specific group types for the next N events.',

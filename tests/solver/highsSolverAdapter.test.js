@@ -58,6 +58,28 @@ describe('HighsSolverAdapter', () => {
     expect(wasm.solutions[0].score).toBe(10);
   });
 
+  it('balances 94 required staffing assignments across three eligible people', () => {
+    const builder = scenario().containerMode()
+      .items('T', 'J', 'C')
+      .containers(Object.fromEntries(Array.from({ length: 94 }, (_, index) => [`slot-${index}`, 1])));
+    const model = repeated(builder);
+    model.containers.forEach((container) => { container.metadata.minCapacity = 1; });
+
+    const result = adapter.solve(model, {
+      mode: 'optimize',
+      timeLimitMs: 5000,
+      includeScoreDetails: true,
+      equityEligibleItemIds: ['T', 'J', 'C'],
+      scoreWeights: { equity: 100, preferences: 10, targets: 20 },
+    });
+    const counts = Object.fromEntries(model.items.map((item) => [item.id, 0]));
+    result.solutions[0].assignments.forEach((assignment) => { counts[assignment.itemRef.id] += 1; });
+
+    expect(result).toMatchObject({ status: 'solved', optimalityProven: true });
+    expect(Object.values(counts).sort((left, right) => left - right)).toEqual([31, 31, 32]);
+    expect(result.solutions[0].scoreDetails.equity).toBe(-200);
+  });
+
   it('reports proven infeasibility', () => {
     const model = repeated(scenario().containerMode().items('A').containers({ X: 0 }).fixedAssignment('A', 'X'));
     const result = adapter.solve(model, { mode: 'optimize' });

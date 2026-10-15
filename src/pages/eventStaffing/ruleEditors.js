@@ -47,13 +47,15 @@ export function renderRuleEditors(domainProject, editor) {
       <h3>Forbidden</h3>${renderAssignments(domainProject.forbiddenAssignments, 'forbidden')}
     </section>
     <section class="panel">
-      <h2>Cooldown rules</h2>
+      <h2>Rest and spacing rules</h2>
+      <p class="muted-text">A cooldown is a hard rule that prevents the same person from taking specified categories in later ordered slots. For example: after a Night assignment, block any category for the next 2 slots.</p>
+      <p class="muted-text"><strong>Important:</strong> “Next slots” follows the schedule order shown in Data; it does not calculate elapsed hours or calendar days.</p>
       <div class="form-grid four-columns compact-form-grid">
-        <label>After category<select name="draftCooldownTriggerGroupTypeId"><option value="ANY">Any category</option>${options(domainProject.groupTypes, editor.draftCooldownTriggerGroupTypeId, 'Select category').replace('<option value="">Select category</option>', '')}</select></label>
-        <label>Block category<select name="draftCooldownBlockedGroupTypeId"><option value="ANY">Any category</option>${options(domainProject.groupTypes, editor.draftCooldownBlockedGroupTypeId, 'Select category').replace('<option value="">Select category</option>', '')}</select></label>
-        <label>Next slots<input type="number" min="1" step="1" name="draftCooldownCount" value="${escapeHtml(editor.draftCooldownCount ?? '1')}" /></label>
-        <label class="button-label">Action<button type="button" data-event-staffing-action="add-cooldown-rule">Add cooldown</button></label>
+        <label title="The category that starts the mandatory rest or spacing period.">After working<select name="draftCooldownTriggerGroupTypeId"><option value="ANY">Any category</option>${options(domainProject.groupTypes, editor.draftCooldownTriggerGroupTypeId, 'Select category').replace('<option value="">Select category</option>', '')}</select></label>
+        <label title="The categories this person cannot work during the following ordered slots.">Prevent working<select name="draftCooldownBlockedGroupTypeId"><option value="ANY">Any category</option>${options(domainProject.groupTypes, editor.draftCooldownBlockedGroupTypeId, 'Select category').replace('<option value="">Select category</option>', '')}</select></label>
+        <label title="Number of subsequent slots in schedule order, not hours or days.">For the next slots<input type="number" min="1" step="1" name="draftCooldownCount" value="${escapeHtml(editor.draftCooldownCount ?? '1')}" /></label>
+        <label class="button-label">Action<button type="button" data-event-staffing-action="add-cooldown-rule">Add rest rule</button></label>
       </div>
-      ${domainProject.cooldownRules.length ? `<ul>${domainProject.cooldownRules.map((rule, index) => `<li>After ${escapeHtml(formatGroupTypeList(rule.triggerGroupTypes, categories))}, block ${escapeHtml(formatGroupTypeList(rule.blockedGroupTypes, categories))} for ${rule.blockedNextEventCount} slot(s). <button type="button" data-remove-cooldown-rule data-rule-index="${index}">Remove</button></li>`).join('')}</ul>` : '<p class="muted-text">No cooldown rules configured.</p>'}
+      ${domainProject.cooldownRules.length ? `<ul>${domainProject.cooldownRules.map((rule, index) => `<li>After working ${escapeHtml(formatGroupTypeList(rule.triggerGroupTypes, categories))}, prevent this person from working ${escapeHtml(formatGroupTypeList(rule.blockedGroupTypes, categories))} in the next ${rule.blockedNextEventCount} ordered slot(s). <button type="button" data-remove-cooldown-rule data-rule-index="${index}">Remove</button></li>`).join('')}</ul>` : '<p class="muted-text">No rest or spacing rules configured. This is valid when back-to-back assignments are allowed.</p>'}
     </section>`;
 }

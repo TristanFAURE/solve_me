@@ -24,6 +24,13 @@ describe('HiGHS service selection', () => {
     expect(shouldUseHighs(model(100, 100), { engine: 'js' })).toBe(false);
   });
 
+  it('selects HiGHS for weighted repeated-assignment optimization even below the size threshold', () => {
+    expect(shouldUseHighs(model(3, 94), {
+      mode: 'topK',
+      scoreWeights: { equity: 100, preferences: 10, targets: 20 },
+    })).toBe(true);
+  });
+
   it('falls back from unsupported HiGHS validation in auto mode without a pair-count exception', () => {
     const project = scenario().containerMode()
       .items(...Array.from({ length: 90 }, (_, index) => `i${index}`))
