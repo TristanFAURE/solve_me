@@ -49,6 +49,23 @@ function hasOnlyRepairableValidationErrors(validation) {
   return (validation?.errors?.length ?? 0) > 0
     && validation.errors.every((issue) => REPAIRABLE_VALIDATION_CODES.has(issue.code));
 }
+
+function hasEventStaffingWork(domainProject) {
+  const collections = [
+    'events',
+    'groupTypes',
+    'requirements',
+    'people',
+    'cooldownRules',
+    'forcedAssignments',
+    'forbiddenAssignments',
+    'preferences',
+  ];
+  const title = String(domainProject?.title ?? '').trim();
+  return collections.some((key) => Array.isArray(domainProject?.[key]) && domainProject[key].length > 0)
+    || Boolean(String(domainProject?.description ?? '').trim())
+    || Boolean(title && title !== 'Event staffing planner');
+}
 import {
   annotateAdministratorRepairResult,
   buildAdministratorRepairCandidates,
@@ -749,6 +766,7 @@ function renderSetupPanel(domainProject, state) {
       </div>
     </section>
     ${renderJsonConfigurationSetup({ prefix: 'event-staffing', domainLabel: 'Event Staffing' })}
+    ${state.eventStaffingPage.message ? `<p role="status" class="command-bar-feedback-success">${escapeHtml(state.eventStaffingPage.message)}</p>` : ''}
     ${renderShareEditSetup(state.eventStaffingPage.shareEditImport, 'event-staffing', 'Event Staffing', { language: state.eventStaffingPage.editor.eventStaffingShareLanguage, identityType: state.eventStaffingPage.editor.eventStaffingShareIdentity, personalized: true, participants: domainProject.people, personId: state.eventStaffingPage.editor.eventStaffingSharePersonId })}
     <section class="panel">
       <h2>Configuration workbook</h2>
@@ -1516,7 +1534,8 @@ function bindInteractions(root, state) {
         throw new Error('The file does not contain an Event Staffing project.');
       }
       const imported = migrateEventStaffingProject(raw);
-      if (!confirmProjectReplacement(domainProject, 'Replace the current Event Staffing configuration with this JSON file?')) return;
+      if (hasEventStaffingWork(domainProject)
+        && !confirmProjectReplacement(domainProject, 'Replace the current Event Staffing configuration with this JSON file?')) return;
       state.eventStaffingPage.domainProject = imported;
       state.eventStaffingPage.editor.selectedEventId = '';
       state.eventStaffingPage.editor.selectedEventIds = [];

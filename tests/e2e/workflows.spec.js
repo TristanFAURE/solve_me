@@ -191,6 +191,16 @@ test('Event Staffing completes a deterministic HiGHS WASM solve in a Worker', as
   await expect(personView.getByRole('cell', { name: 'Alex', exact: true })).toBeVisible();
 }, 60_000);
 
+test('Event Staffing imports the representative JSON configuration into an empty workspace', async ({ page }) => {
+  await openRoute(page, '/event-staffing');
+  await page.locator('[data-action="import-event-staffing-json"]').setInputFiles('event-staffing-jun-dec-2026.json');
+
+  await expect(page.getByRole('tabpanel', { name: 'Setup' }).getByRole('status')).toHaveText(/JSON configuration imported from event-staffing-jun-dec-2026\.json/);
+  await expect(page.locator('input[name="eventStaffingTitle"]')).toHaveValue('Planning de permanence - Juin a Decembre 2026');
+  await page.getByRole('tab', { name: 'Data', exact: true }).click();
+  await expect(page.getByRole('tabpanel', { name: 'Data' }).locator('.event-staffing-people-list-card tbody tr')).toHaveCount(200);
+});
+
 test('School solves into a classroom Display with synchronized alternatives', async ({ page }) => {
   const project = specializedProject('school');
   project.items = [
