@@ -6,10 +6,11 @@ import {
   annotateAdministratorRepairResult,
   buildAdministratorRepairCandidates,
   createAdministratorRepairModel,
+  getAdministratorOmittableRequirements,
   selectAllRepairCandidates,
   toggleRepairCandidate,
 } from '../../src/pages/eventStaffing/administratorRepair.js';
-import { buildAdministratorRepairSolveOptions, getAdministratorRepairSelectedIds, getAdministratorRepairSelection, getVisibleAdministratorRepairDates, moveAdministratorRepairDate, renderAdministratorRepairPanel, renderStaffingScheduleView, updateAdministratorRepairState } from '../../src/pages/eventStaffing/index.js';
+import { buildAdministratorRepairSolveOptions, getAdministratorRepairOmittedIds, getAdministratorRepairSelectedIds, getAdministratorRepairSelection, getVisibleAdministratorRepairDates, moveAdministratorRepairDate, renderAdministratorRepairPanel, renderStaffingScheduleView, updateAdministratorRepairOmissions, updateAdministratorRepairState } from '../../src/pages/eventStaffing/index.js';
 import { createAppState } from '../../src/app/state.js';
 import { renderEventStaffingPage } from '../../src/pages/eventStaffing/index.js';
 import { validateEventStaffingProject } from '../../src/pages/eventStaffing/validateEventStaffingProject.js';
@@ -49,6 +50,49 @@ function normalized(domain = project()) {
 }
 
 describe('Event Staffing administrator repair', () => {
+  it('detects simultaneous group coverage shortages that simple headcounts miss', () => {
+    const domain = project();
+    domain.events = [{ id: 'S1', label: 'Day', slotLabel: 'Day', date: '2026-10-15', dateKey: '2026-10-15', orderIndex: 0 }];
+    domain.groupTypes = [{ id: 'A', label: 'A' }, { id: 'B', label: 'B' }, { id: 'C', label: 'C' }];
+    domain.requirements = domain.groupTypes.map(({ id }) => ({ eventId: 'S1', groupTypeId: id, min: 1, max: 1 }));
+    domain.people = [
+      { id: 'P1', name: 'One', allowedGroupTypeIds: ['A', 'B'] },
+      { id: 'P2', name: 'Two', allowedGroupTypeIds: ['C'] },
+      { id: 'P3', name: 'Three', allowedGroupTypeIds: ['C'] },
+    ];
+    domain.preferences = [];
+    domain.forbiddenAssignments = [];
+    domain.forcedAssignments = [];
+    domain.cooldownRules = [];
+    domain.globalLimits = {};
+
+    expect(validateEventStaffingProject(domain).errors).toContainEqual(expect.objectContaining({
+      code: 'event-staffing-insufficient-simultaneous-coverage',
+      eventId: 'S1',
+    }));
+  });
+
+  it('detects adjacent-event coverage shortages caused by an ANY cooldown', () => {
+    const domain = project();
+    domain.events = [
+      { id: 'S1', label: 'First', slotLabel: 'First', date: '2026-10-15', dateKey: '2026-10-15', orderIndex: 0 },
+      { id: 'S2', label: 'Second', slotLabel: 'Second', date: '2026-10-16', dateKey: '2026-10-16', orderIndex: 1 },
+    ];
+    domain.groupTypes = [{ id: 'A', label: 'A' }];
+    domain.requirements = domain.events.map(({ id }) => ({ eventId: id, groupTypeId: 'A', min: 1, max: 1 }));
+    domain.people = [{ id: 'P1', name: 'One', allowedGroupTypeIds: ['A'] }];
+    domain.preferences = [];
+    domain.forbiddenAssignments = [];
+    domain.forcedAssignments = [];
+    domain.cooldownRules = [{ triggerGroupTypes: 'ANY', blockedGroupTypes: 'ANY', blockedNextEventCount: 1 }];
+    domain.globalLimits = {};
+
+    const cooldownErrors = validateEventStaffingProject(domain).errors
+      .filter(({ code }) => code === 'event-staffing-insufficient-cooldown-coverage');
+    expect(cooldownErrors).toHaveLength(2);
+    expect(cooldownErrors.map(({ eventId }) => eventId).sort()).toEqual(['S1', 'S2']);
+  });
+
   it('generates stable date-relevant candidates without coverage or cooldown candidates', () => {
     const domain = project();
     const candidates = buildAdministratorRepairCandidates(domain, normalized(domain), '2026-10-15');
@@ -114,6 +158,15 @@ describe('Event Staffing administrator repair', () => {
     expect(state.selectedCandidateIds).toEqual(['a', 'b']);
   });
 
+  it('preserves omitted event/groups independently for each date', () => {
+    let state = updateAdministratorRepairOmissions({}, '2026-10-15', ['event:S1::group:A']);
+    state = updateAdministratorRepairOmissions(state, '2026-10-16', ['event:S3::group:A']);
+    state = updateAdministratorRepairState(state, '2026-10-15');
+
+    expect(getAdministratorRepairOmittedIds(state, '2026-10-15')).toEqual(['event:S1::group:A']);
+    expect(getAdministratorRepairOmittedIds(state, '2026-10-16')).toEqual(['event:S3::group:A']);
+  });
+
   it('combines selected temporary exceptions from every blocking date', () => {
     const domain = project();
     const model = normalized(domain);
@@ -143,6 +196,24 @@ describe('Event Staffing administrator repair', () => {
     expect(options.equityEligibleItemIds).toEqual(['P1', 'P2']);
   });
 
+  it('uses a bounded two-solution feasibility mode when event/groups are omitted', () => {
+    const options = buildAdministratorRepairSolveOptions({
+      mode: 'topK',
+      maxSolutions: 10,
+      timeLimitMs: 5000,
+      scoreWeights: { preferences: 10, equity: 100, targets: 20 },
+      diversity: { enabled: true, minimumAssignmentDistance: 2 },
+    }, [{ id: 'P1' }, { id: 'P2' }], { feasibilityFirst: true });
+
+    expect(options).toMatchObject({
+      mode: 'topK',
+      maxSolutions: 2,
+      timeLimitMs: 15_000,
+      scoreWeights: { preferences: 1, equity: 0, targets: 0 },
+      diversity: { enabled: true, minimumAssignmentDistance: 2 },
+    });
+  });
+
   it('opens an assignment only when every overlapping blocker is selected and adds a strong penalty', () => {
     const domain = project();
     const model = normalized(domain);
@@ -160,6 +231,26 @@ describe('Event Staffing administrator repair', () => {
     expect(createAdministratorRepairModel(model, candidates, blockers.map(({ id }) => id), -777).softAssignmentScores)
       .toContainEqual({ itemId: 'P1', destinationId, score: -777 });
     expect(model.forbiddenAssignments).toContainEqual(expect.objectContaining({ itemId: 'P1', destinationId }));
+  });
+
+  it('temporarily omits an exact event/group and removes only its fixed assignment', () => {
+    const domain = project();
+    domain.forcedAssignments = [
+      { personId: 'P1', eventId: 'S1', groupTypeId: 'A' },
+      { personId: 'P2', eventId: 'S3', groupTypeId: 'A' },
+    ];
+    const model = normalized(domain);
+    const omittedId = 'event:S1::group:A';
+    const repaired = createAdministratorRepairModel(model, [], [], undefined, [omittedId]);
+
+    expect(repaired.containers.find(({ id }) => id === omittedId)?.metadata).toMatchObject({
+      minCapacity: 0,
+      maxCapacity: 0,
+      administratorOmitted: true,
+    });
+    expect(repaired.fixedAssignments).not.toContainEqual(expect.objectContaining({ destinationId: omittedId }));
+    expect(repaired.fixedAssignments).toContainEqual({ itemId: 'P2', destinationId: 'event:S3::group:A' });
+    expect(model.containers.find(({ id }) => id === omittedId)?.metadata.minCapacity).toBe(1);
   });
 
   it('allows only one selected-date maximum exception and never changes coverage or cooldowns', () => {
@@ -238,6 +329,37 @@ describe('Event Staffing administrator repair', () => {
 
     expect(annotated.status).toBe('solved');
     expect(annotated.solutions[0].administratorExceptionsUsed).toEqual([{ id: day.id, type: day.type, label: day.label }]);
+    expect(annotated.solutions[0].administratorUnavailableAssignments).toEqual([{
+      personId: 'P1',
+      destinationId: 'event:S1::group:A',
+      label: day.label,
+    }]);
+  });
+
+  it('solves an omitted event/group with no assignment and annotates the result', () => {
+    const domain = project();
+    domain.people = [{ id: 'P1', name: 'Alex' }];
+    domain.preferences = [];
+    domain.forbiddenAssignments = [];
+    domain.forcedAssignments = [];
+    domain.cooldownRules = [];
+    domain.requirements = [{ eventId: 'S1', groupTypeId: 'A', min: 1, max: 1 }];
+    const model = normalized(domain);
+    const omitted = [{
+      id: 'event:S1::group:A',
+      destinationId: 'event:S1::group:A',
+      dateKey: '2026-10-15',
+      eventId: 'S1',
+      groupTypeId: 'A',
+      label: '2026-10-15 / Morning / Alpha',
+    }];
+    const result = new FirstSolverAdapter().solve(createAdministratorRepairModel(model, [], [], undefined, omitted.map(({ id }) => id)));
+    const annotated = annotateAdministratorRepairResult(result, [], [], ['2026-10-15'], omitted);
+
+    expect(annotated.status).toBe('solved');
+    expect(annotated.solutions[0].assignments).toEqual([]);
+    expect(annotated.administratorOmittedRequirements).toEqual(omitted);
+    expect(renderStaffingScheduleView(domain, annotated)).toContain('Not solved by administrator');
   });
 
   it('marks a selected workload maximum only when the returned solution exceeds it', () => {
@@ -279,7 +401,8 @@ describe('Event Staffing administrator repair', () => {
     const model = normalized(domain);
     const unsatHtml = renderAdministratorRepairPanel(domain, model, { status: 'unsat' }, {});
     expect(unsatHtml).toContain('Temporary administrator repair');
-    expect(unsatHtml).toContain('Coverage min/max and cooldown/rest rules always remain hard');
+    expect(unsatHtml).toContain('Do not solve an event/group');
+    expect(unsatHtml).toContain('coverage remains hard except for event/groups explicitly marked not to solve');
     expect(unsatHtml).toContain('Select all');
     expect(unsatHtml).toContain('Previous blocking date');
     expect(unsatHtml).toContain('Next blocking date');
@@ -316,6 +439,20 @@ describe('Event Staffing administrator repair', () => {
     expect(moveAdministratorRepairDate(result.dates, '2026-10-16', -1)).toBe('2026-10-16');
   });
 
+  it('offers exact required event/groups involved in a conflict for omission', () => {
+    const domain = project();
+    const validationErrors = [{
+      code: 'event-staffing-insufficient-group-coverage',
+      eventId: 'S1',
+      groupTypeId: 'A',
+      path: 'events.S1',
+    }];
+
+    expect(getAdministratorOmittableRequirements(domain, '2026-10-15', validationErrors)).toEqual([
+      expect.objectContaining({ destinationId: 'event:S1::group:A', eventId: 'S1', groupTypeId: 'A' }),
+    ]);
+  });
+
   it('does not present every date as blocking when no date-local conflict is known', () => {
     const domain = project();
     const model = normalized(domain);
@@ -348,6 +485,20 @@ describe('Event Staffing administrator repair', () => {
     };
 
     renderEventStaffingPage(root, state);
+    const renderedHtml = root.innerHTML;
+    const omissionControl = controls.get('[data-repair-omission-id]')[0];
+    omissionControl.dataset = { repairOmissionId: 'event:S1::group:A' };
+    omissionControl.checked = true;
+    omissionControl.activate();
+    expect(getAdministratorRepairOmittedIds(state.eventStaffingPage.editor.administratorRepair, '2026-10-15'))
+      .toEqual(['event:S1::group:A']);
+    expect(root.innerHTML).toBe(renderedHtml);
+    controls.get('[data-event-staffing-action="select-all-repair-omissions"]')[0].activate();
+    expect(getAdministratorRepairOmittedIds(state.eventStaffingPage.editor.administratorRepair, '2026-10-15'))
+      .toContain('event:S1::group:A');
+    controls.get('[data-event-staffing-action="clear-repair-omissions"]')[0].activate();
+    expect(getAdministratorRepairOmittedIds(state.eventStaffingPage.editor.administratorRepair, '2026-10-15')).toEqual([]);
+
     controls.get('[data-event-staffing-action="select-all-repair-candidates"]')[0].activate();
     expect(state.eventStaffingPage.editor.administratorRepair.selectedCandidateIds.length).toBeGreaterThan(0);
     controls.get('[data-event-staffing-action="clear-repair-candidates"]')[0].activate();

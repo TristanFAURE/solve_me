@@ -43,6 +43,8 @@ const REPAIRABLE_VALIDATION_CODES = new Set([
   'event-staffing-forced-unavailable-conflict',
   'event-staffing-insufficient-slot-coverage',
   'event-staffing-insufficient-group-coverage',
+  'event-staffing-insufficient-simultaneous-coverage',
+  'event-staffing-insufficient-cooldown-coverage',
 ]);
 
 function hasOnlyRepairableValidationErrors(validation) {
@@ -71,6 +73,7 @@ import {
   buildAdministratorRepairCandidates,
   createAdministratorRepairModel,
   getAdministratorRepairDates,
+  getAdministratorOmittableRequirements,
   selectAllRepairCandidates,
   toggleRepairCandidate,
 } from './administratorRepair.js';
@@ -117,7 +120,18 @@ export function rankStaffingSolutionsByEquity(domainProject, solverResult) {
   };
 }
 
-export function buildAdministratorRepairSolveOptions(solveOptions, people) {
+export function buildAdministratorRepairSolveOptions(solveOptions, people, { feasibilityFirst = false } = {}) {
+  if (feasibilityFirst) {
+    return {
+      ...solveOptions,
+      mode: 'topK',
+      maxSolutions: Math.min(2, Math.max(1, solveOptions.maxSolutions ?? 2)),
+      timeLimitMs: Math.max(15_000, solveOptions.timeLimitMs ?? 0),
+      scoreWeights: { ...solveOptions.scoreWeights, preferences: 1, equity: 0, targets: 0 },
+      diversity: { ...solveOptions.diversity, enabled: true },
+      equityEligibleItemIds: people.map((person) => person.id),
+    };
+  }
   return {
     ...solveOptions,
     scoreWeights: {
@@ -332,6 +346,8 @@ export function renderStaffingScheduleView(domainProject, solverResult, activeSo
     );
   }
 
+  const omittedRequirements = solverResult.administratorOmittedRequirements ?? [];
+  const omittedRequirementKeys = new Set(omittedRequirements.map(({ eventId, groupTypeId }) => `${eventId}\u0000${groupTypeId}`));
   const eventRows = domainProject.events
     .slice()
     .sort((left, right) => left.orderIndex - right.orderIndex)
@@ -341,13 +357,14 @@ export function renderStaffingScheduleView(domainProject, solverResult, activeSo
       const requirementRows = requirements.length > 0
         ? requirements.map((requirement) => {
           const assignedPeople = assignmentMap.get(requirement.groupTypeId) ?? [];
+          const omitted = omittedRequirementKeys.has(`${event.id}\u0000${requirement.groupTypeId}`);
           return `
             <tr>
               <td>${escapeHtml(scheduleSummary.groupTypeLabels.get(requirement.groupTypeId) ?? requirement.groupTypeId)}</td>
-              <td>${escapeHtml(String(requirement.min))}</td>
-              <td>${escapeHtml(String(requirement.max))}</td>
+              <td>${omitted ? '—' : escapeHtml(String(requirement.min))}</td>
+              <td>${omitted ? '—' : escapeHtml(String(requirement.max))}</td>
               <td>${escapeHtml(String(assignedPeople.length))}</td>
-              <td>${assignedPeople.length > 0 ? escapeHtml(assignedPeople.join(', ')) : '<span class="muted-text">Unassigned</span>'}</td>
+              <td>${omitted ? '<strong>Not solved by administrator</strong>' : assignedPeople.length > 0 ? escapeHtml(assignedPeople.join(', ')) : '<span class="muted-text">Unassigned</span>'}</td>
             </tr>
           `;
         }).join('')
@@ -460,11 +477,14 @@ export function renderStaffingScheduleView(domainProject, solverResult, activeSo
       <section class="workspace-panel top-gap">
         <h3>Constraints and soft-goal trade-offs</h3>
         ${solverResult.repairedModel
-    ? '<p><strong>Repaired model:</strong> satisfied. The original hard model was not satisfied; only the selected temporary person restrictions were relaxed. Coverage min/max and cooldown/rest rules remained hard.</p>'
+    ? '<p><strong>Repaired model:</strong> satisfied. The original hard model was not satisfied. Selected person restrictions were temporarily relaxed, and explicitly omitted event/groups were not staffed. Other coverage and cooldown/rest rules remained hard.</p>'
     : '<p><strong>Hard constraints:</strong> satisfied. Required coverage, unavailability, cooldowns, assignment limits, and forced/forbidden assignments were not relaxed.</p>'}
         ${solverResult.repairedModel ? `<h4>Administrator exceptions used</h4>${exceptionsUsed.length > 0
     ? `<ul class="issue-list compact-issue-list">${exceptionsUsed.map((exception) => `<li class="issue-list-item warning"><div>${escapeHtml(exception.label)}</div></li>`).join('')}</ul>`
     : '<p class="muted-text">None of the selected temporary exceptions were used by this solution.</p>'}` : ''}
+        ${solverResult.repairedModel ? `<h4>Event/groups not solved</h4>${omittedRequirements.length > 0
+    ? `<ul class="issue-list compact-issue-list">${omittedRequirements.map((requirement) => `<li class="issue-list-item warning"><div>${escapeHtml(requirement.label)}</div></li>`).join('')}</ul>`
+    : '<p class="muted-text">No event/group requirement was omitted.</p>'}` : ''}
         <p><strong>Workload range:</strong> ${escapeHtml(String(tradeoffs.minimum))} to ${escapeHtml(String(tradeoffs.maximum))} assignments per person (spread ${escapeHtml(String(tradeoffs.spread))}).</p>
         ${tradeoffs.issues.length > 0
     ? `<p><strong>Unmet soft goals (${tradeoffs.issues.length}):</strong></p><ul class="issue-list compact-issue-list">${tradeoffs.issues.slice(0, 50).map((issue) => `<li class="issue-list-item warning"><div>${escapeHtml(issue)}</div></li>`).join('')}</ul>${tradeoffs.issues.length > 50 ? `<p class="muted-text">Showing the first 50 of ${tradeoffs.issues.length} trade-offs.</p>` : ''}`
@@ -541,9 +561,24 @@ export function updateAdministratorRepairState(repairState, dateKey, selectedCan
   const nextSelection = selectedCandidateIds ?? getAdministratorRepairSelectedIds(repairState, dateKey);
   selectedCandidateIdsByDate[dateKey] = [...nextSelection];
   return {
+    ...repairState,
     dateKey,
     selectedCandidateIds: [...nextSelection],
     selectedCandidateIdsByDate,
+  };
+}
+
+export function getAdministratorRepairOmittedIds(repairState, dateKey) {
+  return repairState?.omittedDestinationIdsByDate?.[dateKey] ?? [];
+}
+
+export function updateAdministratorRepairOmissions(repairState, dateKey, omittedDestinationIds) {
+  return {
+    ...repairState,
+    omittedDestinationIdsByDate: {
+      ...(repairState?.omittedDestinationIdsByDate ?? {}),
+      [dateKey]: [...new Set(omittedDestinationIds ?? [])].sort(),
+    },
   };
 }
 
@@ -578,7 +613,13 @@ export function renderAdministratorRepairPanel(domainProject, normalizedProject,
     : (dates[0]?.dateKey ?? '');
   const candidates = buildAdministratorRepairCandidates(domainProject, normalizedProject, dateKey, validationErrors);
   const selected = new Set(getAdministratorRepairSelectedIds(repairState, dateKey));
+  const omittableRequirements = getAdministratorOmittableRequirements(domainProject, dateKey, validationErrors);
+  const omitted = new Set(getAdministratorRepairOmittedIds(repairState, dateKey));
   const allSelected = getAdministratorRepairSelection(domainProject, normalizedProject, dates, repairState).selectedIds;
+  const allOmitted = dates.flatMap(({ dateKey: candidateDateKey }) => {
+    const validIds = new Set(getAdministratorOmittableRequirements(domainProject, candidateDateKey, validationErrors).map(({ id }) => id));
+    return getAdministratorRepairOmittedIds(repairState, candidateDateKey).filter((id) => validIds.has(id));
+  });
   const dateEventIds = new Set((domainProject.events ?? []).filter((event) => getSlotDayKey(event) === dateKey).map((event) => event.id));
   const dateIssues = validationErrors.filter((issue) => {
     const eventId = issue.eventId ?? (String(issue.path ?? '').startsWith('events.') ? String(issue.path).slice('events.'.length) : null);
@@ -588,7 +629,7 @@ export function renderAdministratorRepairPanel(domainProject, normalizedProject,
     <section class="panel administrator-repair-panel">
       <p class="eyebrow">${solverResult?.status === 'unsat' ? 'Unsatisfiable hard model' : 'Repairable hard-constraint conflict'}</p>
       <h2>Temporary administrator repair</h2>
-      <p>Select narrowly scoped person restrictions on each blocking date. When validation identifies a slot or category shortage, only restrictions intersecting that exact conflict are listed; unrelated workload or category maxima are hidden. The repair solve uses selections from all dates, not only the date currently shown. The original project rules are unchanged; exceptions apply only to this repair solve. Coverage min/max and cooldown/rest rules always remain hard and are never available here.</p>
+      <p>Select narrowly scoped person restrictions on each blocking date, or explicitly omit an affected event/group. The repair solve uses selections from all dates, not only the date currently shown. The original project rules are unchanged. Cooldown/rest rules remain hard; coverage remains hard except for event/groups explicitly marked not to solve.</p>
       <div class="event-staffing-inline-actions">
         <button type="button" class="navigation-arrow" data-event-staffing-action="previous-repair-date"${dates.findIndex((date) => date.dateKey === dateKey) <= 0 ? ' disabled' : ''} aria-label="Previous blocking date"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m12.5 4-6 6 6 6" /></svg></button>
         <label>${filteredToBlockingDates ? 'Blocking date' : 'Date to inspect'}
@@ -608,7 +649,19 @@ export function renderAdministratorRepairPanel(domainProject, normalizedProject,
           <input type="checkbox" data-repair-candidate-id="${escapeHtml(candidate.id)}"${selected.has(candidate.id) ? ' checked' : ''} />
           <span>${escapeHtml(candidate.label)}</span>
         </label>`).join('')}</div>` : '<p class="muted-text top-gap">No relaxable person restrictions apply to this date. Check another date or revise hard coverage/cooldown rules directly.</p>'}
-      <button type="button" class="command-bar-button command-bar-button-primary top-gap" data-event-staffing-action="solve-administrator-repair"${allSelected.length ? '' : ' disabled'}>Try with all selected temporary exceptions (${allSelected.length})</button>
+      <h3 class="top-gap">Do not solve an event/group</h3>
+      <p class="muted-text">Checked requirements are omitted only from this repair solve. Nobody will be assigned to them.</p>
+      <div class="event-staffing-inline-actions top-gap">
+        <button type="button" class="command-bar-button" data-event-staffing-action="select-all-repair-omissions"${omittableRequirements.length ? '' : ' disabled'}>Check all event/groups</button>
+        <button type="button" class="command-bar-button" data-event-staffing-action="clear-repair-omissions"${omitted.size ? '' : ' disabled'}>Clear event/groups</button>
+      </div>
+      ${omittableRequirements.length ? `<div class="event-staffing-checkbox-grid top-gap">${omittableRequirements.map((requirement) => `
+        <label class="event-staffing-checkbox-option">
+          <input type="checkbox" data-repair-omission-id="${escapeHtml(requirement.id)}"${omitted.has(requirement.id) ? ' checked' : ''} />
+          <span>Do not solve ${escapeHtml(requirement.label)}</span>
+        </label>`).join('')}</div>` : '<p class="muted-text">No required event/group involved in this conflict can be omitted.</p>'}
+      <button type="button" class="command-bar-button command-bar-button-primary top-gap" data-event-staffing-action="solve-administrator-repair"${allSelected.length || allOmitted.length ? '' : ' disabled'}>Try selected temporary changes (${allSelected.length + allOmitted.length})</button>
+      <p class="muted-text" data-repair-omission-mode${allOmitted.length ? '' : ' hidden'}>Omission repairs prioritize up to two feasible schedules with a 15-second minimum budget; equity and target optimization are deferred.</p>
     </section>`;
 }
 
@@ -1465,7 +1518,7 @@ function clearWorkflowOutputs(state) {
   state.eventStaffingPage.lastGenericValidation = null;
   state.eventStaffingPage.lastSolverResult = null;
   state.eventStaffingPage.activeSolutionIndex = 0;
-  state.eventStaffingPage.editor.administratorRepair = { dateKey: '', selectedCandidateIds: [] };
+  state.eventStaffingPage.editor.administratorRepair = { dateKey: '', selectedCandidateIds: [], selectedCandidateIdsByDate: {}, omittedDestinationIdsByDate: {} };
 }
 
 function refreshValidation(state) {
@@ -2247,7 +2300,7 @@ function bindInteractions(root, state) {
       }
 
       state.eventStaffingPage.activeSolutionIndex = 0;
-      editor.administratorRepair = { dateKey: '', selectedCandidateIds: [], selectedCandidateIdsByDate: {} };
+      editor.administratorRepair = { dateKey: '', selectedCandidateIds: [], selectedCandidateIdsByDate: {}, omittedDestinationIdsByDate: {} };
       startSolveExecution({
         execution: state.eventStaffingPage.solveExecution,
         model: workflow.normalizedProject,
@@ -2286,6 +2339,27 @@ function bindInteractions(root, state) {
   const currentRepairCandidates = state.eventStaffingPage.lastNormalizedProject
     ? buildAdministratorRepairCandidates(domainProject, state.eventStaffingPage.lastNormalizedProject, currentRepairDateKey, state.eventStaffingPage.lastValidation?.errors ?? [])
     : [];
+  const currentOmittableRequirements = getAdministratorOmittableRequirements(
+    domainProject,
+    currentRepairDateKey,
+    state.eventStaffingPage.lastValidation?.errors ?? [],
+  );
+  const updateRepairOmissionControls = () => {
+    const selectedCandidateIds = new Set([
+      ...(editor.administratorRepair.selectedCandidateIds ?? []),
+      ...Object.values(editor.administratorRepair.selectedCandidateIdsByDate ?? {}).flat(),
+    ]);
+    const omittedIds = new Set(Object.values(editor.administratorRepair.omittedDestinationIdsByDate ?? {}).flat());
+    const selectedCount = selectedCandidateIds.size + omittedIds.size;
+    const solveButton = root.querySelector('[data-event-staffing-action="solve-administrator-repair"]');
+    if (solveButton) {
+      solveButton.disabled = selectedCount === 0;
+      solveButton.textContent = `Try selected temporary changes (${selectedCount})`;
+    }
+    const clearButton = root.querySelector('[data-event-staffing-action="clear-repair-omissions"]');
+    if (clearButton) clearButton.disabled = getAdministratorRepairOmittedIds(editor.administratorRepair, currentRepairDateKey).length === 0;
+    root.querySelector('[data-repair-omission-mode]')?.toggleAttribute('hidden', omittedIds.size === 0);
+  };
   root.querySelectorAll('[data-repair-candidate-id]').forEach((checkbox) => {
     checkbox.addEventListener('change', () => {
       editor.administratorRepair = updateAdministratorRepairState(
@@ -2298,6 +2372,37 @@ function bindInteractions(root, state) {
         ),
       );
       rerender();
+    });
+  });
+  root.querySelectorAll('[data-repair-omission-id]').forEach((checkbox) => {
+    checkbox.addEventListener('change', () => {
+      const omitted = new Set(getAdministratorRepairOmittedIds(editor.administratorRepair, currentRepairDateKey));
+      if (checkbox.checked) omitted.add(checkbox.dataset.repairOmissionId);
+      else omitted.delete(checkbox.dataset.repairOmissionId);
+      editor.administratorRepair = updateAdministratorRepairOmissions(
+        editor.administratorRepair,
+        currentRepairDateKey,
+        [...omitted],
+      );
+      updateRepairOmissionControls();
+    });
+  });
+  root.querySelectorAll('[data-event-staffing-action="select-all-repair-omissions"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      editor.administratorRepair = updateAdministratorRepairOmissions(
+        editor.administratorRepair,
+        currentRepairDateKey,
+        currentOmittableRequirements.map(({ id }) => id),
+      );
+      root.querySelectorAll('[data-repair-omission-id]').forEach((checkbox) => { checkbox.checked = true; });
+      updateRepairOmissionControls();
+    });
+  });
+  root.querySelectorAll('[data-event-staffing-action="clear-repair-omissions"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      editor.administratorRepair = updateAdministratorRepairOmissions(editor.administratorRepair, currentRepairDateKey, []);
+      root.querySelectorAll('[data-repair-omission-id]').forEach((checkbox) => { checkbox.checked = false; });
+      updateRepairOmissionControls();
     });
   });
   root.querySelectorAll('[data-event-staffing-action="previous-repair-date"]').forEach((button) => {
@@ -2345,26 +2450,44 @@ function bindInteractions(root, state) {
         { ...editor.administratorRepair, validationErrors: state.eventStaffingPage.lastValidation?.errors ?? [] },
       );
       const { candidates, selectedIds } = repairSelection;
-      if (selectedIds.length === 0) return;
+      const omittedRequirements = currentRepairDates.flatMap(({ dateKey }) => {
+        const omitted = new Set(getAdministratorRepairOmittedIds(editor.administratorRepair, dateKey));
+        return getAdministratorOmittableRequirements(
+          domainProject,
+          dateKey,
+          state.eventStaffingPage.lastValidation?.errors ?? [],
+        ).filter(({ id }) => omitted.has(id));
+      });
+      if (selectedIds.length === 0 && omittedRequirements.length === 0) return;
       const selectedDateKeys = currentRepairDates
         .filter(({ dateKey }) => getAdministratorRepairSelectedIds(editor.administratorRepair, dateKey).length > 0)
         .map(({ dateKey }) => dateKey);
+      omittedRequirements.forEach(({ dateKey }) => {
+        if (!selectedDateKeys.includes(dateKey)) selectedDateKeys.push(dateKey);
+      });
       const repairModel = createAdministratorRepairModel(
         state.eventStaffingPage.lastNormalizedProject,
         candidates,
         selectedIds,
+        undefined,
+        omittedRequirements.map(({ destinationId }) => destinationId),
       );
       state.eventStaffingPage.activeSolutionIndex = 0;
       startSolveExecution({
         execution: state.eventStaffingPage.solveExecution,
         model: repairModel,
-        options: buildAdministratorRepairSolveOptions(state.eventStaffingPage.solveOptions, domainProject.people),
+        options: buildAdministratorRepairSolveOptions(
+          state.eventStaffingPage.solveOptions,
+          domainProject.people,
+          { feasibilityFirst: omittedRequirements.length > 0 },
+        ),
         onResult(solverResult) {
           solverResult = annotateAdministratorRepairResult(
             solverResult,
             candidates,
             selectedIds,
             selectedDateKeys,
+            omittedRequirements,
           );
           solverResult = rankStaffingSolutionsByEquity(domainProject, solverResult);
           state.eventStaffingPage.lastSolverResult = solverResult;

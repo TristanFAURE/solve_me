@@ -406,6 +406,8 @@ export function createEventStaffingSolutionWorkbook(domainProject, solverResult,
   const categories = new Map(project.groupTypes.map((category) => [category.id, category]));
   const people = new Map(project.people.map((person) => [person.id, person]));
   const counts = new Map(project.people.map((person) => [person.id, new Map()]));
+  const unavailableAssignments = new Map((solution.administratorUnavailableAssignments ?? [])
+    .map((entry) => [`${entry.personId}\u0000${entry.destinationId}`, entry]));
   const scheduleRows = solution.assignments.map((assignment) => {
     const destination = parseDestinationId(assignment.containerRef?.id);
     const slot = slots.get(destination?.slotId);
@@ -414,7 +416,17 @@ export function createEventStaffingSolutionWorkbook(domainProject, solverResult,
     const categoryCounts = counts.get(person?.id) ?? new Map();
     categoryCounts.set(category?.label ?? destination?.categoryId, (categoryCounts.get(category?.label ?? destination?.categoryId) ?? 0) + 1);
     if (person) counts.set(person.id, categoryCounts);
-    return { Date: slot?.date ?? '', Slot: slot?.slotLabel ?? destination?.slotId ?? '', Category: category?.label ?? destination?.categoryId ?? '', Person: person?.name ?? assignment.itemRef?.id ?? '', Email: person?.email ?? '' };
+    const relaxedUnavailable = unavailableAssignments.get(`${assignment.itemRef?.id}\u0000${assignment.containerRef?.id ?? assignment.positionRef?.id}`);
+    return {
+      Date: slot?.date ?? '',
+      Slot: slot?.slotLabel ?? destination?.slotId ?? '',
+      Category: category?.label ?? destination?.categoryId ?? '',
+      Person: person?.name ?? assignment.itemRef?.id ?? '',
+      Email: person?.email ?? '',
+      Comment: relaxedUnavailable
+        ? `Assigned despite declared unavailability through a temporary administrator relaxation: ${relaxedUnavailable.label}`
+        : '',
+    };
   });
   const peopleRows = project.people.map((person) => ({
     Person: person.name,
@@ -431,6 +443,9 @@ export function createEventStaffingSolutionWorkbook(domainProject, solverResult,
     ['Search complete', solverResult.searchComplete ? 'Yes' : 'No'], ['Optimality proven', solverResult.optimalityProven ? 'Yes' : 'No'],
     ['Timeout reached', solverResult.timeoutReached ? 'Yes' : 'No'], ['Runtime (ms)', solverResult.runtimeMs ?? 0],
   ];
+  (solverResult.administratorOmittedRequirements ?? []).forEach((requirement) => {
+    metadata.push(['Not solved by administrator', requirement.label ?? `${requirement.eventId ?? ''} / ${requirement.groupTypeId ?? ''}`]);
+  });
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(neutralizeRows(scheduleRows)), 'Schedule');
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(neutralizeRows(peopleRows)), 'People summary');

@@ -178,4 +178,29 @@ describe('Event Staffing workbooks', () => {
     expect(resultWorkbook.Sheets.Schedule.C2.v).toBe("'+Welcome");
     expect(resultWorkbook.Sheets.Schedule.D2.v).toBe("'@Alex");
   });
+
+  it('records temporarily omitted event/groups in solution metadata', () => {
+    const resultWorkbook = createEventStaffingSolutionWorkbook(project(), {
+      status: 'solved', runtimeMs: 1, searchComplete: true, optimalityProven: true, timeoutReached: false,
+      administratorOmittedRequirements: [{ eventId: 'S1', groupTypeId: 'C1', label: '=2026-10-14 / Morning / Welcome' }],
+      solutions: [{ assignments: [] }],
+    });
+    const metadata = XLSX.utils.sheet_to_json(resultWorkbook.Sheets['Solution metadata'], { header: 1, defval: '' });
+
+    expect(metadata).toContainEqual(['Not solved by administrator', "'=2026-10-14 / Morning / Welcome"]);
+  });
+
+  it('comments assignments made through relaxed unavailability', () => {
+    const destinationId = 'event:S1::group:C1';
+    const resultWorkbook = createEventStaffingSolutionWorkbook(project(), {
+      status: 'solved', runtimeMs: 1,
+      solutions: [{
+        assignments: [{ itemRef: { id: 'P1' }, containerRef: { id: destinationId } }],
+        administratorUnavailableAssignments: [{ personId: 'P1', destinationId, label: 'Alex: whole-day unavailability' }],
+      }],
+    });
+
+    expect(resultWorkbook.Sheets.Schedule.F2.v).toContain('Assigned despite declared unavailability');
+    expect(resultWorkbook.Sheets.Schedule.F2.v).toContain('Alex: whole-day unavailability');
+  });
 });

@@ -20,6 +20,73 @@ function isIsoDate(value) {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
+function maximumSimultaneousCoverage(people, requirements, forcedAssignments, canWorkGroup) {
+  const requirementByGroup = new Map(requirements.map((requirement) => [requirement.groupTypeId, requirement]));
+  const remainingByGroup = new Map(requirements.map((requirement) => [requirement.groupTypeId, requirement.min]));
+  const reservedPeople = new Set();
+  let coveredByForcedAssignments = 0;
+
+  forcedAssignments.forEach((assignment) => {
+    if (reservedPeople.has(assignment.personId)) return;
+    reservedPeople.add(assignment.personId);
+    const remaining = remainingByGroup.get(assignment.groupTypeId) ?? 0;
+    if (remaining <= 0) return;
+    remainingByGroup.set(assignment.groupTypeId, remaining - 1);
+    coveredByForcedAssignments += 1;
+  });
+
+  const demand = [...remainingByGroup].flatMap(([groupTypeId, count]) => Array.from(
+    { length: Math.max(0, count) },
+    (_, index) => ({ id: `${groupTypeId}:${index}`, groupTypeId, requirement: requirementByGroup.get(groupTypeId) }),
+  ));
+  const availablePeople = people.filter((person) => !reservedPeople.has(person.id));
+  demand.sort((left, right) => (
+    availablePeople.filter((person) => canWorkGroup(person, left.requirement)).length
+    - availablePeople.filter((person) => canWorkGroup(person, right.requirement)).length
+  ));
+
+  const demandById = new Map(demand.map((entry) => [entry.id, entry]));
+  const matchedDemandByPerson = new Map();
+  function assign(entry, seenPeople) {
+    for (const person of availablePeople) {
+      if (seenPeople.has(person.id) || !canWorkGroup(person, entry.requirement)) continue;
+      seenPeople.add(person.id);
+      const previousDemandId = matchedDemandByPerson.get(person.id);
+      if (!previousDemandId || assign(demandById.get(previousDemandId), seenPeople)) {
+        matchedDemandByPerson.set(person.id, entry.id);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  const unmatchedEntries = [];
+  let matched = coveredByForcedAssignments;
+  demand.forEach((entry) => {
+    if (assign(entry, new Set())) matched += 1;
+    else unmatchedEntries.push(entry);
+  });
+  const involvedDemandIds = new Set(unmatchedEntries.map(({ id }) => id));
+  const involvedPeople = new Set();
+  const queue = [...unmatchedEntries];
+  while (queue.length > 0) {
+    const entry = queue.shift();
+    availablePeople.forEach((person) => {
+      if (involvedPeople.has(person.id) || !canWorkGroup(person, entry.requirement)) return;
+      involvedPeople.add(person.id);
+      const matchedDemandId = matchedDemandByPerson.get(person.id);
+      if (matchedDemandId && !involvedDemandIds.has(matchedDemandId)) {
+        involvedDemandIds.add(matchedDemandId);
+        queue.push(demandById.get(matchedDemandId));
+      }
+    });
+  }
+  return {
+    matched,
+    unmatchedGroupTypeIds: [...new Set([...involvedDemandIds].map((id) => demandById.get(id).groupTypeId))],
+  };
+}
+
 export function validateEventStaffingProject(domainProject = {}) {
   domainProject = migrateEventStaffingProject(domainProject);
   const errors = [];
@@ -344,35 +411,110 @@ export function validateEventStaffingProject(domainProject = {}) {
     errors.push({ level: 'error', code: 'event-staffing-invalid-global-group-target', message: 'globalLimits.targetAssignmentsPerGroupType must be a non-negative integer when provided.', path: 'globalLimits.targetAssignmentsPerGroupType' });
   }
 
+  const preferenceByPersonId = new Map(preferences.map((entry) => [entry.personId, entry]));
+  const canWorkGroupForSlot = (person, slot, requirement) => {
+    const allowed = Array.isArray(person.allowedGroupTypeIds) ? person.allowedGroupTypeIds : [];
+    const forbidden = Array.isArray(person.forbiddenGroupTypeIds) ? person.forbiddenGroupTypeIds : [];
+    if (allowed.length > 0 && !allowed.includes(requirement.groupTypeId)) return false;
+    if (forbidden.includes(requirement.groupTypeId)) return false;
+    if (forbiddenAssignments.some((assignment) => assignment.personId === person.id
+      && assignment.eventId === slot.id && assignment.groupTypeId === requirement.groupTypeId)) return false;
+    return getEffectiveAssignmentPreference(preferenceByPersonId.get(person.id), slot, requirement.groupTypeId) !== PREFERENCE_STATES.UNAVAILABLE;
+  };
+
   events.forEach((slot) => {
     const slotRequirements = requirements.filter((requirement) => requirement.eventId === slot.id);
     const totalMinimum = slotRequirements.reduce((sum, requirement) => sum + (Number.isInteger(requirement.min) ? requirement.min : 0), 0);
-    const preferenceByPersonId = new Map(preferences.map((entry) => [entry.personId, entry]));
-    const canWorkGroup = (person, requirement) => {
-      const allowed = Array.isArray(person.allowedGroupTypeIds) ? person.allowedGroupTypeIds : [];
-      const forbidden = Array.isArray(person.forbiddenGroupTypeIds) ? person.forbiddenGroupTypeIds : [];
-      if (allowed.length > 0 && !allowed.includes(requirement.groupTypeId)) return false;
-      if (forbidden.includes(requirement.groupTypeId)) return false;
-      if (forbiddenAssignments.some((assignment) => assignment.personId === person.id
-        && assignment.eventId === slot.id && assignment.groupTypeId === requirement.groupTypeId)) return false;
-      return getEffectiveAssignmentPreference(preferenceByPersonId.get(person.id), slot, requirement.groupTypeId) !== PREFERENCE_STATES.UNAVAILABLE;
-    };
+    const canWorkGroup = (person, requirement) => canWorkGroupForSlot(person, slot, requirement);
     const availablePeople = people.filter((person) => slotRequirements.some((requirement) => (
       canWorkGroup(person, requirement)
     ))).length;
     if (totalMinimum > availablePeople) {
       errors.push({ level: 'error', code: 'event-staffing-insufficient-slot-coverage', message: `Slot "${slot.slotLabel}" requires at least ${totalMinimum} people but only ${availablePeople} are available in the roster.`, path: `events.${slot.id}`, eventId: slot.id });
     }
+    const insufficientGroupTypeIds = [];
     slotRequirements.forEach((requirement) => {
       const availableForGroup = people.filter((person) => (
         canWorkGroup(person, requirement)
       )).length;
       if (requirement.min > availableForGroup) {
+        insufficientGroupTypeIds.push(requirement.groupTypeId);
         errors.push({ level: 'error', code: 'event-staffing-insufficient-group-coverage', message: `Slot "${slot.slotLabel}" requires ${requirement.min} person(s) for group "${requirement.groupTypeId}" but only ${availableForGroup} are available.`, path: `events.${slot.id}`, eventId: slot.id, groupTypeId: requirement.groupTypeId });
       }
     });
+    if (totalMinimum <= availablePeople && insufficientGroupTypeIds.length === 0) {
+      const simultaneous = maximumSimultaneousCoverage(
+        people,
+        slotRequirements.filter((requirement) => Number.isInteger(requirement.min) && requirement.min > 0),
+        forcedAssignments.filter((assignment) => assignment.eventId === slot.id),
+        canWorkGroup,
+      );
+      if (simultaneous.matched < totalMinimum) {
+        errors.push({
+          level: 'error',
+          code: 'event-staffing-insufficient-simultaneous-coverage',
+          message: `Slot "${slot.slotLabel}" requires ${totalMinimum} distinct assignment(s), but eligibility and availability allow at most ${simultaneous.matched} simultaneously.`,
+          path: `events.${slot.id}`,
+          eventId: slot.id,
+          groupTypeIds: simultaneous.unmatchedGroupTypeIds,
+        });
+      }
+    }
     if (totalMinimum === 0) warnings.push({ level: 'warning', code: 'event-staffing-zero-minimum-coverage', message: `Slot "${slot.slotLabel}" has no required minimum coverage.`, path: `events.${slot.id}` });
   });
+
+  const hasAdjacentAnyCooldown = cooldownRules.some((rule) => rule?.triggerGroupTypes === 'ANY'
+    && rule?.blockedGroupTypes === 'ANY' && rule?.blockedNextEventCount === 1);
+  if (hasAdjacentAnyCooldown) {
+    const orderedEvents = [...events].sort((left, right) => left.orderIndex - right.orderIndex);
+    for (let index = 0; index < orderedEvents.length - 1; index += 1) {
+      const windowEvents = orderedEvents.slice(index, index + 2);
+      const syntheticRequirements = windowEvents.flatMap((slot) => requirements
+        .filter((requirement) => requirement.eventId === slot.id && Number.isInteger(requirement.min) && requirement.min > 0)
+        .map((requirement) => ({
+          ...requirement,
+          originalGroupTypeId: requirement.groupTypeId,
+          groupTypeId: `${slot.id}\u0000${requirement.groupTypeId}`,
+        })));
+      const syntheticForcedAssignments = forcedAssignments
+        .filter((assignment) => windowEvents.some((slot) => slot.id === assignment.eventId))
+        .map((assignment) => ({ ...assignment, groupTypeId: `${assignment.eventId}\u0000${assignment.groupTypeId}` }));
+      const simultaneous = maximumSimultaneousCoverage(
+        people,
+        syntheticRequirements,
+        syntheticForcedAssignments,
+        (person, requirement) => canWorkGroupForSlot(
+          person,
+          eventById.get(requirement.eventId),
+          { ...requirement, groupTypeId: requirement.originalGroupTypeId },
+        ),
+      );
+      const totalMinimum = syntheticRequirements.reduce((sum, requirement) => sum + requirement.min, 0);
+      if (simultaneous.matched >= totalMinimum) continue;
+      const involvedByEvent = new Map();
+      simultaneous.unmatchedGroupTypeIds.forEach((syntheticGroupTypeId) => {
+        const separator = syntheticGroupTypeId.indexOf('\u0000');
+        const eventId = syntheticGroupTypeId.slice(0, separator);
+        const groupTypeId = syntheticGroupTypeId.slice(separator + 1);
+        const involved = involvedByEvent.get(eventId) ?? new Set();
+        involved.add(groupTypeId);
+        involvedByEvent.set(eventId, involved);
+      });
+      involvedByEvent.forEach((involved, eventId) => {
+        const first = windowEvents[0];
+        const second = windowEvents[1];
+        errors.push({
+          level: 'error',
+          code: 'event-staffing-insufficient-cooldown-coverage',
+          message: `Slots "${first.slotLabel}" and "${second.slotLabel}" require ${totalMinimum} distinct assignment(s), but availability and the consecutive-event cooldown allow at most ${simultaneous.matched}.`,
+          path: `events.${eventId}`,
+          eventId,
+          relatedEventIds: windowEvents.map((slot) => slot.id),
+          groupTypeIds: [...involved],
+        });
+      });
+    }
+  }
 
   return {
     valid: errors.length === 0,

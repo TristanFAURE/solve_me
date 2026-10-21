@@ -10,6 +10,12 @@ import {
 import { createEventStaffingDestinationId } from '../../core/transform/eventStaffingProject.js';
 
 export const DEFAULT_REPAIR_ASSIGNMENT_PENALTY = -100_000;
+const UNAVAILABILITY_REPAIR_TYPES = new Set([
+  'whole-day-unavailability',
+  'group-unavailability',
+  'slot-unavailability',
+  'slot-group-unavailability',
+]);
 
 const pairKey = (itemId, destinationId) => `${itemId}\u0000${destinationId}`;
 const candidateId = (...parts) => ['repair', ...parts.map((part) => encodeURIComponent(String(part)))].join(':');
@@ -56,6 +62,16 @@ function repairIssueScope(domainProject, dateKey, validationErrors) {
     if (issue.code === 'event-staffing-insufficient-slot-coverage') {
       (domainProject.requirements ?? [])
         .filter((requirement) => requirement.eventId === eventId && requirement.min > 0)
+        .forEach((requirement) => destinationIds.add(createEventStaffingDestinationId(eventId, requirement.groupTypeId)));
+      scoped = true;
+    }
+    if (issue.code === 'event-staffing-insufficient-simultaneous-coverage'
+      || issue.code === 'event-staffing-insufficient-cooldown-coverage') {
+      const groupTypeIds = new Set(issue.groupTypeIds ?? []);
+      (domainProject.requirements ?? [])
+        .filter((requirement) => requirement.eventId === eventId
+          && requirement.min > 0
+          && (groupTypeIds.size === 0 || groupTypeIds.has(requirement.groupTypeId)))
         .forEach((requirement) => destinationIds.add(createEventStaffingDestinationId(eventId, requirement.groupTypeId)));
       scoped = true;
     }
@@ -186,6 +202,30 @@ export function buildAdministratorRepairCandidates(domainProject, normalizedProj
     .sort((left, right) => left.id.localeCompare(right.id));
 }
 
+export function getAdministratorOmittableRequirements(domainProject, dateKey, validationErrors = []) {
+  const events = dateEvents(domainProject, dateKey);
+  const eventIds = new Set(events.map((event) => event.id));
+  const eventLabels = new Map(events.map((event) => [event.id, event.slotLabel ?? event.label ?? event.id]));
+  const groupLabels = new Map((domainProject.groupTypes ?? []).map((group) => [group.id, group.label ?? group.id]));
+  const issueScope = repairIssueScope(domainProject, dateKey, validationErrors);
+  return (domainProject.requirements ?? [])
+    .filter((requirement) => eventIds.has(requirement.eventId)
+      && requirement.min > 0
+      && (!issueScope.scoped || issueScope.destinationIds.has(createEventStaffingDestinationId(requirement.eventId, requirement.groupTypeId))))
+    .map((requirement) => {
+      const destinationId = createEventStaffingDestinationId(requirement.eventId, requirement.groupTypeId);
+      return {
+        id: destinationId,
+        destinationId,
+        dateKey,
+        eventId: requirement.eventId,
+        groupTypeId: requirement.groupTypeId,
+        label: `${dateKey} / ${eventLabels.get(requirement.eventId) ?? requirement.eventId} / ${groupLabels.get(requirement.groupTypeId) ?? requirement.groupTypeId}`,
+      };
+    })
+    .sort((left, right) => left.label.localeCompare(right.label));
+}
+
 export function selectAllRepairCandidates(candidates) {
   return candidates.map((candidate) => candidate.id);
 }
@@ -197,12 +237,16 @@ export function toggleRepairCandidate(selectedIds, candidateIdValue, selected) {
   return [...next].sort();
 }
 
-export function createAdministratorRepairModel(normalizedProject, candidates, selectedIds, penalty = DEFAULT_REPAIR_ASSIGNMENT_PENALTY) {
+export function createAdministratorRepairModel(normalizedProject, candidates, selectedIds, penalty = DEFAULT_REPAIR_ASSIGNMENT_PENALTY, omittedDestinationIds = []) {
   if (!Number.isFinite(penalty) || penalty >= 0) throw new Error('Repair assignment penalty must be a finite negative number.');
   const selected = new Set(selectedIds ?? []);
+  const omitted = new Set(omittedDestinationIds ?? []);
   const model = structuredClone(normalizedProject);
+  const effectiveCandidates = candidates
+    .map((candidate) => ({ ...candidate, destinationIds: candidate.destinationIds.filter((id) => !omitted.has(id)) }))
+    .filter((candidate) => candidate.destinationIds.length > 0);
   const blockersByPair = new Map();
-  candidates.filter((candidate) => candidate.kind === 'forbidden').forEach((candidate) => {
+  effectiveCandidates.filter((candidate) => candidate.kind === 'forbidden').forEach((candidate) => {
     candidate.destinationIds.forEach((destinationId) => {
       const key = pairKey(candidate.itemId, destinationId);
       const blockers = blockersByPair.get(key) ?? [];
@@ -216,7 +260,7 @@ export function createAdministratorRepairModel(normalizedProject, candidates, se
   });
   model.forbiddenAssignments = model.forbiddenAssignments.filter((entry) => !openedPairs.has(pairKey(entry.itemId, entry.destinationId)));
 
-  const selectedCandidates = candidates.filter((candidate) => selected.has(candidate.id));
+  const selectedCandidates = effectiveCandidates.filter((candidate) => selected.has(candidate.id));
   const selectedMaximumCandidatesByBound = new Map();
   selectedCandidates.filter((candidate) => candidate.kind === 'maximum').forEach((candidate) => {
     const entries = selectedMaximumCandidatesByBound.get(candidate.boundIndex) ?? [];
@@ -260,10 +304,15 @@ export function createAdministratorRepairModel(normalizedProject, candidates, se
     penaltyPairs.set(pairKey(candidate.itemId, destinationId), { itemId: candidate.itemId, destinationId });
   }));
   model.softAssignmentScores.push(...[...penaltyPairs.values()].map((entry) => ({ ...entry, score: penalty })));
+  model.containers.forEach((container) => {
+    if (!omitted.has(container.id)) return;
+    container.metadata = { ...container.metadata, minCapacity: 0, maxCapacity: 0, administratorOmitted: true };
+  });
+  model.fixedAssignments = model.fixedAssignments.filter((assignment) => !omitted.has(assignment.destinationId));
   return model;
 }
 
-export function annotateAdministratorRepairResult(result, candidates, selectedIds, dateKeys) {
+export function annotateAdministratorRepairResult(result, candidates, selectedIds, dateKeys, omittedRequirements = []) {
   const selected = candidates.filter((candidate) => new Set(selectedIds ?? []).has(candidate.id));
   const selectedMaximumCandidatesByBound = new Map();
   selected.filter((candidate) => candidate.kind === 'maximum').forEach((candidate) => {
@@ -277,6 +326,7 @@ export function annotateAdministratorRepairResult(result, candidates, selectedId
     repairedModel: true,
     repairDateKey: normalizedDateKeys.length === 1 ? normalizedDateKeys[0] : undefined,
     repairDateKeys: normalizedDateKeys,
+    administratorOmittedRequirements: omittedRequirements.map((entry) => ({ ...entry })),
     solutions: (result.solutions ?? []).map((solution) => {
       const assignmentKeys = new Set((solution.assignments ?? []).map((assignment) => pairKey(assignment.itemRef?.id, assignment.containerRef?.id ?? assignment.positionRef?.id)));
       const countsByPerson = new Map();
@@ -300,7 +350,25 @@ export function annotateAdministratorRepairResult(result, candidates, selectedId
         return totalCount > candidate.originalMax + boundCandidates.length - 1
           || countOutsideOtherSelectedDates > candidate.originalMax;
       }).map(({ id, type, label }) => ({ id, type, label }));
-      return { ...solution, administratorExceptionsUsed: used };
+      const unavailableAssignmentsByPair = new Map();
+      selected.filter((candidate) => candidate.kind === 'forbidden' && UNAVAILABILITY_REPAIR_TYPES.has(candidate.type))
+        .forEach((candidate) => candidate.destinationIds.forEach((destinationId) => {
+          const key = pairKey(candidate.itemId, destinationId);
+          if (!assignmentKeys.has(key)) return;
+          const existing = unavailableAssignmentsByPair.get(key);
+          if (existing) existing.labels.push(candidate.label);
+          else unavailableAssignmentsByPair.set(key, {
+            personId: candidate.itemId,
+            destinationId,
+            labels: [candidate.label],
+          });
+        }));
+      const administratorUnavailableAssignments = [...unavailableAssignmentsByPair.values()].map((entry) => ({
+        personId: entry.personId,
+        destinationId: entry.destinationId,
+        label: entry.labels.join('; '),
+      }));
+      return { ...solution, administratorExceptionsUsed: used, administratorUnavailableAssignments };
     }),
   };
 }
