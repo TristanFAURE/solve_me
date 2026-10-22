@@ -8,7 +8,7 @@ import {
 } from '../../workbooks/safety.js';
 import { appendConfigurationEnvelope, readConfigurationEnvelope } from '../../workbooks/configurationEnvelope.js';
 import { applyWorksheetLayout } from '../../workbooks/layout.js';
-import { transformEventStaffingProject } from '../../core/transform/eventStaffingProject.js';
+import { createEventStaffingDestinationId, transformEventStaffingProject } from '../../core/transform/eventStaffingProject.js';
 import { normalizeProject } from '../../core/normalize/normalizeProject.js';
 import { validateProject } from '../../core/validate/validateProject.js';
 import { getDayGroupPreferenceMap, getDayPreferenceMap, getEffectiveSlotPreference, getPreferenceMap, getSlotDayKey, getSlotGroupPreferenceMap, migrateEventStaffingProject, normalizePreferenceState, PREFERENCE_STATES } from './migration.js';
@@ -408,15 +408,24 @@ export function createEventStaffingSolutionWorkbook(domainProject, solverResult,
   const counts = new Map(project.people.map((person) => [person.id, new Map()]));
   const unavailableAssignments = new Map((solution.administratorUnavailableAssignments ?? [])
     .map((entry) => [`${entry.personId}\u0000${entry.destinationId}`, entry]));
-  const scheduleRows = solution.assignments.map((assignment) => {
-    const destination = parseDestinationId(assignment.containerRef?.id);
+  const omittedRequirements = new Map((solverResult.administratorOmittedRequirements ?? [])
+    .map((entry) => [`${entry.eventId}\u0000${entry.groupTypeId}`, entry]));
+  const assignmentsByDestination = new Map();
+  (solution.assignments ?? []).forEach((assignment) => {
+    const destinationId = assignment.containerRef?.id ?? assignment.positionRef?.id;
+    const assignments = assignmentsByDestination.get(destinationId) ?? [];
+    assignments.push(assignment);
+    assignmentsByDestination.set(destinationId, assignments);
+  });
+  function assignmentRow(assignment, destinationId) {
+    const destination = parseDestinationId(destinationId);
     const slot = slots.get(destination?.slotId);
     const person = people.get(assignment.itemRef?.id);
     const category = categories.get(destination?.categoryId);
     const categoryCounts = counts.get(person?.id) ?? new Map();
     categoryCounts.set(category?.label ?? destination?.categoryId, (categoryCounts.get(category?.label ?? destination?.categoryId) ?? 0) + 1);
     if (person) counts.set(person.id, categoryCounts);
-    const relaxedUnavailable = unavailableAssignments.get(`${assignment.itemRef?.id}\u0000${assignment.containerRef?.id ?? assignment.positionRef?.id}`);
+    const relaxedUnavailable = unavailableAssignments.get(`${assignment.itemRef?.id}\u0000${destinationId}`);
     return {
       Date: slot?.date ?? '',
       Slot: slot?.slotLabel ?? destination?.slotId ?? '',
@@ -427,7 +436,30 @@ export function createEventStaffingSolutionWorkbook(domainProject, solverResult,
         ? `Assigned despite declared unavailability through a temporary administrator relaxation: ${relaxedUnavailable.label}`
         : '',
     };
-  });
+  }
+  const eventOrder = new Map(project.events.map((event) => [event.id, event.orderIndex]));
+  const categoryOrder = new Map(project.groupTypes.map((category, categoryIndex) => [category.id, categoryIndex]));
+  const scheduleRows = [...project.requirements]
+    .sort((left, right) => (eventOrder.get(left.eventId) ?? 0) - (eventOrder.get(right.eventId) ?? 0)
+      || (categoryOrder.get(left.groupTypeId) ?? 0) - (categoryOrder.get(right.groupTypeId) ?? 0))
+    .flatMap((requirement) => {
+      const destinationId = createEventStaffingDestinationId(requirement.eventId, requirement.groupTypeId);
+      const assignments = assignmentsByDestination.get(destinationId) ?? [];
+      if (assignments.length > 0) return assignments.map((assignment) => assignmentRow(assignment, destinationId));
+      const slot = slots.get(requirement.eventId);
+      const category = categories.get(requirement.groupTypeId);
+      const omitted = omittedRequirements.get(`${requirement.eventId}\u0000${requirement.groupTypeId}`);
+      return [{
+        Date: slot?.date ?? '',
+        Slot: slot?.slotLabel ?? requirement.eventId,
+        Category: category?.label ?? requirement.groupTypeId,
+        Person: '',
+        Email: '',
+        Comment: omitted
+          ? `Not solved by administrator: ${omitted.label ?? `${requirement.eventId} / ${requirement.groupTypeId}`}`
+          : '',
+      }];
+    });
   const peopleRows = project.people.map((person) => ({
     Person: person.name,
     Email: person.email ?? '',

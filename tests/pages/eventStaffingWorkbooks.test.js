@@ -186,8 +186,30 @@ describe('Event Staffing workbooks', () => {
       solutions: [{ assignments: [] }],
     });
     const metadata = XLSX.utils.sheet_to_json(resultWorkbook.Sheets['Solution metadata'], { header: 1, defval: '' });
+    const schedule = XLSX.utils.sheet_to_json(resultWorkbook.Sheets.Schedule, { defval: '' });
 
     expect(metadata).toContainEqual(['Not solved by administrator', "'=2026-10-14 / Morning / Welcome"]);
+    expect(schedule).toContainEqual(expect.objectContaining({
+      Date: '2026-10-14',
+      Category: "'+Welcome",
+      Person: '',
+      Comment: 'Not solved by administrator: =2026-10-14 / Morning / Welcome',
+    }));
+  });
+
+  it('exports every configured date/group even when it has no assignment', () => {
+    const current = project();
+    current.events.push({ id: 'S2', label: 'Next day', slotLabel: 'Night', date: '2026-10-15', dateKey: '2026-10-15', orderIndex: 1 });
+    current.groupTypes.push({ id: 'C2', label: 'Night duty' });
+    current.requirements.push({ eventId: 'S2', groupTypeId: 'C2', min: 1, max: 1 });
+    const resultWorkbook = createEventStaffingSolutionWorkbook(current, {
+      status: 'solved', runtimeMs: 1,
+      solutions: [{ assignments: [{ itemRef: { id: 'P1' }, containerRef: { id: 'event:S1::group:C1' } }] }],
+    });
+    const schedule = XLSX.utils.sheet_to_json(resultWorkbook.Sheets.Schedule, { defval: '' });
+
+    expect(schedule).toHaveLength(2);
+    expect(schedule[1]).toMatchObject({ Date: '2026-10-15', Slot: 'Night', Category: 'Night duty', Person: '', Email: '', Comment: '' });
   });
 
   it('comments assignments made through relaxed unavailability', () => {

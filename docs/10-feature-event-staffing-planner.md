@@ -35,7 +35,7 @@ One import control detects the full envelope after workbook safety validation. A
 
 The selected solved schedule export contains:
 
-- `Schedule`: Date, Slot, Category, Person, Email, and Comment for each assignment. Comment identifies assignments made despite declared unavailability through a temporary administrator relaxation.
+- `Schedule`: Date, Slot, Category, Person, Email, and Comment for every configured event/group requirement. Assigned requirements produce one row per person; unassigned requirements remain visible with blank person fields. Comment identifies temporarily omitted requirements and assignments made despite declared unavailability through an administrator relaxation.
 - `People summary`: totals, category counts, targets, and score contributions.
 - `Solution metadata`: rank, score, status, search completeness, optimality, timeout, runtime, and temporarily omitted event/groups.
 
